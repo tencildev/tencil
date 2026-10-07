@@ -25,6 +25,10 @@ that matches your dev site's folder, so you can continue any conversation there.
 
 ## Quick start
 
+> Fixhere isn't published yet. Teammates: follow [docs/setup-prompt.md](docs/setup-prompt.md)
+> (paste it into your coding agent), which runs the CLI from a local clone. The
+> `npx fixhere` commands below apply once it's published.
+
 1. **Pair with T3 Code** (once). In T3 Code open **Settings → Connections** and
    create a pairing link (or run `npx t3 pair`), then:
 
