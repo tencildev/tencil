@@ -10,7 +10,7 @@ import type {
   ProviderThreadSummary,
   SendMessageInput,
   ThreadSink,
-} from "@pinprompt/protocol";
+} from "@fixhere/protocol";
 import type { ModelSelection, ProtocolAdapter, RuntimeMode, ThreadTracker } from "./adapter.ts";
 import {
   CredentialStore,
@@ -26,9 +26,9 @@ import { v2 } from "./v2.ts";
 export interface T3CodeProviderOptions {
   /** Directory the dev site lives in; mapped to a T3 Code project by workspace root. */
   projectRoot: string;
-  /** Defaults to the server `pinprompt connect` paired with last, then localhost:3773. */
+  /** Defaults to the server `fixhere connect` paired with last, then localhost:3773. */
   baseUrl?: string;
-  /** Explicit bearer token. Defaults to the one stored by `pinprompt connect`. */
+  /** Explicit bearer token. Defaults to the one stored by `fixhere connect`. */
   token?: string;
   credentials?: CredentialStore;
   modelSelection?: ModelSelection;

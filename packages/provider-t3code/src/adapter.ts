@@ -1,4 +1,4 @@
-import type { ImageAttachment, ProviderMessage, ThreadStatus } from "@pinprompt/protocol";
+import type { ImageAttachment, ProviderMessage, ThreadStatus } from "@fixhere/protocol";
 import type { RpcSocket } from "./rpc.ts";
 
 export type RuntimeMode = "approval-required" | "auto-accept-edits" | "auto" | "full-access";
@@ -14,7 +14,7 @@ export interface TrackerUpdate {
   gone?: boolean;
 }
 
-/** Folds one protocol's thread stream into Pinprompt messages + status. */
+/** Folds one protocol's thread stream into Fixhere messages + status. */
 export interface ThreadTracker {
   apply(item: unknown): TrackerUpdate;
   status(): { status: Exclude<ThreadStatus, "starting">; detail?: string };

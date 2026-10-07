@@ -20,7 +20,7 @@ const MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
 export function startServer(options: ServerOptions): Promise<Server> {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
-    if (url.pathname === "/pinprompt.js") {
+    if (url.pathname === "/fixhere.js") {
       try {
         const body = await readFile(options.overlayPath);
         response.writeHead(200, {
@@ -37,7 +37,7 @@ export function startServer(options: ServerOptions): Promise<Server> {
     }
     if (url.pathname === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ name: "pinprompt", version: options.version }));
+      response.end(JSON.stringify({ name: "fixhere", version: options.version }));
       return;
     }
     response.writeHead(404, { "content-type": "text/plain" });

@@ -1,5 +1,5 @@
 {
-  "name": "@pinprompt/overlay",
+  "name": "@fixhere/overlay",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,7 +18,7 @@
     "preact": "^11.0.0"
   },
   "devDependencies": {
-    "@pinprompt/protocol": "workspace:*",
+    "@fixhere/protocol": "workspace:*",
     "tsdown": "^0.23.0"
   }
 }

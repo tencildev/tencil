@@ -1,4 +1,4 @@
-import type { Anchor } from "@pinprompt/protocol";
+import type { Anchor } from "@fixhere/protocol";
 
 export interface Point {
   x: number;

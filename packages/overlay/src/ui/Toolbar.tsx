@@ -77,11 +77,11 @@ function connectionStatus(): { tone: "ok" | "warn" | "error"; title: string; hin
   if (bridgeState.value !== "open") {
     return {
       tone: "error",
-      title: "Pinprompt bridge offline",
+      title: "Fixhere bridge offline",
       hint:
         bridgeState.value === "connecting"
           ? undefined
-          : "Pinprompt bridge is offline. Run npx pinprompt in your project.",
+          : "Fixhere bridge is offline. Run npx fixhere in your project.",
     };
   }
   const info = provider.value;
@@ -93,7 +93,7 @@ function connectionStatus(): { tone: "ok" | "warn" | "error"; title: string; hin
       return {
         tone: "warn",
         title: `${info.label}: not paired`,
-        hint: `Pair with ${info.label}: run npx pinprompt connect`,
+        hint: `Pair with ${info.label}: run npx fixhere connect`,
       };
     case "unavailable":
       return {

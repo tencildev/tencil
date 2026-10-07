@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 export const DEFAULT_T3_URL = "http://127.0.0.1:3773";
 
-/** Scopes Pinprompt needs: read thread state and launch/steer threads. */
+/** Scopes Fixhere needs: read thread state and launch/steer threads. */
 const SCOPES = "orchestration:read orchestration:operate";
 
 export interface StoredCredential {
@@ -48,7 +48,7 @@ export function normalizeBaseUrl(raw: string): string {
 
 export async function exchangePairingCredential(
   target: PairingTarget,
-  clientLabel = "Pinprompt",
+  clientLabel = "Fixhere",
 ): Promise<StoredCredential> {
   const body = new URLSearchParams({
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -128,7 +128,7 @@ export async function requestWebSocketTicket(baseUrl: string, token: string): Pr
 
 export class UnauthorizedError extends Error {
   constructor() {
-    super("T3 Code rejected the stored token. Run `pinprompt connect` to pair again.");
+    super("T3 Code rejected the stored token. Run `fixhere connect` to pair again.");
     this.name = "UnauthorizedError";
   }
 }
@@ -144,7 +144,7 @@ export class CredentialStore {
   constructor(
     readonly path = join(
       process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"),
-      "pinprompt",
+      "fixhere",
       "credentials.json",
     ),
   ) {}
@@ -171,12 +171,17 @@ export class CredentialStore {
   }
 
   async #read(): Promise<CredentialFile> {
-    try {
-      const parsed = JSON.parse(await readFile(this.path, "utf8")) as Partial<CredentialFile>;
-      return { lastBaseUrl: parsed.lastBaseUrl, servers: parsed.servers ?? {} };
-    } catch {
-      return { servers: {} };
+    // Fixhere was called Pinprompt; keep honoring pairings made under the old name.
+    const legacy = join(dirname(dirname(this.path)), "pinprompt", "credentials.json");
+    for (const path of [this.path, legacy]) {
+      try {
+        const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<CredentialFile>;
+        return { lastBaseUrl: parsed.lastBaseUrl, servers: parsed.servers ?? {} };
+      } catch {
+        // Try the next location.
+      }
     }
+    return { servers: {} };
   }
 }
 

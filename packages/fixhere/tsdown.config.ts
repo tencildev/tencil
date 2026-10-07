@@ -7,5 +7,5 @@ export default defineConfig({
   target: "node22",
   dts: { eager: true },
   // Workspace packages are private; inline them into the published build.
-  deps: { alwaysBundle: [/^@pinprompt\//] },
+  deps: { alwaysBundle: [/^@fixhere\//] },
 });

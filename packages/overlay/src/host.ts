@@ -6,6 +6,6 @@ export function setHost(host: HTMLElement): void {
 }
 
 export function getHost(): HTMLElement {
-  if (!current) throw new Error("Pinprompt overlay is not mounted");
+  if (!current) throw new Error("Fixhere overlay is not mounted");
   return current;
 }

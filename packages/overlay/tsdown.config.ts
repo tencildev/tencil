@@ -2,9 +2,9 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: { pinprompt: "src/index.ts" },
+  entry: { fixhere: "src/index.ts" },
   format: "iife",
-  globalName: "Pinprompt",
+  globalName: "Fixhere",
   platform: "browser",
   target: "es2022",
   minify: true,

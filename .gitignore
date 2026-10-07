@@ -1,5 +1,5 @@
 node_modules
 dist
-.pinprompt
+.fixhere
 *.log
 .DS_Store

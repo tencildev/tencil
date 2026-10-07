@@ -7,7 +7,7 @@ import { App } from "./ui/App.tsx";
 
 declare global {
   interface Window {
-    __PINPROMPT__?: { version: 1; bridgeUrl: string; destroy(): void };
+    __FIXHERE__?: { version: 1; bridgeUrl: string; destroy(): void };
   }
 }
 
@@ -21,8 +21,8 @@ function bridgeUrlFromScript(): string {
 }
 
 function mount(bridgeUrl: string): void {
-  const host = document.createElement("pinprompt-overlay");
-  host.setAttribute("data-pinprompt", "");
+  const host = document.createElement("fixhere-overlay");
+  host.setAttribute("data-fixhere", "");
   host.style.cssText =
     "position:fixed;inset:0;pointer-events:none;z-index:2147483646;display:block;contain:layout style;";
   const shadow = host.attachShadow({ mode: "open" });
@@ -48,7 +48,7 @@ function mount(bridgeUrl: string): void {
   render(h(App, {}), container);
   connect(bridgeUrl);
 
-  window.__PINPROMPT__ = {
+  window.__FIXHERE__ = {
     version: 1,
     bridgeUrl,
     destroy() {
@@ -56,12 +56,12 @@ function mount(bridgeUrl: string): void {
       uninstall();
       render(null, container);
       host.remove();
-      window.__PINPROMPT__ = undefined;
+      window.__FIXHERE__ = undefined;
     },
   };
 }
 
-if (typeof window !== "undefined" && !window.__PINPROMPT__) {
+if (typeof window !== "undefined" && !window.__FIXHERE__) {
   const bridgeUrl = bridgeUrlFromScript();
   if (document.body) mount(bridgeUrl);
   else document.addEventListener("DOMContentLoaded", () => mount(bridgeUrl), { once: true });

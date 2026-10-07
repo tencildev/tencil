@@ -39,12 +39,40 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.3(@types/node@24.19.1))
-      pinprompt:
+      fixhere:
         specifier: workspace:*
-        version: link:../../packages/pinprompt
+        version: link:../../packages/fixhere
       vite:
         specifier: ^8.3.3
         version: 8.3.3(@types/node@24.19.1)
+
+  packages/fixhere:
+    dependencies:
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@fixhere/overlay':
+        specifier: workspace:*
+        version: link:../overlay
+      '@fixhere/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@fixhere/provider-t3code':
+        specifier: workspace:*
+        version: link:../provider-t3code
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
+      tsdown:
+        specifier: ^0.23.0
+        version: 0.23.0(typescript@6.0.3)
 
   packages/overlay:
     dependencies:
@@ -61,37 +89,9 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
     devDependencies:
-      '@pinprompt/protocol':
+      '@fixhere/protocol':
         specifier: workspace:*
         version: link:../protocol
-      tsdown:
-        specifier: ^0.23.0
-        version: 0.23.0(typescript@6.0.3)
-
-  packages/pinprompt:
-    dependencies:
-      picocolors:
-        specifier: ^1.1.1
-        version: 1.1.1
-      ws:
-        specifier: ^8.22.0
-        version: 8.22.0
-      zod:
-        specifier: ^4.6.5
-        version: 4.6.5
-    devDependencies:
-      '@pinprompt/overlay':
-        specifier: workspace:*
-        version: link:../overlay
-      '@pinprompt/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@pinprompt/provider-t3code':
-        specifier: workspace:*
-        version: link:../provider-t3code
-      '@types/ws':
-        specifier: ^8.18.2
-        version: 8.18.2
       tsdown:
         specifier: ^0.23.0
         version: 0.23.0(typescript@6.0.3)
@@ -104,7 +104,7 @@ importers:
 
   packages/provider-t3code:
     dependencies:
-      '@pinprompt/protocol':
+      '@fixhere/protocol':
         specifier: workspace:*
         version: link:../protocol
 

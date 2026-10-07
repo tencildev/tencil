@@ -1,4 +1,4 @@
-import type { ImageAttachment, ProviderThreadSummary, Thread } from "@pinprompt/protocol";
+import type { ImageAttachment, ProviderThreadSummary, Thread } from "@fixhere/protocol";
 import { signal } from "@preact/signals";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {

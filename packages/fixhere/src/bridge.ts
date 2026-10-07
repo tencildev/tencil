@@ -6,7 +6,7 @@ import {
   type ServerMessage,
   type Thread,
   type ThreadMessage,
-} from "@pinprompt/protocol";
+} from "@fixhere/protocol";
 import { renderPrompt, stripContext, titleFor } from "./prompt.ts";
 import type { ThreadStore } from "./store.ts";
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ImageAttachment, ProviderMessage } from "@pinprompt/protocol";
+import type { ImageAttachment, ProviderMessage } from "@fixhere/protocol";
 import {
   decodedSize,
   type ProtocolAdapter,
@@ -67,7 +67,7 @@ export const v2: ProtocolAdapter = {
       commandId: randomUUID(),
       threadId,
       runId,
-      reason: "Stopped from Pinprompt",
+      reason: "Stopped from Fixhere",
       holdQueue: true,
     });
   },

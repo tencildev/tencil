@@ -1,4 +1,4 @@
-import type { ProviderProject, ProviderThreadSummary, Thread } from "@pinprompt/protocol";
+import type { ProviderProject, ProviderThreadSummary, Thread } from "@fixhere/protocol";
 import { useEffect, useState } from "preact/hooks";
 import {
   bridgeState,
@@ -22,7 +22,7 @@ import { CloseIcon } from "./icons.tsx";
 import { pinNumbers, pinVariant } from "./Pins.tsx";
 
 /** Survives the full reload when jumping to a pin on another page. */
-export const PENDING_OPEN_KEY = "pinprompt:open";
+export const PENDING_OPEN_KEY = "fixhere:open";
 
 type Scope = "page" | "all" | "provider";
 

@@ -1,4 +1,4 @@
-import type { Thread } from "@pinprompt/protocol";
+import type { Thread } from "@fixhere/protocol";
 import { computed } from "@preact/signals";
 import { draft, hidden, layoutTick, openThreadId, pageThreads, sortedThreads } from "../state.ts";
 import { resolveAnchor } from "./position.ts";

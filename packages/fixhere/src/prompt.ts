@@ -1,7 +1,7 @@
-import type { ElementContext } from "@pinprompt/protocol";
+import type { ElementContext } from "@fixhere/protocol";
 
-const CONTEXT_OPEN = "<pinprompt-context>";
-const CONTEXT_CLOSE = "</pinprompt-context>";
+const CONTEXT_OPEN = "<fixhere-context>";
+const CONTEXT_CLOSE = "</fixhere-context>";
 
 /**
  * Renders the text sent to the agent: the user's words first, then a fenced
@@ -16,7 +16,7 @@ export function renderPrompt(input: {
 }): string {
   const { context } = input;
   const lines: string[] = [
-    "The user pinned this comment on an element of their running app (via Pinprompt). Use the context below to locate the code, then make the change in this workspace.",
+    "The user pinned this comment on an element of their running app (via Fixhere). Use the context below to locate the code, then make the change in this workspace.",
     "",
     `- Page: ${input.pageUrl}`,
     `- Element: \`${oneLine(context.html)}\``,

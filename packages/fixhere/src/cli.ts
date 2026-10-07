@@ -8,22 +8,22 @@ import {
   exchangePairingCredential,
   parsePairingInput,
   type RuntimeMode,
-} from "@pinprompt/provider-t3code";
+} from "@fixhere/provider-t3code";
 import pc from "picocolors";
-import { DEFAULT_PORT, startPinprompt } from "./index.ts";
+import { DEFAULT_PORT, startFixhere } from "./index.ts";
 import { VERSION } from "./version.ts";
 
 const HELP = `
-${pc.bold("pinprompt")} — point at your UI, prompt your agent.
+${pc.bold("fixhere")} — point at your UI, prompt your agent.
 
 ${pc.dim("Usage")}
-  pinprompt [dev] [options]        Start the bridge for the current project
-  pinprompt connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
+  fixhere [dev] [options]        Start the bridge for the current project
+  fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 ${pc.dim("Options")}
   --port <n>              Bridge port (default ${DEFAULT_PORT})
   --root <dir>            Project root (default: cwd)
-  --t3-url <url>          T3 Code server (default ${DEFAULT_T3_URL}, env PINPROMPT_T3_URL)
+  --t3-url <url>          T3 Code server (default ${DEFAULT_T3_URL}, env FIXHERE_T3_URL)
   --model <inst:model>    Model, e.g. claudeAgent:claude-fable-5-1 (default: project default)
   --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
   --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
@@ -54,8 +54,8 @@ async function main(): Promise<void> {
   if (values.version) return void console.log(VERSION);
 
   const [command = "dev", ...rest] = positionals;
-  // Unset means "the server `pinprompt connect` paired with last", falling back to the default.
-  const t3Url = values["t3-url"] ?? process.env.PINPROMPT_T3_URL;
+  // Unset means "the server `fixhere connect` paired with last", falling back to the default.
+  const t3Url = values["t3-url"] ?? process.env.FIXHERE_T3_URL;
 
   if (command === "connect") return connect(rest[0], t3Url);
   if (command !== "dev") {
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
   }
   const port = values.port ? Number.parseInt(values.port, 10) : DEFAULT_PORT;
 
-  const instance = await startPinprompt({
+  const instance = await startFixhere({
     root: values.root,
     port,
     allowedOrigins: values["allow-origin"],
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   });
 
   console.log(`
-  ${pc.bold(pc.red("●"))} ${pc.bold("Pinprompt")} ${pc.dim(`v${VERSION}`)}
+  ${pc.bold(pc.red("●"))} ${pc.bold("Fixhere")} ${pc.dim(`v${VERSION}`)}
 
   ${pc.dim("Add to your dev page:")}
   ${pc.cyan(`<script src="${instance.scriptUrl}" defer></script>`)}
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
     if (info.state === "unauthorized") {
       console.log(`${pc.dim(time())} ${pc.yellow(line)}`);
       console.log(
-        `${pc.dim(time())} Pair once with ${pc.cyan("npx pinprompt connect")} (link from T3 Code → Settings → Connections).`,
+        `${pc.dim(time())} Pair once with ${pc.cyan("npx fixhere connect")} (link from T3 Code → Settings → Connections).`,
       );
     } else if (info.state === "unavailable") {
       console.log(`${pc.dim(time())} ${pc.yellow(line)}`);

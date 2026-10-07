@@ -1,4 +1,4 @@
-import type { Thread } from "@pinprompt/protocol";
+import type { Thread } from "@fixhere/protocol";
 import { describe, expect, it } from "vitest";
 import { mergeMessage } from "./bridge.ts";
 import { renderPrompt, stripContext } from "./prompt.ts";
@@ -27,7 +27,7 @@ describe("prompt", () => {
       context,
       hasScreenshot: true,
     });
-    expect(text.startsWith("Make it red\n\n<pinprompt-context>")).toBe(true);
+    expect(text.startsWith("Make it red\n\n<fixhere-context>")).toBe(true);
     expect(text).toContain(
       "PricingCard (src/components/PricingCard.tsx:21:6) ← App (src/App.tsx:18)",
     );

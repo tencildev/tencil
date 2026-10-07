@@ -1,9 +1,9 @@
-# Pinprompt
+# Fixhere
 
 **Point at your UI. Prompt your agent.**
 
-Pinprompt is a browser review tool for coding agents. Press <kbd>C</kbd> on your
-running dev site, click any element, and type what should change. Pinprompt pins
+Fixhere is a browser review tool for coding agents. Press <kbd>C</kbd> on your
+running dev site, click any element, and type what should change. Fixhere pins
 the comment to that element, starts an agent thread with the element's component,
 source file, markup and a screenshot, and streams the agent's progress back onto
 the pin while your dev server hot-reloads the result.
@@ -13,10 +13,10 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
 ```
  your dev site (any origin on localhost)          your machine
 ┌────────────────────────────────────┐   ws    ┌─────────────────────┐   ws/rpc   ┌───────────┐
-│ overlay (Preact, shadow DOM)       │ ──────▶ │ pinprompt bridge    │ ─────────▶ │ T3 Code   │
+│ overlay (Preact, shadow DOM)       │ ──────▶ │ fixhere bridge    │ ─────────▶ │ T3 Code   │
 │  • picker, pins, threads, inbox    │ ◀────── │  • holds credentials│ ◀───────── │ (threads) │
 │  • React source via owner stacks   │         │  • provider adapters│            └───────────┘
-└────────────────────────────────────┘         │  • .pinprompt/ store│
+└────────────────────────────────────┘         │  • .fixhere/ store│
                                                └─────────────────────┘
 ```
 
@@ -29,13 +29,13 @@ that matches your dev site's folder, so you can continue any conversation there.
    create a pairing link (or run `npx t3 pair`), then:
 
    ```sh
-   npx pinprompt connect "<pairing link>"
+   npx fixhere connect "<pairing link>"
    ```
 
 2. **Run the bridge** in your project root:
 
    ```sh
-   npx pinprompt
+   npx fixhere
    ```
 
    The folder is matched to a T3 Code project by its workspace root (it is added
@@ -44,7 +44,7 @@ that matches your dev site's folder, so you can continue any conversation there.
 3. **Load the overlay** in development:
 
    ```html
-   <script src="http://localhost:4747/pinprompt.js" defer></script>
+   <script src="http://localhost:4747/fixhere.js" defer></script>
    ```
 
    **Next.js** (`app/layout.tsx`):
@@ -53,16 +53,16 @@ that matches your dev site's folder, so you can continue any conversation there.
    import Script from "next/script";
 
    {process.env.NODE_ENV === "development" && (
-     <Script src="http://localhost:4747/pinprompt.js" strategy="afterInteractive" />
+     <Script src="http://localhost:4747/fixhere.js" strategy="afterInteractive" />
    )}
    ```
 
    **Vite**: the plugin injects the script and runs the bridge inside the dev server.
 
    ```ts
-   import pinprompt from "pinprompt/vite";
+   import fixhere from "fixhere/vite";
 
-   export default defineConfig({ plugins: [react(), pinprompt()] });
+   export default defineConfig({ plugins: [react(), fixhere()] });
    ```
 
 ## Using it
@@ -85,8 +85,8 @@ the agent waits for approval, red on errors, grey once resolved.
 ## CLI
 
 ```
-pinprompt [dev] [options]        Start the bridge for the current project
-pinprompt connect [pairing-link] Pair with T3 Code
+fixhere [dev] [options]        Start the bridge for the current project
+fixhere connect [pairing-link] Pair with T3 Code
 
 --port <n>              Bridge port (default 4747)
 --root <dir>            Project root (default: cwd)
@@ -101,7 +101,7 @@ pinprompt connect [pairing-link] Pair with T3 Code
 
 The bridge can make an agent edit your code, so it is locked down by default:
 
-- Credentials live in `~/.config/pinprompt/credentials.json` (mode `0600`) and never
+- Credentials live in `~/.config/fixhere/credentials.json` (mode `0600`) and never
   reach the page. The token only carries `orchestration:read` and `orchestration:operate`.
 - The bridge listens on `127.0.0.1` and only accepts WebSocket connections from
   loopback origins (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`) unless you
@@ -110,12 +110,12 @@ The bridge can make an agent edit your code, so it is locked down by default:
 
 ## Providers
 
-Agents plug in through the `Provider` interface in `@pinprompt/protocol`:
+Agents plug in through the `Provider` interface in `@fixhere/protocol`:
 `createThread`, `sendMessage`, `interrupt` and `watch` (a stream of messages and a
 provider-agnostic status). The bridge owns pins and renders element context into
 the prompt, so every provider receives identical input.
 
-- **T3 Code** (`@pinprompt/provider-t3code`): speaks T3 Code's Effect RPC over
+- **T3 Code** (`@fixhere/provider-t3code`): speaks T3 Code's Effect RPC over
   WebSocket. Supports both orchestration protocols: V1 (all released builds) and
   V2 (newer builds advertising `orchestrationProtocolVersion: 2`).
 - **Claude Code**, others: planned.
@@ -134,7 +134,7 @@ pnpm lint
 
 | Package | What |
 | --- | --- |
-| `packages/pinprompt` | Published CLI, bridge server, Vite plugin |
+| `packages/fixhere` | Published CLI, bridge server, Vite plugin |
 | `packages/overlay` | Browser overlay (Preact + signals, shadow DOM, bippy) |
 | `packages/protocol` | Wire schemas (zod) and the provider interface |
 | `packages/provider-t3code` | T3 Code provider |

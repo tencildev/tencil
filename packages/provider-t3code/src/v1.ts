@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ProviderMessage } from "@pinprompt/protocol";
+import type { ProviderMessage } from "@fixhere/protocol";
 import {
   decodedSize,
   type ProtocolAdapter,

@@ -1,4 +1,4 @@
-import type { Anchor, ElementContext } from "@pinprompt/protocol";
+import type { Anchor, ElementContext } from "@fixhere/protocol";
 import { computed, signal } from "@preact/signals";
 import { threads } from "./connection.ts";
 

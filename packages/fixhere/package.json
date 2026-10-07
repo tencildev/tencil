@@ -1,7 +1,7 @@
 {
-  "name": "pinprompt",
+  "name": "fixhere",
   "version": "0.0.1",
-  "description": "Pin a prompt on any element of your running app and let your coding agent fix it.",
+  "description": "Point at any element of your running app and tell your coding agent what to fix.",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -15,7 +15,7 @@
     "comments"
   ],
   "bin": {
-    "pinprompt": "./dist/cli.mjs"
+    "fixhere": "./dist/cli.mjs"
   },
   "exports": {
     ".": {
@@ -33,7 +33,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsdown && cp ../overlay/dist/pinprompt.global.js dist/overlay.global.js",
+    "build": "tsdown && cp ../overlay/dist/fixhere.global.js dist/overlay.global.js",
     "dev": "node --watch --experimental-strip-types src/cli.ts --root ../../apps/playground",
     "typecheck": "tsc -p ."
   },
@@ -43,9 +43,9 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@pinprompt/overlay": "workspace:*",
-    "@pinprompt/protocol": "workspace:*",
-    "@pinprompt/provider-t3code": "workspace:*",
+    "@fixhere/overlay": "workspace:*",
+    "@fixhere/protocol": "workspace:*",
+    "@fixhere/provider-t3code": "workspace:*",
     "@types/ws": "^8.18.2",
     "tsdown": "^0.23.0"
   },

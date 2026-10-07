@@ -1,12 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { Thread } from "@pinprompt/protocol";
+import { Thread } from "@fixhere/protocol";
 import { z } from "zod";
 
 const StoreFile = z.object({ version: z.literal(1), threads: z.array(Thread) });
 
 /**
- * Pins for one project, persisted to `.pinprompt/threads.json` so they survive
+ * Pins for one project, persisted to `.fixhere/threads.json` so they survive
  * bridge restarts and page reloads. Writes are debounced and atomic.
  */
 export class ThreadStore {
@@ -16,7 +16,7 @@ export class ThreadStore {
   #writing: Promise<void> = Promise.resolve();
 
   constructor(projectRoot: string) {
-    this.path = join(projectRoot, ".pinprompt", "threads.json");
+    this.path = join(projectRoot, ".fixhere", "threads.json");
   }
 
   async load(): Promise<void> {

@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
-import pinprompt from "pinprompt/vite";
+import fixhere from "fixhere/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react(), pinprompt()],
+  plugins: [react(), fixhere()],
 });

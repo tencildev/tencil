@@ -1,4 +1,4 @@
-import type { Thread, ThreadMessage } from "@pinprompt/protocol";
+import type { Thread, ThreadMessage } from "@fixhere/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { provider, send, threads } from "../connection.ts";
 import { inboxOpen, layoutTick, openThreadId } from "../state.ts";

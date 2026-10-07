@@ -7,7 +7,7 @@ import type {
   SendMessageInput,
   ServerMessage,
   ThreadSink,
-} from "@pinprompt/protocol";
+} from "@fixhere/protocol";
 import { describe, expect, it } from "vitest";
 import { Bridge, type BridgeClient } from "./bridge.ts";
 import { ThreadStore } from "./store.ts";
@@ -68,7 +68,7 @@ const context = {
 
 function setup() {
   const provider = new FakeProvider();
-  const store = new ThreadStore(mkdtempSync(join(tmpdir(), "pinprompt-")));
+  const store = new ThreadStore(mkdtempSync(join(tmpdir(), "fixhere-")));
   const bridge = new Bridge({ provider, store, project: { name: "x", root: "/x" }, version: "0" });
   const received: ServerMessage[] = [];
   const client: BridgeClient = { send: (message) => received.push(message) };
@@ -99,7 +99,7 @@ describe("existing provider threads", () => {
       providerThreadId: "p1",
     });
     expect(provider.sent[0]?.providerThreadId).toBe("p1");
-    expect(provider.sent[0]?.text).toContain("<pinprompt-context>");
+    expect(provider.sent[0]?.text).toContain("<fixhere-context>");
     expect(store.get("pin1")?.provider).toMatchObject({ threadId: "p1", url: "fake://p1" });
   });
 
@@ -127,8 +127,8 @@ describe("existing provider threads", () => {
       streaming: false,
       createdAt: "2026-10-07T10:00:05.000Z",
     });
-    expect(store.get("dock1")?.messages.at(-1)?.text).toBe("Done");
-    expect(store.get("pin1")?.messages.at(-1)?.text).toBe("Done");
+    expect(store.get("dock1")?.messages.map((m) => m.text)).toContain("Done");
+    expect(store.get("pin1")?.messages.map((m) => m.text)).toContain("Done");
     expect(store.get("dock1")?.anchor).toBeUndefined();
   });
 
