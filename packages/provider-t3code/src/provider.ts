@@ -95,6 +95,7 @@ interface Connection {
 }
 
 const RETRY_MIN_MS = 1_000;
+const HTTP_TIMEOUT_MS = 8_000;
 const RETRY_MAX_MS = 15_000;
 
 export class T3CodeProvider implements Provider {
@@ -453,6 +454,8 @@ export class T3CodeProvider implements Provider {
     let response: Response;
     try {
       response = await fetch(new URL(path, this.#baseUrl), {
+        // A server mid-restart can accept the connection and never answer.
+        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
         headers: {
           "x-t3-orchestration-protocol": "2",
           ...(token ? { authorization: `Bearer ${token}` } : {}),

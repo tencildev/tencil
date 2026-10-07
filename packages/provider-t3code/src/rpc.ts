@@ -86,10 +86,29 @@ export class RpcSocket {
     return () => this.#closeListeners.delete(listener);
   }
 
-  request<T>(tag: string, payload: unknown): Promise<T> {
+  /** Unary request; rejects after `timeoutMs` so a stalled server can't hang callers. */
+  request<T>(tag: string, payload: unknown, timeoutMs = 30_000): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const id = this.#start(tag, payload, { resolve: resolve as (v: unknown) => void, reject });
-      if (!id) reject(new RpcError("Socket is closed"));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const id = this.#start(tag, payload, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value as T);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      if (!id) {
+        reject(new RpcError("Socket is closed"));
+        return;
+      }
+      timer = setTimeout(() => {
+        if (!this.#pending.delete(id)) return;
+        this.#send({ _tag: "Interrupt", requestId: id });
+        reject(new RpcError(`${tag} timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
     });
   }
 

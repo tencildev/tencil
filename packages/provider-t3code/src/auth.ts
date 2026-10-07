@@ -60,6 +60,7 @@ export async function exchangePairingCredential(
     client_device_type: "desktop",
   });
   const response = await fetch(`${target.baseUrl}/oauth/token`, {
+    signal: AbortSignal.timeout(15_000),
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
@@ -102,7 +103,9 @@ export async function createLocalPairingCode(
 ): Promise<string | undefined> {
   const { hostname } = new URL(baseUrl);
   if (!["localhost", "127.0.0.1", "[::1]"].includes(hostname)) return undefined;
-  const response = await fetch(new URL("/.well-known/t3/environment", baseUrl)).catch(() => null);
+  const response = await fetch(new URL("/.well-known/t3/environment", baseUrl), {
+    signal: AbortSignal.timeout(8_000),
+  }).catch(() => null);
   if (!response?.ok) return undefined;
   const { serverVersion } = (await response.json()) as { serverVersion?: string };
   if (!serverVersion) return undefined;
@@ -117,6 +120,7 @@ export async function createLocalPairingCode(
 
 export async function requestWebSocketTicket(baseUrl: string, token: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/auth/websocket-ticket`, {
+    signal: AbortSignal.timeout(8_000),
     method: "POST",
     headers: { authorization: `Bearer ${token}` },
   });
