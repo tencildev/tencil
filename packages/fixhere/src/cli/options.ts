@@ -1,6 +1,13 @@
 export const RUNTIME_MODES = ['approval-required', 'auto-accept-edits', 'auto', 'full-access'];
 /** Flags the background daemon and the login service inherit from `start`. */
-const DAEMON_FLAGS = ['t3-url', 'model', 'runtime-mode', 'allow-origin', 'no-create-project'];
+const DAEMON_FLAGS = [
+    't3-url',
+    'model',
+    'runtime-mode',
+    'listen',
+    'allow-origin',
+    'no-create-project',
+];
 
 export function forwardedFlags(values: Record<string, unknown>): string[] {
     const args: string[] = [];

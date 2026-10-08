@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { basename, resolve } from 'node:path';
+import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type { Provider, ServerMessage } from '@fixhere/protocol';
 import {
@@ -16,7 +17,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
 import { Bridge, type BridgeClient } from './bridge.ts';
 import { type Exec, ProjectResolver } from './project-resolver.ts';
-import { isAllowedHost, isAllowedOrigin } from './security.ts';
+import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
 import { defaultDataDir, ThreadStore } from './thread-store.ts';
 
 export const DEFAULT_PORT = 4747;
@@ -25,7 +26,10 @@ const MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
 export interface DaemonOptions {
     port?: number;
+    /** Main address; status checks and local tools use it. Defaults to 127.0.0.1. */
     host?: string;
+    /** Extra addresses to listen on, e.g. a Tailscale IP for a remote browser. */
+    listen?: string[];
     /** Extra origins allowed to connect, besides loopback ones. */
     allowedOrigins?: string[];
     /** Pins, credentials and remembered projects; defaults to ~/.config/fixhere. */
@@ -78,6 +82,9 @@ interface Session {
 export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> {
     const port = options.port ?? DEFAULT_PORT;
     const host = options.host ?? '127.0.0.1';
+    const addresses = [host, ...(options.listen ?? []).filter(address => address !== host)];
+    const allowedOrigins = options.allowedOrigins ?? [];
+    const knownHosts = knownHostsFor(addresses, allowedOrigins);
     const dataDir = options.dataDir ?? defaultDataDir();
     const log = options.log ?? (() => {});
     const resolver = new ProjectResolver({ dataDir, exec: options.exec });
@@ -146,8 +153,8 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         }));
     };
 
-    const server: Server = createServer(async (request, response) => {
-        if (!isAllowedHost(request, host)) {
+    const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
+        if (!isAllowedHost(request, knownHosts)) {
             response.writeHead(403, { 'content-type': 'text/plain' });
             return void response.end('Forbidden host');
         }
@@ -182,21 +189,21 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         }
         response.writeHead(404, { 'content-type': 'text/plain' });
         response.end('Not found');
-    });
+    };
 
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
-    server.on('upgrade', (request, socket, head) => {
+    const handleUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
         const url = new URL(request.url ?? '/', 'http://localhost');
         if (
             url.pathname !== '/ws' ||
-            !isAllowedHost(request, host) ||
-            !isAllowedOrigin(request, options.allowedOrigins ?? [])
+            !isAllowedHost(request, knownHosts) ||
+            !isAllowedOrigin(request, allowedOrigins)
         ) {
             socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
             return void socket.destroy();
         }
         wss.handleUpgrade(request, socket, head, ws => serveClient(ws));
-    });
+    };
 
     /** A page connection: resolve its project on `hello`, then relay to that project's bridge. */
     function serveClient(ws: WebSocket): void {
@@ -258,18 +265,29 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         });
     }
 
-    await new Promise<void>((resolveListen, reject) => {
-        server.once('error', reject);
-        server.listen(port, host, () => {
-            server.off('error', reject);
-            resolveListen();
+    const listenOn = (address: string, listenPort: number) =>
+        new Promise<Server>((resolveListen, reject) => {
+            const server = createServer(handleRequest);
+            server.on('upgrade', handleUpgrade);
+            server.once('error', reject);
+            server.listen(listenPort, address, () => {
+                server.off('error', reject);
+                resolveListen(server);
+            });
         });
-    });
-    const address = server.address();
+    const servers = [await listenOn(host, port)];
+    const address = servers[0]?.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
+    try {
+        for (const extra of addresses.slice(1)) servers.push(await listenOn(extra, actualPort));
+    } catch (error) {
+        for (const server of servers) server.close();
+        throw error;
+    }
     const publicHost = host === '127.0.0.1' || host === '0.0.0.0' ? 'localhost' : host;
     const url = `http://${publicHost}:${actualPort}`;
     log(`Fixhere daemon listening on ${url}`);
+    for (const extra of addresses.slice(1)) log(`Also listening on http://${extra}:${actualPort}`);
 
     return {
         url,
@@ -282,7 +300,9 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 await s.bridge.dispose();
                 await s.provider.dispose();
             }
-            await new Promise<void>(done => server.close(() => done()));
+            await Promise.all(
+                servers.map(server => new Promise<void>(done => server.close(() => done()))),
+            );
         },
     };
 }

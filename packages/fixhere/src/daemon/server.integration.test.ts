@@ -74,8 +74,16 @@ async function setup(
 }
 
 /** Stand-in for the overlay on a given page. */
-async function connectPage(daemon: Daemon, pageUrl: string, origin = new URL(pageUrl).origin) {
-    const ws = new WebSocket(`${daemon.url.replace('http', 'ws')}/ws`, { origin });
+async function connectPage(
+    daemon: Daemon,
+    pageUrl: string,
+    origin = new URL(pageUrl).origin,
+    via: { url?: string; host?: string } = {},
+) {
+    const ws = new WebSocket(`${(via.url ?? daemon.url).replace('http', 'ws')}/ws`, {
+        origin,
+        headers: via.host ? { host: via.host } : {},
+    });
     const received: ServerMessage[] = [];
     ws.on('message', data => received.push(JSON.parse(String(data)) as ServerMessage));
     await new Promise<void>((resolve, reject) => {
@@ -235,6 +243,26 @@ describe('security', () => {
         const { daemon } = await setup();
         expect((await httpGet(`${daemon.url}/health`)).status).toBe(200);
         expect((await httpGet(`${daemon.url}/health`, { host: 'evil.example' })).status).toBe(403);
+    });
+
+    it('lets an allowed remote page in through an extra listen address', async () => {
+        const { daemon } = await setup({
+            listen: ['::1'],
+            allowedOrigins: ['http://devbox:3001'],
+        });
+        const remote = `http://[::1]:${daemon.port}`;
+        const host = `devbox:${daemon.port}`;
+        expect((await httpGet(`${remote}/health`, { host })).status).toBe(200);
+        expect((await httpGet(`${remote}/health`, { host: 'evil.example' })).status).toBe(403);
+
+        const page = await connectPage(daemon, 'http://devbox:3001/', undefined, {
+            url: remote,
+            host,
+        });
+        await ready(page.received);
+        await expect(
+            connectPage(daemon, 'http://devbox:3002/', undefined, { url: remote, host }),
+        ).rejects.toThrow(/403/);
     });
 
     it('serves the overlay script', async () => {

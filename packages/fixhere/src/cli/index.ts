@@ -34,6 +34,7 @@ ${pc.dim('Daemon options')}
   --t3-url <url>          T3 Code server (default ${DEFAULT_T3_URL}, env FIXHERE_T3_URL)
   --model <inst:model>    Model, e.g. claudeAgent:claude-fable-5-1 (default: project default)
   --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
+  --listen <address>      Also listen here, e.g. a Tailscale IP for a remote browser (repeatable)
   --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
   --no-create-project     Don't register unknown folders as T3 Code projects
 
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
             't3-url': { type: 'string' },
             model: { type: 'string' },
             'runtime-mode': { type: 'string' },
+            listen: { type: 'string', multiple: true },
             'allow-origin': { type: 'string', multiple: true },
             'no-create-project': { type: 'boolean' },
             foreground: { type: 'boolean' },

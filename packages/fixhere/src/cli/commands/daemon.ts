@@ -12,6 +12,7 @@ export async function runDaemon(
 ): Promise<void> {
     const daemon = await startDaemon({
         port,
+        listen: values.listen as string[] | undefined,
         allowedOrigins: values['allow-origin'] as string[] | undefined,
         t3: {
             url: t3Url,
