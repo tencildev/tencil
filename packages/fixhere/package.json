@@ -63,7 +63,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsdown && cp ../overlay/dist/fixhere.global.js dist/overlay.global.js",
+    "build": "tsdown && node scripts/copy-overlay.mjs",
     "dev": "node --watch --experimental-strip-types src/cli.ts --root ../../apps/playground",
     "typecheck": "tsc -p .",
     "prepack": "pnpm run build"
