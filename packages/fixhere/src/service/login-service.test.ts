@@ -1,7 +1,13 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isPackageInstall, runtimeCli, runtimeInstallArgs } from './autostart.ts';
-import { launchdPlist, servicePort, systemdUnit, windowsTaskCommand } from './login-service.ts';
+import { isPackageInstall, runtimeCli, runtimeDir, runtimeInstallArgs } from './autostart.ts';
+import {
+    launchdPlist,
+    serviceNames,
+    servicePort,
+    systemdUnit,
+    windowsTaskCommand,
+} from './login-service.ts';
 
 const command = {
     node: '/usr/local/bin/node',
@@ -24,6 +30,24 @@ describe('login service definitions', () => {
             'ExecStart="/usr/local/bin/node" "/usr/local/lib/node_modules/fixhere/dist/cli.mjs" "daemon" "--port" "4747"',
         );
         expect(windowsTaskCommand(command)).toContain('"daemon" "--port" "4747" "--model"');
+    });
+
+    it('names a service on another port apart, so it never replaces the default one', () => {
+        expect(serviceNames(4747)).toEqual({
+            label: 'dev.fixhere.daemon',
+            unit: 'fixhere.service',
+            task: 'Fixhere',
+        });
+        expect(serviceNames(4790)).toEqual({
+            label: 'dev.fixhere.daemon.4790',
+            unit: 'fixhere-4790.service',
+            task: 'Fixhere 4790',
+        });
+        expect(launchdPlist({ ...command, port: 4790 }, '/tmp/d.log')).toContain(
+            '<string>dev.fixhere.daemon.4790</string>',
+        );
+        expect(runtimeDir('/data')).toBe(join('/data', 'runtime'));
+        expect(runtimeDir('/data', 4790)).toBe(join('/data', 'runtime-4790'));
     });
 
     it('reads the daemon port back from each definition', () => {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addFixhereToBody, addImport, addVitePlugin } from './codemods.ts';
-import { detectPackageManager } from './detect-framework.ts';
+import { detectPackageManager, findApps } from './detect-framework.ts';
 import { diffLines } from './diff.ts';
 import { planInit } from './run-init.ts';
 
@@ -183,6 +183,23 @@ describe('planInit', () => {
         const unknown = await planInit(project({ 'package.json': '{}' }));
         expect(unknown.edits).toEqual([]);
         expect(unknown.manual[0]).toContain('fixhere.js');
+    });
+
+    it('finds the apps in a monorepo root, skipping node_modules', async () => {
+        const root = project({
+            'package.json': JSON.stringify({ private: true }),
+            'apps/web/package.json': JSON.stringify({ dependencies: { next: '16.0.0' } }),
+            'apps/web/app/layout.tsx': CREATE_NEXT_APP_LAYOUT,
+            'apps/admin/package.json': JSON.stringify({ devDependencies: { vite: '8.0.0' } }),
+            'apps/admin/vite.config.ts': CREATE_VITE_CONFIG,
+            'packages/ui/package.json': '{}',
+            'node_modules/some-app/package.json': JSON.stringify({ dependencies: { next: '1' } }),
+        });
+        const apps = await findApps(root);
+        expect(apps.map(app => [relative(root, app.dir).split(sep).join('/'), app.label])).toEqual([
+            ['apps/admin', 'Vite'],
+            ['apps/web', 'Next.js'],
+        ]);
     });
 
     it('asks for manual steps when the pages router has no _document', async () => {

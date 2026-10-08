@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 export type Framework =
@@ -37,6 +37,27 @@ export async function detectFramework(root: string): Promise<Framework> {
         kind: 'unknown',
         reason: "Couldn't detect Next.js or Vite. Add the script tag to your dev HTML instead.",
     };
+}
+
+/** Next.js and Vite apps up to two folders down (apps/web, packages/site), for monorepo roots. */
+export async function findApps(root: string): Promise<Array<{ dir: string; label: string }>> {
+    const apps: Array<{ dir: string; label: string }> = [];
+    const visit = async (dir: string, depth: number) => {
+        const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+            if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules')
+                continue;
+            const child = join(dir, entry.name);
+            const framework = await detectFramework(child);
+            if (framework.kind !== 'unknown') {
+                apps.push({ dir: child, label: framework.kind === 'vite' ? 'Vite' : 'Next.js' });
+            } else if (depth < 2) {
+                await visit(child, depth + 1);
+            }
+        }
+    };
+    await visit(root, 1);
+    return apps.sort((a, b) => a.dir.localeCompare(b.dir));
 }
 
 /** Walk up from `root` to the nearest lockfile; monorepo apps share the root's manager. */

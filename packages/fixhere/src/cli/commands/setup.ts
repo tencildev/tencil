@@ -18,10 +18,23 @@ export interface SetupOptions {
 
 /** `fixhere setup`: once per machine. Starts the daemon (at login, by default) and pairs. */
 export async function setup(command: DaemonCommand, options: SetupOptions = {}): Promise<void> {
-    const dataDir = defaultDataDir();
     const log = (message: string) => console.log(message);
     log(`\n  ${pc.bold('Fixhere')} setup ${pc.dim(`v${VERSION}`)}\n`);
+    await setUpMachine(command, options, log);
+    await pairWithLocalT3(options.t3Url, log);
+    log(`
+  Next, in each project: ${pc.cyan('npx fixhere')}
+  Then start its dev server and press ${pc.bold('C')} on the page.
+`);
+}
 
+/** Ask about starting at login (yes by default), then start the daemon that way. */
+export async function setUpMachine(
+    command: DaemonCommand,
+    options: SetupOptions,
+    log: (message: string) => void,
+): Promise<void> {
+    const dataDir = defaultDataDir();
     const autostart =
         options.yes || !process.stdin.isTTY
             ? true
@@ -34,34 +47,20 @@ export async function setup(command: DaemonCommand, options: SetupOptions = {}):
             log(
                 `  ${pc.green('✓')} Fixhere is running on port ${command.port} and starts when you log in ${pc.dim(`(${where})`)}`,
             );
+            return;
         } catch (error) {
             log(`  ${pc.yellow('!')} ${error instanceof Error ? error.message : String(error)}`);
-            await startNow(command, dataDir, log);
         }
-    } else {
-        if (isServiceInstalled(command.port)) await uninstallService(command.port);
-        await startNow(command, dataDir, log);
+    } else if (isServiceInstalled(command.port)) {
+        await uninstallService(command.port);
     }
-
-    await pairWithLocalT3(options.t3Url, log);
-    log(`
-  Next, in each project: ${pc.cyan('npx fixhere init')}
-  Then start its dev server and press ${pc.bold('C')} on the page.
-`);
-}
-
-async function startNow(
-    command: DaemonCommand,
-    dataDir: string,
-    log: (message: string) => void,
-): Promise<void> {
     await startInBackground(command, dataDir);
     log(
         `  ${pc.green('✓')} Fixhere is running on port ${command.port}. After a restart, run ${pc.cyan('npx fixhere start')}.`,
     );
 }
 
-async function confirm(question: string): Promise<boolean> {
+export async function confirm(question: string): Promise<boolean> {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     const answer = await rl.question(`  ${question} ${pc.dim('(Y/n)')} `);
     rl.close();

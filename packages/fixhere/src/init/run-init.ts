@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
-import { relative } from 'node:path';
+import { join, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import pc from 'picocolors';
 import { defaultDataDir } from '../daemon/thread-store.ts';
@@ -134,7 +134,8 @@ export async function runInit(options: InitOptions): Promise<void> {
     }
     for (const edit of plan.edits) await writeFile(edit.path, edit.after);
 
-    if (!options.skipInstall && plan.framework.kind !== 'unknown') install(options, log);
+    if (!options.skipInstall && plan.framework.kind !== 'unknown' && !(await hasFixhere(options)))
+        install(options, log);
     let autostart = false;
     if (options.daemon) {
         const result = await ensureDaemon(options.daemon, defaultDataDir());
@@ -146,8 +147,19 @@ export async function runInit(options: InitOptions): Promise<void> {
     if (!options.skipPair) await pairWithLocalT3(options.t3Url, log);
 
     log(`  ${pc.green('✓')} Done. Start your dev server and press ${pc.bold('C')} on the page.`);
-    if (!autostart) log(pc.dim('    Start Fixhere at login: npx fixhere setup'));
+    if (options.daemon && !autostart) log(pc.dim('    Start Fixhere at login: npx fixhere setup'));
     log('');
+}
+
+/** Already a dependency (and no other package asked for with `--from`)? */
+async function hasFixhere(options: InitOptions): Promise<boolean> {
+    if (options.from) return false;
+    try {
+        const pkg = JSON.parse(await readFile(join(options.root, 'package.json'), 'utf8'));
+        return Boolean(pkg.dependencies?.fixhere ?? pkg.devDependencies?.fixhere);
+    } catch {
+        return false;
+    }
 }
 
 function install(options: InitOptions, log: (message: string) => void): void {

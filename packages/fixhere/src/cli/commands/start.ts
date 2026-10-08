@@ -11,7 +11,7 @@ export async function start(command: DaemonCommand): Promise<void> {
   ${pc.green('●')} ${pc.bold('Fixhere')} ${verb} ${pc.dim(`(v${VERSION}, port ${command.port})`)}
 
   Open a project's dev server and press ${pc.bold('C')} on the page. Projects need the
-  overlay loaded once: run ${pc.cyan('npx fixhere init')} in the project.${
+  overlay loaded once: run ${pc.cyan('npx fixhere')} in the project.${
       result.autostart
           ? ''
           : `\n  ${pc.dim(`Start it automatically at login: ${pc.cyan('npx fixhere setup')}`)}`

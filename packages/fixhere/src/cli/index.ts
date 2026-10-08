@@ -12,6 +12,7 @@ import { isServiceInstalled, stopService } from '../service/login-service.ts';
 import { VERSION } from '../version.ts';
 import { connect } from './commands/connect.ts';
 import { runDaemon } from './commands/daemon.ts';
+import { quickstart } from './commands/quickstart.ts';
 import { service } from './commands/service.ts';
 import { setup } from './commands/setup.ts';
 import { start } from './commands/start.ts';
@@ -22,9 +23,10 @@ const HELP = `
 ${pc.bold('fixhere')}: point at your UI, prompt your agent.
 
 ${pc.dim('Usage')}
+  fixhere                        Set up this machine if needed, then add Fixhere to this project
   fixhere setup                  Set up this machine: start Fixhere (at login) and pair
   fixhere init [options]         Load the overlay in this project (Next.js, Vite)
-  fixhere [start]                Start the daemon in the background
+  fixhere start                  Start the daemon in the background
   fixhere start --foreground     Run the daemon in this terminal
   fixhere stop                   Stop the daemon
   fixhere status                 Show the daemon and the projects it serves
@@ -78,7 +80,7 @@ async function main(): Promise<void> {
     if (values.help) return void console.log(HELP);
     if (values.version) return void console.log(VERSION);
 
-    const [command = 'start', ...rest] = positionals;
+    const [command, ...rest] = positionals;
     // Unset means "the server `fixhere connect` paired with last", falling back to the default.
     const t3Url = values['t3-url'] ?? process.env.FIXHERE_T3_URL;
     const port = values.port
@@ -96,6 +98,13 @@ async function main(): Promise<void> {
     };
 
     switch (command) {
+        case undefined:
+            return quickstart(daemonCommand, {
+                root: resolve(values.root ?? process.cwd()),
+                yes: values.yes,
+                from: values.from,
+                t3Url,
+            });
         case 'daemon':
             return runDaemon(values, port, t3Url, runtimeMode as RuntimeMode | undefined);
         case 'start':

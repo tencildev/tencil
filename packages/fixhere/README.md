@@ -28,11 +28,17 @@ that matches your dev site's folder, so you can continue any conversation there.
 You need the [T3 Code](https://github.com/pingdotgg/t3code) desktop app running.
 
 ```sh
-npx fixhere setup   # once per machine: starts Fixhere (at login, if you like) and pairs
-npx fixhere init    # once per project: loads the overlay in development
+cd your-app
+npx fixhere
 ```
 
+The first time, this sets up your machine: it asks whether Fixhere should start
+when you log in (yes by default) and pairs with T3 Code. Then it adds Fixhere to
+the project in the current folder. In other projects it only does the second part.
 Start your dev server as usual and press <kbd>C</kbd> on the page.
+
+The two steps also run on their own: `npx fixhere setup` (this machine) and
+`npx fixhere init` (this project).
 
 ### How it fits together
 
@@ -107,9 +113,10 @@ the agent waits for approval, red on errors, grey once resolved.
 ## CLI
 
 ```
+fixhere                        Set up this machine if needed, then add Fixhere to this project
 fixhere setup                  Set up this machine: start Fixhere (at login) and pair
 fixhere init [options]         Load the overlay in this project (Next.js, Vite)
-fixhere [start]                Start the daemon in the background
+fixhere start                  Start the daemon in the background
 fixhere start --foreground     Run the daemon in this terminal
 fixhere stop                   Stop the daemon (until the next login, with the login service)
 fixhere status                 Show the daemon and the projects it serves

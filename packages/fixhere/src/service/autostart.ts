@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { probeDaemon } from '../daemon/server.ts';
+import { DEFAULT_PORT, probeDaemon } from '../daemon/server.ts';
 import { VERSION } from '../version.ts';
 import { sameFlags, startInBackground, waitForDaemon } from './background.ts';
 import type { DaemonCommand } from './daemon-command.ts';
@@ -16,16 +16,20 @@ export function isPackageInstall(cliPath: string): boolean {
     return /[\\/]node_modules[\\/]/.test(cliPath);
 }
 
-/** The login service's own copy of Fixhere. */
-export function runtimeCli(dataDir: string): string {
-    return join(dataDir, 'runtime', 'node_modules', 'fixhere', 'dist', 'cli.mjs');
+/** The login service's own copy of Fixhere; one per port, like the service. */
+export function runtimeDir(dataDir: string, port = DEFAULT_PORT): string {
+    return join(dataDir, port === DEFAULT_PORT ? 'runtime' : `runtime-${port}`);
 }
 
-export function runtimeInstallArgs(dataDir: string, spec: string): string[] {
+export function runtimeCli(dataDir: string, port = DEFAULT_PORT): string {
+    return join(runtimeDir(dataDir, port), 'node_modules', 'fixhere', 'dist', 'cli.mjs');
+}
+
+export function runtimeInstallArgs(dataDir: string, spec: string, port = DEFAULT_PORT): string[] {
     return [
         'install',
         '--prefix',
-        join(dataDir, 'runtime'),
+        runtimeDir(dataDir, port),
         spec,
         '--no-audit',
         '--no-fund',
@@ -50,7 +54,7 @@ export async function enableAutostart(
         const spec = from && existsSync(from) ? resolve(from) : (from ?? `fixhere@${VERSION}`);
         const result = spawnSync(
             process.platform === 'win32' ? 'npm.cmd' : 'npm',
-            runtimeInstallArgs(dataDir, spec),
+            runtimeInstallArgs(dataDir, spec, command.port),
             {
                 encoding: 'utf8',
                 stdio: ['ignore', 'ignore', 'pipe'],
@@ -62,7 +66,7 @@ export async function enableAutostart(
                 `Couldn't install Fixhere for the login service (npm ${result.status ?? 'failed'}): ${result.stderr?.trim() ?? ''}`,
             );
         }
-        cli = runtimeCli(dataDir);
+        cli = runtimeCli(dataDir, command.port);
     }
     const where = await installService({ ...command, cli, args }, dataDir);
     await waitForDaemon(command.port, dataDir);
