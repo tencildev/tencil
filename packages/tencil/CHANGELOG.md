@@ -2,6 +2,12 @@
 
 Up to 0.2.0 this package was published as `fixhere`.
 
+## 0.3.1
+
+### Patch Changes
+
+- [`41de998`](https://github.com/pixel-perfect-agency/tencil/commit/41de9989b4c4232ddb69b4743795d8c58e74bbb1) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - The login service now starts the daemon with your shell's PATH (so it finds nvm's npm and npx to pair and to install Claude Code support) and with your XDG_CONFIG_HOME, if set. Setup pairs before it starts the daemon, a daemon whose own pairing failed picks up a pairing made later, and pairing works when Tencil runs under `npx --package`.
+
 ## 0.3.0
 
 ### Minor Changes
