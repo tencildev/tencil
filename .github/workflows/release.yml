@@ -4,16 +4,19 @@ on:
   push:
     branches: [master]
 
-concurrency: release
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
   pull-requests: write
+  # npm trusted publishing: GitHub vouches for this workflow, so there is no npm token.
   id-token: write
 
 jobs:
   release:
-    # Off until publishing is switched on: set the repository variable RELEASE_ENABLED=true.
+    # Off until the trusted publisher is set up on npmjs.com: set the repository variable RELEASE_ENABLED=true.
     if: vars.RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -21,19 +24,29 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@11
       - run: pnpm install --frozen-lockfile
-      - name: Version PR or publish
+      - name: Lint, typecheck, test
+        run: pnpm check
+
+      - name: Open or update the version PR
+        id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm changeset version
-          publish: pnpm release
           title: "chore: version packages"
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Without pending changesets this push is the merged version PR (or a commit
+      # after it); `changeset publish` only publishes versions npm doesn't have yet.
+      - name: Publish to npm
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        run: pnpm release
+        env:
           # npm provenance needs a public repository.
           NPM_CONFIG_PROVENANCE: ${{ !github.event.repository.private }}

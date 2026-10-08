@@ -119,6 +119,7 @@ fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 --t3-url <url>          T3 Code server (default: last paired, then http://127.0.0.1:3773)
 --model <inst:model>    e.g. claudeAgent:claude-fable-5-1 (default: project default)
 --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
+--listen <address>      Also listen here, e.g. a Tailscale IP (repeatable)
 --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
 --no-create-project     Don't register unknown folders as T3 Code projects
 
@@ -135,8 +136,12 @@ The bridge can make an agent edit your code, so it is locked down by default:
   reach the page. The token only carries `orchestration:read` and `orchestration:operate`.
 - The bridge listens on `127.0.0.1` and only accepts WebSocket connections from
   loopback origins (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`) unless you
-  pass `--allow-origin`. Requests addressed to any other host name are refused,
-  which blocks DNS rebinding.
+  pass `--allow-origin`. Requests addressed to any other host name than loopback,
+  a `--listen` address or an allowed origin's host are refused, which blocks DNS
+  rebinding. Tools that send no Origin are only trusted from this machine.
+- On a shared dev box, `--listen` exposes the bridge to that network: browsers are
+  held to `--allow-origin`, but a non-browser client can claim any Origin, so only
+  listen on a network you trust (such as your tailnet).
 - Agent replies are rendered as text nodes (no `innerHTML`).
 
 ## Providers
@@ -188,6 +193,10 @@ Structure and naming conventions: [AGENTS.md](AGENTS.md).
 
 ### Releasing
 
-Changes that affect users get a changeset (`pnpm changeset`). With the repository
-variable `RELEASE_ENABLED=true` and an `NPM_TOKEN` secret, merging to `master` opens a
-"Version packages" PR, and merging that PR publishes `fixhere` to npm.
+Changes that affect users get a changeset (`pnpm changeset`). Merging to `master`
+opens a "Version packages" PR, and merging that PR publishes `fixhere` to npm.
+
+Publishing uses npm trusted publishing, so there is no npm token: on npmjs.com,
+`fixhere` → Settings → Trusted publisher allows GitHub Actions in
+`pixel-perfect-agency/fixhere`, workflow `release.yml`. The workflow only runs while
+the repository variable `RELEASE_ENABLED` is `true`.
