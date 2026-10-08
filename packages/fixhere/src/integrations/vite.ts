@@ -1,10 +1,12 @@
+import { DEFAULT_DAEMON_PORT, overlayLoader } from './loader.ts';
+
 /** Structural subset of Vite's Plugin type, so `vite` stays an optional peer. */
 interface VitePlugin {
     name: string;
     apply: 'serve';
     transformIndexHtml(): Array<{
         tag: string;
-        attrs: Record<string, string | boolean>;
+        children: string;
         injectTo: 'body';
     }>;
     transform(code: string, id: string): string | undefined;
@@ -18,35 +20,24 @@ export interface FixhereViteOptions {
 /** Vite's dev client, which every dev page loads, whether or not it has an index.html. */
 const VITE_CLIENT = /vite\/dist\/client\/(?:client|bundledDevClient)\.mjs$/;
 
-/** Appended to the Vite client so SSR frameworks (TanStack Start, Astro, SvelteKit) get the overlay too. */
-export function overlayLoader(scriptUrl: string): string {
-    const src = JSON.stringify(scriptUrl);
-    return `
-;(() => {
-  if (typeof document === "undefined" || document.querySelector(\`script[src=\${JSON.stringify(${src})}]\`)) return;
-  const script = document.createElement("script");
-  script.src = ${src};
-  script.async = true;
-  document.head.appendChild(script);
-})();
-`;
-}
-
 /**
- * Dev-only: loads the overlay from the Fixhere daemon running on this machine
- * (`npx fixhere start`). Without a running daemon nothing appears.
+ * Dev-only: loads the overlay from the Fixhere daemon on the machine serving the
+ * page (`npx fixhere start`). Without a running daemon nothing appears.
  */
 export default function fixhere(options: FixhereViteOptions = {}): VitePlugin {
-    const port = options.port ?? Number(process.env.FIXHERE_PORT ?? 4747);
-    const scriptUrl = `http://localhost:${port}/fixhere.js`;
+    const loader = overlayLoader(
+        options.port ?? Number(process.env.FIXHERE_PORT ?? DEFAULT_DAEMON_PORT),
+    );
     return {
         name: 'fixhere',
         apply: 'serve',
         transform(code, id) {
-            return VITE_CLIENT.test(id) ? code + overlayLoader(scriptUrl) : undefined;
+            // Every dev page loads the Vite client, so SSR frameworks (TanStack Start,
+            // Astro, SvelteKit) without an index.html get the overlay too.
+            return VITE_CLIENT.test(id) ? `${code}\n${loader}\n` : undefined;
         },
         transformIndexHtml() {
-            return [{ tag: 'script', attrs: { src: scriptUrl, async: true }, injectTo: 'body' }];
+            return [{ tag: 'script', children: loader, injectTo: 'body' }];
         },
     };
 }
