@@ -162,12 +162,15 @@ pnpm test:e2e       # browser tests (Playwright) against the playground
 
 | Package | What |
 | --- | --- |
-| `packages/fixhere` | Published CLI, daemon, `init`, Vite plugin and React component |
+| `packages/fixhere` | Published package: CLI, daemon, `init`, Vite plugin and React component |
 | `packages/overlay` | Browser overlay (Preact + signals, shadow DOM, bippy) |
 | `packages/protocol` | Wire schemas (zod) and the provider interface |
 | `packages/provider-t3code` | T3 Code provider (orchestration V1 and V2) |
 | `packages/testing` | Fake T3 Code server used by the integration and browser tests |
+| `packages/tsconfig` | Shared TypeScript configs |
 | `apps/playground` | Vite + React app with the plugin, also the e2e test target |
+
+Structure and naming conventions: [AGENTS.md](AGENTS.md).
 
 ### Tests
 
