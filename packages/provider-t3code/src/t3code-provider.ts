@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { realpath } from 'node:fs/promises';
-import { basename, isAbsolute, relative } from 'node:path';
+import { access, realpath } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import type {
     CreatedThread,
     CreateThreadInput,
@@ -442,13 +442,16 @@ export class T3CodeProvider implements Provider {
             token,
         );
         // Deepest workspace root containing the dev project wins, so a package in a
-        // monorepo maps to the repo-level project when it has none of its own.
+        // monorepo maps to the repo-level project when it has none of its own. A
+        // project above the repository (say ~/Code) is someone else's scope.
+        const repository = await repositoryRoot(root);
         let match: WireProject | undefined;
         for (const project of shell.projects) {
             const projectRoot = await realpath(project.workspaceRoot).catch(
                 () => project.workspaceRoot,
             );
-            const contains = isInside(root, projectRoot);
+            const contains =
+                isInside(root, projectRoot) && (!repository || isInside(projectRoot, repository));
             if (contains && (!match || projectRoot.length > match.workspaceRoot.length)) {
                 match = { ...project, workspaceRoot: projectRoot };
             }
@@ -461,10 +464,11 @@ export class T3CodeProvider implements Provider {
         if (!this.#options.createProjectIfMissing || this.#hadProject) {
             throw new Error(`No T3 Code project for ${root}. Add the folder in T3 Code first.`);
         }
+        const workspaceRoot = repository ?? root;
         const project: WireProject = {
             id: randomUUID(),
-            title: basename(root),
-            workspaceRoot: root,
+            title: basename(workspaceRoot),
+            workspaceRoot,
             defaultModelSelection: null,
         };
         await protocol.createProject(socket, {
@@ -472,7 +476,7 @@ export class T3CodeProvider implements Provider {
             title: project.title,
             workspaceRoot: project.workspaceRoot,
         });
-        this.#log(`Added ${root} to T3 Code as project "${project.title}"`);
+        this.#log(`Added ${workspaceRoot} to T3 Code as project "${project.title}"`);
         this.#hadProject = true;
         return project;
     }
@@ -581,6 +585,20 @@ function summaryStatus(thread: WireShellThread): ProviderThreadSummary['status']
     if (session === 'error' || thread.latestTurn?.state === 'error') return 'error';
     return 'idle';
 }
+
+/** The nearest folder at or above `dir` with a `.git` entry, if any. */
+export async function repositoryRoot(dir: string): Promise<string | undefined> {
+    for (let current = dir; ; current = dirname(current)) {
+        if (await exists(join(current, '.git'))) return current;
+        if (dirname(current) === current) return undefined;
+    }
+}
+
+const exists = (path: string) =>
+    access(path).then(
+        () => true,
+        () => false,
+    );
 
 /** Whether `path` is `parent` or inside it, on any platform's separators. */
 export function isInside(path: string, parent: string): boolean {

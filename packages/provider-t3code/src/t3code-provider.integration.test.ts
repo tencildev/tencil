@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProviderMessage, ThreadSink, ThreadStatus } from '@fixhere/protocol';
@@ -236,6 +236,23 @@ describe('isInside', () => {
 });
 
 describe('project lifecycle', () => {
+    it('ignores projects above the repository and adds the repository instead', async () => {
+        const outer = projectDir();
+        const repo = join(outer, 'site');
+        const web = join(repo, 'apps', 'web');
+        mkdirSync(join(repo, '.git'), { recursive: true });
+        mkdirSync(web, { recursive: true });
+        const { provider, server } = await setup(1, { seedProject: false, projectRoot: web });
+        server.projects.push({ id: 'everything', title: 'Code', workspaceRoot: outer });
+        await provider.start();
+        await ready(provider);
+        expect(provider.info()).toMatchObject({ target: 'site' });
+        expect(server.projects).toEqual([
+            expect.objectContaining({ id: 'everything' }),
+            expect.objectContaining({ title: 'site', workspaceRoot: repo }),
+        ]);
+    });
+
     it("doesn't re-create a project deleted while the bridge runs", async () => {
         const { provider, server } = await setup(1, { seedProject: false });
         await provider.start();
