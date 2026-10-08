@@ -3,17 +3,32 @@
   "version": "0.0.1",
   "description": "Point at any element of your running app and tell your coding agent what to fix.",
   "license": "MIT",
-  "type": "module",
+  "author": "Pixel Perfect Agency",
+  "homepage": "https://fixhere.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pixel-perfect-agency/fixhere.git",
+    "directory": "packages/fixhere"
+  },
+  "bugs": {
+    "url": "https://github.com/pixel-perfect-agency/fixhere/issues"
+  },
   "keywords": [
     "agent",
     "ai",
-    "t3code",
     "claude-code",
+    "code-review",
+    "comments",
     "devtools",
+    "nextjs",
+    "overlay",
     "react",
     "review",
-    "comments"
+    "t3",
+    "t3code",
+    "vite"
   ],
+  "type": "module",
   "bin": {
     "fixhere": "./dist/cli.mjs"
   },
@@ -38,30 +53,25 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "THIRD_PARTY_NOTICES.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsdown && cp ../overlay/dist/fixhere.global.js dist/overlay.global.js",
     "dev": "node --watch --experimental-strip-types src/cli.ts --root ../../apps/playground",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "prepack": "pnpm run build"
   },
   "dependencies": {
     "picocolors": "^1.1.1",
     "ws": "^8.22.0",
     "zod": "^4.6.5"
-  },
-  "devDependencies": {
-    "@fixhere/overlay": "workspace:*",
-    "@fixhere/protocol": "workspace:*",
-    "@fixhere/provider-t3code": "workspace:*",
-    "@types/ws": "^8.18.2",
-    "tsdown": "^0.23.0",
-    "@types/react": "^19.3.0",
-    "react": "^19.3.0",
-    "@fixhere/testing": "workspace:*"
-  },
-  "engines": {
-    "node": ">=22"
   },
   "peerDependencies": {
     "react": ">=18",
@@ -74,5 +84,15 @@
     "vite": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "@fixhere/overlay": "workspace:*",
+    "@fixhere/protocol": "workspace:*",
+    "@fixhere/provider-t3code": "workspace:*",
+    "@types/ws": "^8.18.2",
+    "tsdown": "^0.23.0",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "@fixhere/testing": "workspace:*"
   }
 }
