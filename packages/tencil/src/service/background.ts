@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DEFAULT_PORT, probeDaemon } from '../daemon/server.ts';
 import { VERSION } from '../version.ts';
 import { type DaemonCommand, daemonArgs } from './daemon-command.ts';
+import { isNewerThanThis } from './versions.ts';
 
 /**
  * Start the daemon in the background unless it already runs. A daemon from an
@@ -14,8 +15,11 @@ import { type DaemonCommand, daemonArgs } from './daemon-command.ts';
 export async function startInBackground(
     command: DaemonCommand,
     dataDir: string,
-): Promise<{ status: 'started' | 'running' | 'restarted'; pid: number }> {
+): Promise<{ status: 'started' | 'running' | 'restarted'; pid: number; newer?: string }> {
     const running = await probeDaemon(command.port);
+    if (running && isNewerThanThis(running.version)) {
+        return { status: 'running', pid: running.pid, newer: running.version };
+    }
     const flags = command.args?.length ? command.args : (running?.flags ?? []);
     if (running && running.version === VERSION && sameFlags(running.flags, flags)) {
         return { status: 'running', pid: running.pid };

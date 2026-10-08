@@ -2,10 +2,17 @@ import pc from 'picocolors';
 import { defaultDataDir } from '../../daemon/thread-store.ts';
 import { ensureDaemon } from '../../service/autostart.ts';
 import type { DaemonCommand } from '../../service/daemon-command.ts';
+import { updateNotice } from '../../service/versions.ts';
 import { VERSION } from '../../version.ts';
+import { newerDaemonLine, printUpdateNotice } from '../format.ts';
 
 export async function start(command: DaemonCommand): Promise<void> {
+    const notice = updateNotice();
     const result = await ensureDaemon(command, defaultDataDir());
+    if (result.newer) {
+        console.log(`\n${newerDaemonLine(result.newer, command.port)}\n`);
+        return;
+    }
     const verb = result.status === 'running' ? 'is running' : result.status;
     console.log(`
   ${pc.green('●')} ${pc.bold('Tencil')} ${verb} ${pc.dim(`(v${VERSION}, port ${command.port})`)}
@@ -17,4 +24,5 @@ export async function start(command: DaemonCommand): Promise<void> {
           : `\n  ${pc.dim(`Start it automatically at login: ${pc.cyan('npx tencil setup')}`)}`
   }
 `);
+    await printUpdateNotice(notice, console.log);
 }

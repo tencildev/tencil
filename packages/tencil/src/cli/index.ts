@@ -139,7 +139,12 @@ async function main(): Promise<void> {
             }
             return start(daemonCommand);
         case 'setup':
-            return setup(daemonCommand, { yes: values.yes, from: values.from, t3Url });
+            return setup(daemonCommand, {
+                yes: values.yes,
+                from: values.from,
+                t3Url,
+                root: resolve(values.root ?? process.cwd()),
+            });
         case 'stop':
             if (isServiceInstalled(port)) {
                 await stopService(port);

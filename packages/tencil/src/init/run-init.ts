@@ -4,6 +4,7 @@ import { join, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { withoutNpmEnv } from '@tencil/provider-t3code';
 import pc from 'picocolors';
+import { newerDaemonLine } from '../cli/format.ts';
 import { defaultDataDir } from '../daemon/thread-store.ts';
 import { ensureDaemon } from '../service/autostart.ts';
 import { chooseProvider } from '../service/choose-provider.ts';
@@ -151,7 +152,9 @@ export async function runInit(options: InitOptions): Promise<void> {
         const result = await ensureDaemon(options.daemon, defaultDataDir());
         autostart = result.autostart;
         log(
-            `  ${pc.green('✓')} Tencil ${result.status === 'running' ? 'is running' : result.status} on port ${options.daemon.port}.`,
+            result.newer
+                ? newerDaemonLine(result.newer, options.daemon.port)
+                : `  ${pc.green('✓')} Tencil ${result.status === 'running' ? 'is running' : result.status} on port ${options.daemon.port}.`,
         );
     }
     if (!options.skipPair) {

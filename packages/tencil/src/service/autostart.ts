@@ -7,6 +7,7 @@ import { VERSION } from '../version.ts';
 import { sameFlags, startInBackground, waitForDaemon } from './background.ts';
 import type { DaemonCommand } from './daemon-command.ts';
 import { installService, isServiceInstalled } from './login-service.ts';
+import { isNewerThanThis, NewerDaemonError } from './versions.ts';
 
 /**
  * Running from a package manager's install (npx's cache, a project, a global
@@ -49,6 +50,7 @@ export async function enableAutostart(
     from?: string,
 ): Promise<string> {
     const running = await probeDaemon(command.port);
+    if (running && isNewerThanThis(running.version)) throw new NewerDaemonError(running.version);
     const args = command.args?.length ? command.args : (running?.flags ?? []);
     let cli = command.cli;
     if (isPackageInstall(cli)) {
@@ -82,12 +84,20 @@ export async function enableAutostart(
 export async function ensureDaemon(
     command: DaemonCommand,
     dataDir: string,
-): Promise<{ status: 'started' | 'running' | 'restarted'; autostart: boolean }> {
+): Promise<{
+    status: 'started' | 'running' | 'restarted';
+    autostart: boolean;
+    /** Set when a newer Tencil already runs; it's left alone. */
+    newer?: string;
+}> {
     if (!isServiceInstalled(command.port)) {
-        const { status } = await startInBackground(command, dataDir);
-        return { status, autostart: false };
+        const { status, newer } = await startInBackground(command, dataDir);
+        return { status, autostart: false, newer };
     }
     const running = await probeDaemon(command.port);
+    if (running && isNewerThanThis(running.version)) {
+        return { status: 'running', autostart: true, newer: running.version };
+    }
     const flags = command.args?.length ? command.args : (running?.flags ?? []);
     if (running && running.version === VERSION && sameFlags(running.flags, flags)) {
         return { status: 'running', autostart: true };
