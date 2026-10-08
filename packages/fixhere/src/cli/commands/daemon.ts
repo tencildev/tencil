@@ -2,7 +2,7 @@ import type { RuntimeMode } from '@fixhere/provider-t3code';
 import pc from 'picocolors';
 import { startDaemon } from '../../daemon/server.ts';
 import { time } from '../format.ts';
-import { parseModel } from '../options.ts';
+import { forwardedFlags, parseModel } from '../options.ts';
 
 export async function runDaemon(
     values: Record<string, unknown>,
@@ -21,6 +21,7 @@ export async function runDaemon(
             createProjectIfMissing: !values['no-create-project'],
         },
         log: message => console.log(`${pc.dim(time())} ${message}`),
+        flags: forwardedFlags(values),
     }).catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'EADDRINUSE') {
             throw new Error(

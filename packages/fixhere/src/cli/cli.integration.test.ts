@@ -46,4 +46,31 @@ describe.skipIf(!existsSync(CLI))('fixhere CLI daemon lifecycle (built)', () => 
         const after = await cli(['status'], env);
         expect(after.code).toBe(1);
     });
+
+    it('keeps the daemon flags across restarts unless new ones are given', async () => {
+        const env = {
+            XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'fixhere-cli-')),
+            FIXHERE_PORT: String(48_900 + Math.floor(Math.random() * 400)),
+        };
+        const flags = async () =>
+            (
+                (await (await fetch(`http://127.0.0.1:${env.FIXHERE_PORT}/health`)).json()) as {
+                    flags: string[];
+                }
+            ).flags;
+        try {
+            await cli(['start', '--allow-origin', 'http://devbox:3000'], env);
+            expect(await flags()).toEqual(['--allow-origin', 'http://devbox:3000']);
+
+            // What `init` and upgrades do: start without flags.
+            expect((await cli(['start'], env)).out).toMatch(/is running/);
+            expect(await flags()).toEqual(['--allow-origin', 'http://devbox:3000']);
+
+            const changed = await cli(['start', '--allow-origin', 'http://other:3000'], env);
+            expect(changed.out).toMatch(/restarted/);
+            expect(await flags()).toEqual(['--allow-origin', 'http://other:3000']);
+        } finally {
+            await cli(['stop'], env);
+        }
+    });
 });

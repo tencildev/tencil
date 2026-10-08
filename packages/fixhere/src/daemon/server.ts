@@ -49,6 +49,8 @@ export interface DaemonOptions {
     /** Build the provider for a project; defaults to T3 Code. */
     createProvider?: (root: string) => Provider;
     log?: (message: string) => void;
+    /** The CLI flags this daemon runs with, reported on /health so a restart can keep them. */
+    flags?: string[];
 }
 
 export interface ProjectStatus {
@@ -183,6 +185,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     name: 'fixhere',
                     version: VERSION,
                     pid: process.pid,
+                    flags: options.flags ?? [],
                     projects: statuses,
                 }),
             );
@@ -311,7 +314,9 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
 export async function probeDaemon(
     port = DEFAULT_PORT,
     host = '127.0.0.1',
-): Promise<{ version: string; pid: number; projects: ProjectStatus[] } | undefined> {
+): Promise<
+    { version: string; pid: number; flags: string[]; projects: ProjectStatus[] } | undefined
+> {
     try {
         const response = await fetch(`http://${host}:${port}/health`, {
             signal: AbortSignal.timeout(1_500),
@@ -320,10 +325,16 @@ export async function probeDaemon(
             name?: string;
             version: string;
             pid: number;
+            flags?: string[];
             projects?: ProjectStatus[];
         };
         return body.name === 'fixhere'
-            ? { version: body.version, pid: body.pid, projects: body.projects ?? [] }
+            ? {
+                  version: body.version,
+                  pid: body.pid,
+                  flags: body.flags ?? [],
+                  projects: body.projects ?? [],
+              }
             : undefined;
     } catch {
         return undefined;

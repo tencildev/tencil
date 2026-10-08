@@ -7,19 +7,24 @@ import { type DaemonCommand, daemonArgs } from './daemon-command.ts';
 
 /**
  * Start the daemon in the background unless it already runs. A daemon from an
- * older Fixhere version is replaced so pages always get the current overlay.
+ * older Fixhere version is replaced so pages always get the current overlay;
+ * so is one running with other flags than the ones given. Without flags of
+ * its own, a replacement keeps the running daemon's (`--listen`, `--t3-url`, …).
  */
 export async function startInBackground(
     command: DaemonCommand,
     dataDir: string,
 ): Promise<{ status: 'started' | 'running' | 'restarted'; pid: number }> {
     const running = await probeDaemon(command.port);
-    if (running && running.version === VERSION) return { status: 'running', pid: running.pid };
+    const flags = command.args?.length ? command.args : (running?.flags ?? []);
+    if (running && running.version === VERSION && sameFlags(running.flags, flags)) {
+        return { status: 'running', pid: running.pid };
+    }
     if (running) await stopDaemon(command.port);
 
     mkdirSync(dataDir, { recursive: true });
     const logFile = openSync(join(dataDir, 'daemon.log'), 'a');
-    const child = spawn(command.node, daemonArgs(command), {
+    const child = spawn(command.node, daemonArgs({ ...command, args: flags }), {
         detached: true,
         stdio: ['ignore', logFile, logFile],
         windowsHide: true,
@@ -32,6 +37,10 @@ export async function startInBackground(
         if (health) return { status: running ? 'restarted' : 'started', pid: health.pid };
     }
     throw new Error(`The daemon didn't start. See ${join(dataDir, 'daemon.log')}.`);
+}
+
+function sameFlags(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((flag, i) => flag === b[i]);
 }
 
 /** Stop the daemon answering on `port`. Returns false when none was running. */
