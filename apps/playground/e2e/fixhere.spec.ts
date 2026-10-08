@@ -92,3 +92,12 @@ test('cancels comment mode with Escape without touching the page', async ({ page
     await page.keyboard.press('Escape');
     await expect(overlay(page).locator('.tool-active')).toHaveCount(0);
 });
+
+test('closes the thread once it is resolved', async ({ page }) => {
+    await openPlayground(page);
+    await overlay(page).locator('.pin .pin-body').first().click();
+    const thread = overlay(page).locator('.thread');
+    await expect(thread).toBeVisible();
+    await thread.getByTitle('Resolve').click();
+    await expect(thread).toHaveCount(0);
+});

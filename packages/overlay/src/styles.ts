@@ -421,6 +421,14 @@ kbd {
 }
 .project-picker-title { margin: 0 4px 8px; font-weight: 500; }
 .project-picker-empty { margin: 0 4px; color: rgba(255, 255, 255, 0.6); font-size: 12px; }
+.project-picker-search {
+  margin: 0 0 6px; padding: 6px 8px; border: 0; border-radius: 8px; outline: none;
+  background: rgba(255, 255, 255, 0.06); color: inherit; font: inherit;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: box-shadow 150ms ease;
+}
+.project-picker-search::placeholder { color: rgba(255, 255, 255, 0.4); }
+.project-picker-search:focus { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24); }
 .project-picker-list { display: grid; gap: 2px; overflow-y: auto; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
 .project-picker-option {
   display: grid; gap: 1px; text-align: left; padding: 7px 8px; border-radius: 8px;

@@ -112,13 +112,15 @@ function Header({ thread }: { thread: Thread }) {
                     type="button"
                     class="icon-button"
                     title={thread.resolved ? 'Reopen' : 'Resolve'}
-                    onClick={() =>
+                    onClick={() => {
                         send({
                             type: 'thread.resolve',
                             threadId: thread.id,
                             resolved: !thread.resolved,
-                        })
-                    }
+                        });
+                        // Resolving is the last step; reopening means more to do here.
+                        if (!thread.resolved) openThreadId.value = null;
+                    }}
                 >
                     {thread.resolved ? <UndoIcon /> : <CheckIcon />}
                 </button>
