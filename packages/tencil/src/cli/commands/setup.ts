@@ -22,8 +22,9 @@ export async function setup(command: DaemonCommand, options: SetupOptions = {}):
     const log = (message: string) => console.log(message);
     log(`\n  ${pc.bold('Tencil')} setup ${pc.dim(`v${VERSION}`)}\n`);
     const provider = await chooseProvider({ ...options, log });
-    await setUpMachine(command, options, log);
+    // Pair (or install Claude Code support) first, so the daemon starts ready.
     await prepareProvider(provider, options.t3Url, log);
+    await setUpMachine(command, options, log);
     log(`
   Next, in each project: ${pc.cyan('npx tencil')}
   Then start its dev server and press ${pc.bold('C')} on the page.

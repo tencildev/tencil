@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { withoutNpmEnv } from '@tencil/provider-t3code';
 import { DEFAULT_PORT, probeDaemon } from '../daemon/server.ts';
 import { VERSION } from '../version.ts';
 import { sameFlags, startInBackground, waitForDaemon } from './background.ts';
@@ -59,6 +60,7 @@ export async function enableAutostart(
                 encoding: 'utf8',
                 stdio: ['ignore', 'ignore', 'pipe'],
                 shell: process.platform === 'win32',
+                env: withoutNpmEnv(),
             },
         );
         if (result.status !== 0) {

@@ -29,6 +29,8 @@ export async function quickstart(
     log(`\n  ${pc.bold('Tencil')} ${pc.dim(`v${VERSION}`)}\n`);
 
     const provider = await chooseProvider({ ...options, log });
+    // Pair (or install Claude Code support) first, so the daemon starts ready.
+    await prepareProvider(provider, options.t3Url, log);
     const running = await probeDaemon(command.port);
     if (!running && !isServiceInstalled(command.port)) {
         await setUpMachine(command, options, log);
@@ -39,7 +41,6 @@ export async function quickstart(
             `  ${pc.green('✓')} Tencil ${verb} on port ${command.port}${result.autostart ? pc.dim(' (starts at login)') : ''}`,
         );
     }
-    await prepareProvider(provider, options.t3Url, log);
 
     const framework = await detectFramework(options.root);
     if (framework.kind !== 'unknown' || existsSync(join(options.root, 'package.json'))) {

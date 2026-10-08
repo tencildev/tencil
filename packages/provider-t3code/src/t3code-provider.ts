@@ -158,6 +158,8 @@ export class T3CodeProvider implements Provider {
                 state: 'unauthorized',
                 detail: "Couldn't pair automatically. Run `npx tencil connect` with a pairing link from T3 Code.",
             });
+            // Pairing may still happen elsewhere (setup, connect): keep looking for a token.
+            this.#scheduleReconnect();
             return;
         }
         try {
@@ -169,6 +171,7 @@ export class T3CodeProvider implements Provider {
             this.#log(`Paired with T3 Code at ${this.#baseUrl}`);
         } catch (error) {
             this.#setInfo({ state: 'unauthorized', detail: errorMessage(error) });
+            this.#scheduleReconnect();
             return;
         }
         clearTimeout(this.#retryTimer);
@@ -384,7 +387,11 @@ export class T3CodeProvider implements Provider {
         const protocol = environment.orchestrationProtocolVersion === 2 ? v2 : v1;
 
         const token = this.#options.token ?? (await this.#credentials.get(this.#baseUrl))?.token;
-        if (!token) throw new UnauthorizedError();
+        if (!token) {
+            throw new UnauthorizedError(
+                'Not paired with T3 Code yet. Press Pair, or run `npx tencil connect`.',
+            );
+        }
 
         const ticket = await requestWebSocketTicket(this.#baseUrl, token, this.#timeouts.httpMs);
         const wsUrl = new URL('/ws', this.#baseUrl);

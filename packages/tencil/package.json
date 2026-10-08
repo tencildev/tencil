@@ -1,6 +1,6 @@
 {
     "name": "tencil",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "description": "Point at any element of your running app and tell your coding agent what to fix.",
     "license": "MIT",
     "author": "Pixel Perfect Agency",
@@ -62,7 +62,7 @@
         "build": "tsdown && node scripts/copy-overlay.mjs",
         "dev": "tsdown --watch",
         "typecheck": "tsc -p .",
-        "prepack": "pnpm run build"
+        "prepack": "turbo run build --filter=tencil"
     },
     "dependencies": {
         "picocolors": "^1.1.1",

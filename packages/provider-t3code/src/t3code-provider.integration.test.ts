@@ -214,6 +214,22 @@ describe('pairing and recovery', () => {
         expect(provider.info().detail).toMatch(/tencil connect/);
     });
 
+    it('picks up a token paired elsewhere after its own pairing failed', async () => {
+        const { provider, server, credentials } = await setup(1, {
+            paired: false,
+            createPairingCode: async () => undefined,
+        });
+        await provider.start();
+        await waitFor(() => provider.info().state === 'unauthorized');
+        // `tencil setup` or `tencil connect` pairs in another process.
+        await credentials.set(server.url, {
+            token: server.token,
+            scope: 'orchestration:read orchestration:operate',
+            expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        });
+        await ready(provider);
+    });
+
     it('recovers once a stalled T3 Code starts answering', async () => {
         const { provider, server } = await setup(1);
         server.stall = true;

@@ -66,8 +66,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      # Pack exactly what npm would publish and install it into a clean project.
+      # Pack exactly what npm would publish and install it into a clean project. No build
+      # first: like a publish from a fresh clone, prepack has to build everything it needs.
       - run: pnpm --filter tencil pack --pack-destination "$RUNNER_TEMP"
       - name: Smoke-test the packed CLI
         run: |
