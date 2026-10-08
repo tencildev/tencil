@@ -18,6 +18,7 @@ export const hovered = signal<Element | null>(null);
 export const draft = signal<Draft | null>(null);
 export const openThreadId = signal<string | null>(null);
 export const inboxOpen = signal(false);
+export const settingsOpen = signal(false);
 export const showResolved = signal(false);
 export const hidden = signal(false);
 

@@ -36,9 +36,14 @@ export function Composer() {
     const [picking, setPicking] = useState(false);
 
     const providerReady = provider.value?.state === 'ready';
+    const providerId = provider.value?.id;
     useEffect(() => {
         if (pending && providerReady) refreshProviderThreads();
-    }, [pending, providerReady]);
+    }, [pending, providerReady, providerId]);
+    // A thread picked from the previous provider's list can't take the pin.
+    useEffect(() => {
+        composerTarget.value = null;
+    }, [providerId]);
 
     useLayoutEffect(() => {
         if (ref.current) setHeight(ref.current.offsetHeight);

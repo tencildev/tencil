@@ -23,7 +23,10 @@ the prompt, so every provider receives identical input.
 - **T3 Code** (`@fixhere/provider-t3code`): speaks T3 Code's Effect RPC over
   WebSocket. Supports both orchestration protocols: V1 (all released builds) and
   V2 (newer builds advertising `orchestrationProtocolVersion: 2`).
-- **Claude Code**, others: planned.
+- **Claude Code** (`@fixhere/provider-claude-code`): runs Claude Code in the daemon
+  through the Claude Agent SDK, one process per active session. Threads are Claude
+  Code sessions, replayed from the transcripts Claude Code saves. The SDK is installed
+  on first use, not bundled.
 
 ## Development
 
@@ -40,7 +43,8 @@ pnpm test:e2e       # browser tests (Playwright) against the playground
 | `packages/overlay` | Browser overlay (Preact + signals, shadow DOM, bippy) |
 | `packages/protocol` | Wire schemas (zod) and the provider interface |
 | `packages/provider-t3code` | T3 Code provider (orchestration V1 and V2) |
-| `packages/testing` | Fake T3 Code server used by the integration and browser tests |
+| `packages/provider-claude-code` | Claude Code provider (Claude Agent SDK) |
+| `packages/testing` | Fake T3 Code server and fake Agent SDK used by the tests |
 | `packages/tsconfig` | Shared TypeScript configs |
 | `apps/playground` | Vite + React app with the plugin, also the e2e test target |
 

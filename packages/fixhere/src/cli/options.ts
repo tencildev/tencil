@@ -20,6 +20,18 @@ export function forwardedFlags(values: Record<string, unknown>): string[] {
     return args;
 }
 
+/** Fixhere's runtime modes in Claude Code's terms. */
+const PERMISSION_MODES = {
+    'approval-required': 'default',
+    'auto-accept-edits': 'acceptEdits',
+    auto: 'auto',
+    'full-access': 'bypassPermissions',
+} as const;
+
+export function permissionModeFor(runtimeMode: string | undefined) {
+    return runtimeMode ? PERMISSION_MODES[runtimeMode as keyof typeof PERMISSION_MODES] : undefined;
+}
+
 export function parseModel(value: string | undefined) {
     if (!value) return undefined;
     const [instanceId, ...model] = value.split(':');

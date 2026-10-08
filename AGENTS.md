@@ -22,7 +22,8 @@ packages/
 │       └── lib/        # state, bridge connection, element picker/context, positioning
 ├── protocol/           # Wire schemas (zod) and the Provider interface
 ├── provider-t3code/    # T3 Code provider: Effect RPC socket, auth, protocols/{v1,v2}
-├── testing/            # Fake T3 Code server and test helpers
+├── provider-claude-code/  # Claude Code provider: Agent SDK sessions, loaded on first use
+├── testing/            # Fake T3 Code server, fake Agent SDK and test helpers
 └── tsconfig/           # Shared tsconfig: base, node, browser
 apps/
 └── playground/         # Vite + React app; the browser-test (Playwright) target
@@ -36,6 +37,13 @@ apps/
   keeps a bridge, provider connection and pin store per project.
 - **Providers are swappable.** The bridge owns pins and renders element context into
   the prompt; providers (`Provider` in `@fixhere/protocol`) only see text and images.
+  Each project picks its default provider in the overlay's settings (saved next to its
+  pins, `daemon/project-providers.ts`). Otherwise it's the machine's: chosen once by
+  setup and saved in `settings.json`, or detected (`daemon/agents.ts`). Pins keep the
+  provider they were made with, so a project can have pins on both. Claude Code runs
+  inside the daemon through the Agent SDK. The SDK carries a ~250 MB binary, so it's
+  an optional peer, never bundled: loaded from next to Fixhere or installed into
+  `~/.config/fixhere/claude-code` on first use.
 - **Only `fixhere` is published.** Workspace packages are private and bundled into it
   by tsdown.
 
@@ -57,7 +65,7 @@ apps/
 ## Commits
 
 [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`,
-imperative and lowercase. Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`,
+imperative and lowercase. Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`, `claude-code`,
 `protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
 users of the `fixhere` package will notice.
 

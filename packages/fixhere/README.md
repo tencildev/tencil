@@ -93,6 +93,23 @@ Fixhere pairs with the T3 Code on your machine by itself (`init` does it right
 away). Otherwise use the **Pair** button in the overlay, or create a pairing link in
 T3 Code → Settings → Connections and run `npx fixhere connect "<link>"`.
 
+### Claude Code instead of T3 Code
+
+Setup works out which agent you have: with only T3 Code or only Claude Code it uses
+that one, with both (or neither) it asks once. Each project can switch in the overlay:
+the gear on the toolbar opens its settings, and the choice is remembered for that
+project. Pins you already made keep the agent they started with. To choose without
+being asked, pass `--provider t3code` or `--provider claude-code` to setup. The
+daemon runs Claude Code itself, under your Claude Code login, in the project's
+repository root. Each pin is a Claude Code session you can also pick up in a
+terminal with `claude --resume <id>`. The first time, Fixhere installs the Claude
+Agent SDK into its config folder (it brings Claude Code along, about 250 MB).
+
+Nobody is at a terminal to approve tool calls, so `--runtime-mode` decides up front:
+`full-access` (the default) lets Claude Code run anything; with the stricter modes,
+tools that would need approval are refused and Claude Code is told why. A turn that
+is running when the daemon stops is lost; the pin turns red and you can follow up.
+
 ## Using it
 
 | Action | How |
@@ -125,8 +142,10 @@ fixhere service uninstall      Remove the login service
 fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 --port <n>              Port (default 4747, env FIXHERE_PORT)
+--provider <name>       Agent for projects without their own: t3code (default) | claude-code
 --t3-url <url>          T3 Code server (default: last paired, then http://127.0.0.1:3773)
---model <inst:model>    e.g. claudeAgent:claude-fable-5-1 (default: project default)
+--model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
+                        Claude Code: a model, e.g. claude-opus-5-5 (default: its default)
 --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
 --listen <address>      Also listen here, e.g. a Tailscale IP (repeatable)
 --allow-origin <url>    Allow a non-localhost page to connect (repeatable)

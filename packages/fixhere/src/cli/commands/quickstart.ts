@@ -6,9 +6,10 @@ import { defaultDataDir } from '../../daemon/thread-store.ts';
 import { detectFramework, findApps } from '../../init/detect-framework.ts';
 import { runInit } from '../../init/run-init.ts';
 import { ensureDaemon } from '../../service/autostart.ts';
+import { chooseProvider } from '../../service/choose-provider.ts';
 import type { DaemonCommand } from '../../service/daemon-command.ts';
 import { isServiceInstalled } from '../../service/login-service.ts';
-import { pairWithLocalT3 } from '../../service/pairing.ts';
+import { prepareProvider } from '../../service/pairing.ts';
 import { VERSION } from '../../version.ts';
 import { type SetupOptions, setUpMachine } from './setup.ts';
 
@@ -27,6 +28,7 @@ export async function quickstart(
     const log = (message: string) => console.log(message);
     log(`\n  ${pc.bold('Fixhere')} ${pc.dim(`v${VERSION}`)}\n`);
 
+    const provider = await chooseProvider({ ...options, log });
     const running = await probeDaemon(command.port);
     if (!running && !isServiceInstalled(command.port)) {
         await setUpMachine(command, options, log);
@@ -37,7 +39,7 @@ export async function quickstart(
             `  ${pc.green('✓')} Fixhere ${verb} on port ${command.port}${result.autostart ? pc.dim(' (starts at login)') : ''}`,
         );
     }
-    await pairWithLocalT3(options.t3Url, log);
+    await prepareProvider(provider, options.t3Url, log);
 
     const framework = await detectFramework(options.root);
     if (framework.kind !== 'unknown' || existsSync(join(options.root, 'package.json'))) {

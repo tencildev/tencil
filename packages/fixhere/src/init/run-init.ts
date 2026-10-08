@@ -5,8 +5,9 @@ import { createInterface } from 'node:readline/promises';
 import pc from 'picocolors';
 import { defaultDataDir } from '../daemon/thread-store.ts';
 import { ensureDaemon } from '../service/autostart.ts';
+import { chooseProvider } from '../service/choose-provider.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
-import { pairWithLocalT3 } from '../service/pairing.ts';
+import { prepareProvider } from '../service/pairing.ts';
 import { addFixhereToBody, addVitePlugin } from './codemods.ts';
 import {
     detectFramework,
@@ -144,7 +145,10 @@ export async function runInit(options: InitOptions): Promise<void> {
             `  ${pc.green('✓')} Fixhere ${result.status === 'running' ? 'is running' : result.status} on port ${options.daemon.port}.`,
         );
     }
-    if (!options.skipPair) await pairWithLocalT3(options.t3Url, log);
+    if (!options.skipPair) {
+        const provider = await chooseProvider({ yes: options.yes, t3Url: options.t3Url, log });
+        await prepareProvider(provider, options.t3Url, log);
+    }
 
     log(`  ${pc.green('✓')} Done. Start your dev server and press ${pc.bold('C')} on the page.`);
     if (options.daemon && !autostart) log(pc.dim('    Start Fixhere at login: npx fixhere setup'));

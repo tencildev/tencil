@@ -375,6 +375,26 @@ kbd {
 .empty { color: var(--n-500); padding: 24px 10px; text-align: center; margin: 0; }
 .empty kbd { background: var(--n-100); color: var(--n-700); }
 
+/* -------------------------------- settings -------------------------------- */
+.inbox.settings-panel, .root:has(.dock-top-right) .inbox.settings-panel { bottom: auto; }
+.settings-title { margin-right: auto; }
+.settings-section { display: grid; gap: 6px; padding: 14px 16px 16px; }
+.settings-label { margin: 0; font-weight: 500; }
+.settings-help { margin: 0 0 4px; color: var(--n-600); font-size: 12px; }
+.settings-options {
+  display: grid; gap: 2px; margin: 0; padding: 4px; border: 0; min-width: 0;
+  background: var(--surface); border-radius: 12px; box-shadow: 0 0 0 1px var(--n-200);
+}
+.settings-options .target-option { cursor: pointer; }
+.settings-radio {
+  appearance: none; margin: 0; width: 14px; height: 14px; border-radius: 999px; flex: none;
+  box-shadow: inset 0 0 0 1.5px var(--n-400);
+  transition: box-shadow 150ms var(--ease-out);
+}
+.settings-radio:checked { box-shadow: inset 0 0 0 4px var(--accent); }
+.settings-radio:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-status { margin: 2px 2px 0; color: var(--n-600); font-size: 12px; }
+
 /* --------------------------------- toolbar -------------------------------- */
 .toolbar-wrap {
   position: fixed;

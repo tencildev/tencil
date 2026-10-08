@@ -10,6 +10,7 @@ import type {
 } from '@fixhere/protocol';
 import { describe, expect, it } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
+import { ProjectProviders } from './project-providers.ts';
 import { ThreadStore } from './thread-store.ts';
 
 class FakeProvider implements Provider {
@@ -70,7 +71,7 @@ function setup() {
     const provider = new FakeProvider();
     const store = new ThreadStore('/projects/acme', mkdtempSync(join(tmpdir(), 'fixhere-')));
     const bridge = new Bridge({
-        provider,
+        providers: ProjectProviders.of(provider),
         store,
         project: { name: 'x', root: '/x' },
         version: '0',
