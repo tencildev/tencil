@@ -216,3 +216,13 @@ describe("pairing and recovery", () => {
     await ready(provider);
   });
 });
+
+describe("isInside", () => {
+  it("matches the folder itself and nested folders only", async () => {
+    const { isInside } = await import("./provider.ts");
+    expect(isInside("/a/b", "/a/b")).toBe(true);
+    expect(isInside("/a/b/c", "/a/b")).toBe(true);
+    expect(isInside("/a/bc", "/a/b")).toBe(false);
+    expect(isInside("/a", "/a/b")).toBe(false);
+  });
+});

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, isAbsolute, relative } from "node:path";
 import type {
   CreatedThread,
   CreateThreadInput,
@@ -425,7 +425,7 @@ export class T3CodeProvider implements Provider {
     let match: WireProject | undefined;
     for (const project of shell.projects) {
       const projectRoot = await realpath(project.workspaceRoot).catch(() => project.workspaceRoot);
-      const contains = root === projectRoot || root.startsWith(`${projectRoot}/`);
+      const contains = isInside(root, projectRoot);
       if (contains && (!match || projectRoot.length > match.workspaceRoot.length)) {
         match = { ...project, workspaceRoot: projectRoot };
       }
@@ -553,6 +553,12 @@ function summaryStatus(thread: WireShellThread): ProviderThreadSummary["status"]
   if (thread.latestTurn?.state === "running") return "working";
   if (session === "error" || thread.latestTurn?.state === "error") return "error";
   return "idle";
+}
+
+/** Whether `path` is `parent` or inside it, on any platform's separators. */
+export function isInside(path: string, parent: string): boolean {
+  const rel = relative(parent, path);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 function errorMessage(error: unknown): string {

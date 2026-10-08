@@ -111,9 +111,10 @@ export async function createLocalPairingCode(
   if (!serverVersion) return undefined;
   const { spawnSync } = await import("node:child_process");
   const result = spawnSync(
-    "npx",
+    process.platform === "win32" ? "npx.cmd" : "npx",
     ["-y", `t3@${serverVersion}`, "auth", "pairing", "create", "--base-dir", baseDir],
-    { encoding: "utf8", timeout: 120_000 },
+    // Windows needs a shell to run .cmd shims.
+    { encoding: "utf8", timeout: 120_000, shell: process.platform === "win32" },
   );
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`.match(/^Token:\s*(\S+)/m)?.[1];
 }
