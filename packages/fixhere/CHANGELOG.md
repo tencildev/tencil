@@ -1,5 +1,13 @@
 # fixhere
 
+## 0.1.1
+
+### Patch Changes
+
+- [`2a76c25`](https://github.com/pixel-perfect-agency/fixhere/commit/2a76c25405c52a37ed1bae7d5716e9b63f5853ed) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Restarting the daemon (after an upgrade, or from `fixhere init`) keeps the flags it was started with, such as `--listen` and `--allow-origin`. `fixhere start` with different flags now restarts the daemon instead of ignoring them.
+
+- [`be3fc37`](https://github.com/pixel-perfect-agency/fixhere/commit/be3fc377ef9e01bd267b8111965b4051b44babd3) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - `<Fixhere />` and the Vite plugin load the overlay from the daemon on the machine serving the page, so a dev server opened as `http://devbox:3000` reaches the daemon on `devbox` (start it with `--listen` and `--allow-origin`) instead of `localhost`.
+
 ## 0.1.0
 
 ### Minor Changes
