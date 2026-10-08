@@ -12,20 +12,25 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
 
 ```
  your dev site (any origin on localhost)          your machine
-┌────────────────────────────────────┐   ws    ┌─────────────────────┐   ws/rpc   ┌───────────┐
-│ overlay (Preact, shadow DOM)       │ ──────▶ │ tencil daemon       │ ─────────▶ │ T3 Code   │
-│  • picker, pins, threads, inbox    │ ◀────── │  • holds credentials│ ◀───────── │ (threads) │
-│  • React source via owner stacks   │         │  • provider adapters│            └───────────┘
-└────────────────────────────────────┘         │  • pin store        │
-                                               └─────────────────────┘
+┌────────────────────────────────────┐   ws    ┌─────────────────────┐   ws/rpc   ┌─────────────┐
+│ overlay (Preact, shadow DOM)       │ ──────▶ │ tencil daemon       │ ─────────▶ │ T3 Code     │
+│  • picker, pins, threads, inbox    │ ◀────── │  • holds credentials│ ◀───────── │ (threads)   │
+│  • React source via owner stacks   │         │  • provider adapters│            └─────────────┘
+└────────────────────────────────────┘         │  • pin store        │   Agent SDK ┌─────────────┐
+                                               │                     │ ──────────▶ │ Claude Code │
+                                               └─────────────────────┘             │ (sessions)  │
+                                                                                   └─────────────┘
 ```
 
-T3 Code is the orchestrator: every pin is a real T3 Code thread in the project
-that matches your dev site's folder, so you can continue any conversation there.
+Tencil works with two agents. With **T3 Code**, every pin is a real T3 Code thread
+in the project that matches your dev site's folder, so you can continue any
+conversation there. With **Claude Code**, the daemon runs Claude Code itself and
+every pin is a Claude Code session you can resume in a terminal.
 
 ## Quick start
 
-You need the [T3 Code](https://github.com/pingdotgg/t3code) desktop app running.
+You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running) or
+[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in).
 
 ```sh
 cd your-app
@@ -33,7 +38,7 @@ npx tencil
 ```
 
 The first time, this sets up your machine: it asks whether Tencil should start
-when you log in (yes by default) and pairs with T3 Code. Then it adds Tencil to
+when you log in (yes by default), picks your agent and, for T3 Code, pairs with it. Then it adds Tencil to
 the project in the current folder. In other projects it only does the second part.
 Start your dev server as usual and press <kbd>C</kbd> on the page.
 
@@ -51,9 +56,9 @@ When a page connects, the daemon works out which project it belongs to:
 
 1. **the dev server's folder**, found from the port the page is served on;
 2. if that fails (Docker, remote dev), the overlay asks **"Which project is this
-   page?"** with your T3 Code projects and remembers the answer.
+   page?"** and remembers the answer.
 
-Each project gets its own T3 Code connection and pins, all served by the one daemon.
+Each project gets its own agent connection and pins, all served by the one daemon.
 
 ### What `init` adds
 
@@ -119,10 +124,11 @@ is running when the daemon stops is lost; the pin turns red and you can follow u
 | Cancel | <kbd>Esc</kbd> |
 | Follow up | Open a pin and reply; the same agent thread continues |
 | Continue an existing thread | In the composer, switch **→ New thread** to any thread in the project; the element becomes its next message |
-| Open any project thread | Inbox → **T3 Code** tab; the thread docks on the right so you can read, reply and stop while using the page |
+| Open any project thread | Inbox → the agent's tab (**T3 Code** or **Claude Code**); the thread docks on the right so you can read, reply and stop while using the page |
 | Stop the agent | **Stop** while a pin is working |
 | All pins | Inbox button, filter by page or show resolved |
 | Continue in T3 Code | External-link icon on a pin |
+| Continue in Claude Code | `claude --resume <id>` in the project's folder |
 
 Pins show their state: spinning while the agent works, blue when done, amber when
 the agent waits for approval, red on errors, grey once resolved.
