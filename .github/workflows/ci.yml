@@ -75,4 +75,10 @@ jobs:
           npm init -y >/dev/null
           npm install "$RUNNER_TEMP"/fixhere-*.tgz
           npx fixhere --version
-          node -e "import('fixhere').then(m => { if (typeof m.startFixhere !== 'function') process.exit(1) })"
+          node -e "import('fixhere').then(m => { if (typeof m.startDaemon !== 'function') process.exit(1) })"
+          # The packed daemon starts, answers and stops.
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/config" FIXHERE_PORT=48777
+          npx fixhere start
+          npx fixhere status
+          curl -sf http://127.0.0.1:48777/fixhere.js > /dev/null
+          npx fixhere stop
