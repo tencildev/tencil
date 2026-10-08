@@ -7,7 +7,7 @@ import { styles } from './styles.ts';
 
 declare global {
     interface Window {
-        __FIXHERE__?: { version: 1; bridgeUrl: string; destroy(): void };
+        __TENCIL__?: { version: 1; bridgeUrl: string; destroy(): void };
     }
 }
 
@@ -21,8 +21,8 @@ function bridgeUrlFromScript(): string {
 }
 
 function mount(bridgeUrl: string): void {
-    const host = document.createElement('fixhere-overlay');
-    host.setAttribute('data-fixhere', '');
+    const host = document.createElement('tencil-overlay');
+    host.setAttribute('data-tencil', '');
     host.style.cssText =
         'position:fixed;inset:0;pointer-events:none;z-index:2147483646;display:block;contain:layout style;';
     const shadow = host.attachShadow({ mode: 'open' });
@@ -48,7 +48,7 @@ function mount(bridgeUrl: string): void {
     render(h(App, {}), container);
     connect(bridgeUrl);
 
-    window.__FIXHERE__ = {
+    window.__TENCIL__ = {
         version: 1,
         bridgeUrl,
         destroy() {
@@ -56,12 +56,12 @@ function mount(bridgeUrl: string): void {
             uninstall();
             render(null, container);
             host.remove();
-            window.__FIXHERE__ = undefined;
+            window.__TENCIL__ = undefined;
         },
     };
 }
 
-if (typeof window !== 'undefined' && !window.__FIXHERE__) {
+if (typeof window !== 'undefined' && !window.__TENCIL__) {
     const bridgeUrl = bridgeUrlFromScript();
     if (document.body) mount(bridgeUrl);
     else document.addEventListener('DOMContentLoaded', () => mount(bridgeUrl), { once: true });

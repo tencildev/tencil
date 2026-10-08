@@ -1,4 +1,4 @@
-import type { ImageAttachment } from '@fixhere/protocol';
+import type { ImageAttachment } from '@tencil/protocol';
 import { domToJpeg } from 'modern-screenshot';
 
 const MAX_EDGE = 1600;
@@ -33,9 +33,9 @@ export async function captureElement(
             timeout: 4000,
         });
         if (!dataUrl.startsWith('data:image/jpeg')) return null;
-        return { name: 'fixhere-element.jpg', mimeType: 'image/jpeg', dataUrl };
+        return { name: 'tencil-element.jpg', mimeType: 'image/jpeg', dataUrl };
     } catch (error) {
-        console.warn('[fixhere] screenshot failed', error);
+        console.warn('[tencil] screenshot failed', error);
         return null;
     }
 }

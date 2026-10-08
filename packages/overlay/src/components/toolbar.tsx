@@ -121,11 +121,11 @@ function connectionStatus(): ConnectionStatus {
     if (bridgeState.value !== 'open') {
         return {
             tone: 'error',
-            title: 'Fixhere daemon offline',
+            title: 'Tencil daemon offline',
             hint:
                 bridgeState.value === 'connecting'
                     ? undefined
-                    : 'The Fixhere daemon stopped. Start it again with npx fixhere start.',
+                    : 'The Tencil daemon stopped. Start it again with npx tencil start.',
         };
     }
     if (projectChoices.value) return { tone: 'warn', title: "Pick this page's project" };

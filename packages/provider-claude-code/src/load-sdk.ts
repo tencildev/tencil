@@ -17,8 +17,8 @@ export const SDK_RANGE = '^0.3.293';
 const run = promisify(execFile);
 
 /**
- * The Agent SDK ships Claude Code itself (a ~250 MB binary), so `fixhere`
- * doesn't depend on it. Use a copy next to Fixhere when there is one,
+ * The Agent SDK ships Claude Code itself (a ~250 MB binary), so `tencil`
+ * doesn't depend on it. Use a copy next to Tencil when there is one,
  * otherwise install it once into `installDir`.
  */
 export async function loadAgentSdk(options: {

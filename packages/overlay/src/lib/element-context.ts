@@ -1,4 +1,4 @@
-import type { ComponentFrame, ElementContext } from '@fixhere/protocol';
+import type { ComponentFrame, ElementContext } from '@tencil/protocol';
 import { getDisplayName, getFiberFromHostInstance, isCompositeFiber, traverseFiber } from 'bippy';
 import { getOwnerStack, getRawOwnerStack, isSourceFile } from 'bippy/source';
 
@@ -70,7 +70,7 @@ export function buildSelector(element: Element): string {
 }
 
 function stableSelector(element: Element): string | null {
-    for (const attribute of ['data-testid', 'data-test', 'data-cy', 'data-fixhere-id']) {
+    for (const attribute of ['data-testid', 'data-test', 'data-cy', 'data-tencil-id']) {
         const value = element.getAttribute(attribute);
         if (value) return `${element.tagName.toLowerCase()}[${attribute}="${CSS.escape(value)}"]`;
     }
@@ -115,7 +115,7 @@ const PRIORITY_ATTRIBUTES = [
 export function htmlPreview(element: Element): string {
     const tag = element.tagName.toLowerCase();
     const attributes = [...element.attributes]
-        .filter(attribute => !attribute.name.startsWith('data-fixhere'))
+        .filter(attribute => !attribute.name.startsWith('data-tencil'))
         .sort((a, b) => rank(a.name) - rank(b.name))
         .slice(0, MAX_ATTRIBUTES)
         .map(attribute => {

@@ -1,4 +1,4 @@
-import type { ImageAttachment, ProviderMessage, ThreadStatus } from '@fixhere/protocol';
+import type { ImageAttachment, ProviderMessage, ThreadStatus } from '@tencil/protocol';
 import type { RpcSocket } from '../rpc-socket.ts';
 
 export type RuntimeMode = 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access';
@@ -14,7 +14,7 @@ export interface TrackerUpdate {
     gone?: boolean;
 }
 
-/** Folds one protocol's thread stream into Fixhere messages + status. */
+/** Folds one protocol's thread stream into Tencil messages + status. */
 export interface ThreadTracker {
     apply(item: unknown): TrackerUpdate;
     status(): { status: Exclude<ThreadStatus, 'starting'>; detail?: string };

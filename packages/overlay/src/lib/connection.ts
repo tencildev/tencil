@@ -1,3 +1,4 @@
+import { batch, signal } from '@preact/signals';
 import type {
     ClientMessageInput,
     ProjectSettings,
@@ -6,8 +7,7 @@ import type {
     ProviderThreadSummary,
     ServerMessage,
     Thread,
-} from '@fixhere/protocol';
-import { batch, signal } from '@preact/signals';
+} from '@tencil/protocol';
 import { newId } from './id.ts';
 
 export type BridgeState = 'connecting' | 'open' | 'closed';
@@ -38,7 +38,7 @@ export function connect(url: string): void {
 
 export function send(message: ClientMessageInput): boolean {
     if (socket?.readyState !== WebSocket.OPEN) {
-        lastError.value = { message: 'Not connected to the Fixhere bridge', at: Date.now() };
+        lastError.value = { message: 'Not connected to the Tencil bridge', at: Date.now() };
         return false;
     }
     socket.send(JSON.stringify(message));
@@ -67,7 +67,7 @@ function open(): void {
         try {
             handle(JSON.parse(String(event.data)) as ServerMessage);
         } catch (error) {
-            console.warn('[fixhere] bad message', error);
+            console.warn('[tencil] bad message', error);
         }
     });
     ws.addEventListener('close', () => {

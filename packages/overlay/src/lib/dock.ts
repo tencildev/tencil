@@ -8,7 +8,7 @@ export type Dock =
     | 'bottom-center'
     | 'bottom-right';
 
-const STORAGE_KEY = 'fixhere:dock';
+const STORAGE_KEY = 'tencil:dock';
 const DOCKS: Dock[] = [
     'top-left',
     'top-center',

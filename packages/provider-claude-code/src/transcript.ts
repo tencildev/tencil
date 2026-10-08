@@ -1,5 +1,5 @@
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderMessage, ThreadStatus } from '@fixhere/protocol';
+import type { ProviderMessage, ThreadStatus } from '@tencil/protocol';
 
 export type RunStatus = { status: Exclude<ThreadStatus, 'starting'>; detail?: string };
 

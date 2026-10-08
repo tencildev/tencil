@@ -42,15 +42,15 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
-      '@fixhere/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
-      '@fixhere/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
       '@playwright/test':
         specifier: ^1.64.0
         version: 1.64.0
+      '@tencil/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@tencil/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -60,14 +60,78 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.3(@types/node@24.19.1)(yaml@2.9.1))
-      fixhere:
+      tencil:
         specifier: workspace:*
-        version: link:../../packages/fixhere
+        version: link:../../packages/tencil
       vite:
         specifier: ^8.3.3
         version: 8.3.3(@types/node@24.19.1)(yaml@2.9.1)
 
-  packages/fixhere:
+  packages/overlay:
+    dependencies:
+      '@preact/signals':
+        specifier: ^2.11.3
+        version: 2.11.3(preact@11.0.0)
+      bippy:
+        specifier: ^0.7.3
+        version: 0.7.3(@types/react@19.3.0)(react@19.3.0)
+      modern-screenshot:
+        specifier: ^4.7.0
+        version: 4.7.0
+      preact:
+        specifier: ^11.0.0
+        version: 11.0.0
+    devDependencies:
+      '@tencil/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@tencil/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      tsdown:
+        specifier: ^0.23.0
+        version: 0.23.0(typescript@6.0.3)
+
+  packages/protocol:
+    dependencies:
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@tencil/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+
+  packages/provider-claude-code:
+    dependencies:
+      '@tencil/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.293
+        version: 0.3.293(@anthropic-ai/sdk@0.132.1(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5))(zod@4.6.5)
+      '@tencil/testing':
+        specifier: workspace:*
+        version: link:../testing
+      '@tencil/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+
+  packages/provider-t3code:
+    dependencies:
+      '@tencil/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@tencil/testing':
+        specifier: workspace:*
+        version: link:../testing
+      '@tencil/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+
+  packages/tencil:
     dependencies:
       picocolors:
         specifier: ^1.1.1
@@ -85,22 +149,22 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.293
         version: 0.3.293(@anthropic-ai/sdk@0.132.1(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5))(zod@4.6.5)
-      '@fixhere/overlay':
+      '@tencil/overlay':
         specifier: workspace:*
         version: link:../overlay
-      '@fixhere/protocol':
+      '@tencil/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@fixhere/provider-claude-code':
+      '@tencil/provider-claude-code':
         specifier: workspace:*
         version: link:../provider-claude-code
-      '@fixhere/provider-t3code':
+      '@tencil/provider-t3code':
         specifier: workspace:*
         version: link:../provider-t3code
-      '@fixhere/testing':
+      '@tencil/testing':
         specifier: workspace:*
         version: link:../testing
-      '@fixhere/tsconfig':
+      '@tencil/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/react':
@@ -116,77 +180,13 @@ importers:
         specifier: ^0.23.0
         version: 0.23.0(typescript@6.0.3)
 
-  packages/overlay:
-    dependencies:
-      '@preact/signals':
-        specifier: ^2.11.3
-        version: 2.11.3(preact@11.0.0)
-      bippy:
-        specifier: ^0.7.3
-        version: 0.7.3(@types/react@19.3.0)(react@19.3.0)
-      modern-screenshot:
-        specifier: ^4.7.0
-        version: 4.7.0
-      preact:
-        specifier: ^11.0.0
-        version: 11.0.0
-    devDependencies:
-      '@fixhere/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@fixhere/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      tsdown:
-        specifier: ^0.23.0
-        version: 0.23.0(typescript@6.0.3)
-
-  packages/protocol:
-    dependencies:
-      zod:
-        specifier: ^4.6.5
-        version: 4.6.5
-    devDependencies:
-      '@fixhere/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-
-  packages/provider-claude-code:
-    dependencies:
-      '@fixhere/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-    devDependencies:
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.3.293
-        version: 0.3.293(@anthropic-ai/sdk@0.132.1(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5))(zod@4.6.5)
-      '@fixhere/testing':
-        specifier: workspace:*
-        version: link:../testing
-      '@fixhere/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-
-  packages/provider-t3code:
-    dependencies:
-      '@fixhere/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-    devDependencies:
-      '@fixhere/testing':
-        specifier: workspace:*
-        version: link:../testing
-      '@fixhere/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-
   packages/testing:
     dependencies:
       ws:
         specifier: ^8.22.0
         version: 8.22.0
     devDependencies:
-      '@fixhere/tsconfig':
+      '@tencil/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/ws':

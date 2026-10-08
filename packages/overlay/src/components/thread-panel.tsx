@@ -1,4 +1,4 @@
-import type { Thread, ThreadMessage } from '@fixhere/protocol';
+import type { Thread, ThreadMessage } from '@tencil/protocol';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';

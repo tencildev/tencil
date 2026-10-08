@@ -13,7 +13,7 @@ import type {
     ProviderThreadSummary,
     SendMessageInput,
     ThreadSink,
-} from '@fixhere/protocol';
+} from '@tencil/protocol';
 import { InputQueue } from './input-queue.ts';
 import { type AgentSdk, loadAgentSdk } from './load-sdk.ts';
 import { messagesFromTranscript, type RunStatus, TurnTracker } from './transcript.ts';
@@ -24,7 +24,7 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'bypassPermiss
 export interface ClaudeCodeProviderOptions {
     /** Directory the dev site lives in; Claude Code runs in its repository root. */
     projectRoot: string;
-    /** Where the Agent SDK is installed when Fixhere has no copy of its own. */
+    /** Where the Agent SDK is installed when Tencil has no copy of its own. */
     installDir: string;
     /** Defaults to Claude Code's own default model. */
     model?: string;
@@ -226,7 +226,7 @@ export class ClaudeCodeProvider implements Provider {
         session: Session,
         start: Pick<Options, 'sessionId' | 'resume' | 'title'>,
     ): Promise<void> {
-        if (this.#disposed) throw new Error('Fixhere is shutting down');
+        if (this.#disposed) throw new Error('Tencil is shutting down');
         const [sdk, workspace] = await Promise.all([this.#load(), this.#workspaceRoot()]);
         // Another message started it while the SDK loaded.
         if (session.run) return;

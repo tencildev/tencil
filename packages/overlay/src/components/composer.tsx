@@ -1,5 +1,5 @@
-import type { ImageAttachment, ProviderThreadSummary, Thread } from '@fixhere/protocol';
 import { signal } from '@preact/signals';
+import type { ImageAttachment, ProviderThreadSummary, Thread } from '@tencil/protocol';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
     provider,

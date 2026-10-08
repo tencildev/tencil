@@ -1,4 +1,4 @@
-import type { Anchor } from '@fixhere/protocol';
+import type { Anchor } from '@tencil/protocol';
 
 export interface Point {
     x: number;

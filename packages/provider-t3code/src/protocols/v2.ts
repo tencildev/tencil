@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ImageAttachment, ProviderMessage } from '@fixhere/protocol';
+import type { ImageAttachment, ProviderMessage } from '@tencil/protocol';
 import type { RpcSocket } from '../rpc-socket.ts';
 import {
     decodedSize,
@@ -67,7 +67,7 @@ export const v2: ProtocolAdapter = {
             commandId: randomUUID(),
             threadId,
             runId,
-            reason: 'Stopped from Fixhere',
+            reason: 'Stopped from Tencil',
             holdQueue: true,
         });
     },

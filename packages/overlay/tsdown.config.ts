@@ -2,9 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-    entry: { fixhere: 'src/index.ts' },
+    entry: { tencil: 'src/index.ts' },
     format: 'iife',
-    globalName: 'Fixhere',
+    globalName: 'Tencil',
     platform: 'browser',
     target: 'es2022',
     minify: true,

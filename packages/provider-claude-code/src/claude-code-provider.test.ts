@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ProviderMessage, ThreadSink, ThreadStatus } from '@fixhere/protocol';
-import { FakeAgentSdk, waitFor } from '@fixhere/testing';
+import type { ProviderMessage, ThreadSink, ThreadStatus } from '@tencil/protocol';
+import { FakeAgentSdk, waitFor } from '@tencil/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ClaudeCodeProvider, type ClaudeCodeProviderOptions } from './claude-code-provider.ts';
 import type { AgentSdk } from './load-sdk.ts';
@@ -17,7 +17,7 @@ afterEach(async () => {
 
 /** A repository with the dev site in a subfolder, like a monorepo app. */
 function repository(): { root: string; app: string } {
-    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'fixhere-claude-')));
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'tencil-claude-')));
     mkdirSync(join(root, '.git'));
     const app = join(root, 'apps', 'web');
     mkdirSync(app, { recursive: true });
@@ -243,7 +243,7 @@ describe('Claude Code provider', () => {
         });
 
         const { project, threads } = await provider.listThreads();
-        expect(project.name).toMatch(/^fixhere-claude-/);
+        expect(project.name).toMatch(/^tencil-claude-/);
         expect(threads.map(t => t.id)).toEqual([newer.providerThreadId, older.providerThreadId]);
         expect(threads[0]).toMatchObject({ title: 'Newer', branch: 'main', agent: 'claudeAgent' });
     });

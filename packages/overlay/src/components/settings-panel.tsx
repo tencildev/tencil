@@ -1,4 +1,4 @@
-import type { ProviderInfo } from '@fixhere/protocol';
+import type { ProviderInfo } from '@tencil/protocol';
 import { project, provider, send, settings } from '../lib/connection.ts';
 import { settingsOpen } from '../lib/state.ts';
 import { CloseIcon } from './icons.tsx';
@@ -26,14 +26,14 @@ export function SettingsPanel() {
             </header>
             {current ? (
                 <section class="settings-section">
-                    <p class="settings-label" id="fixhere-provider-label">
+                    <p class="settings-label" id="tencil-provider-label">
                         Agent for new pins
                     </p>
                     <p class="settings-help">
                         For {project.value?.name ?? 'this project'}. Pins you already made keep
                         their agent.
                     </p>
-                    <fieldset class="settings-options" aria-labelledby="fixhere-provider-label">
+                    <fieldset class="settings-options" aria-labelledby="tencil-provider-label">
                         {current.providers.map(option => {
                             const selected = option.id === current.provider;
                             return (
@@ -43,7 +43,7 @@ export function SettingsPanel() {
                                 >
                                     <input
                                         type="radio"
-                                        name="fixhere-provider"
+                                        name="tencil-provider"
                                         class="settings-radio"
                                         checked={selected}
                                         onChange={() =>
