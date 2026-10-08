@@ -1,22 +1,32 @@
 import type { RuntimeMode } from '@fixhere/provider-t3code';
 import pc from 'picocolors';
+import type { ProviderName } from '../../daemon/agents.ts';
 import { startDaemon } from '../../daemon/server.ts';
 import { time } from '../format.ts';
-import { forwardedFlags, parseModel } from '../options.ts';
+import { forwardedFlags, parseModel, permissionModeFor } from '../options.ts';
 
 export async function runDaemon(
     values: Record<string, unknown>,
     port: number,
+    provider: ProviderName | undefined,
     t3Url: string | undefined,
     runtimeMode: RuntimeMode | undefined,
 ): Promise<void> {
+    // T3 Code models read `instance:model`; anything else is a Claude Code model.
+    const model = values.model as string | undefined;
+    const t3Model = model?.includes(':') ? model : undefined;
     const daemon = await startDaemon({
         port,
         listen: values.listen as string[] | undefined,
         allowedOrigins: values['allow-origin'] as string[] | undefined,
+        provider,
+        claudeCode: {
+            model: t3Model ? undefined : model,
+            permissionMode: permissionModeFor(runtimeMode),
+        },
         t3: {
             url: t3Url,
-            modelSelection: parseModel(values.model as string | undefined),
+            modelSelection: parseModel(t3Model),
             runtimeMode,
             createProjectIfMissing: !values['no-create-project'],
         },

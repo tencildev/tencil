@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { projectChoices, send } from '../lib/connection.ts';
+import { projectChoices, projectChoicesHint, send } from '../lib/connection.ts';
 
 /** Shown when the daemon couldn't match this page to a project. */
 export function ProjectPicker() {
@@ -20,7 +20,7 @@ export function ProjectPicker() {
             <p class="project-picker-title">Which project is this page?</p>
             {choices.length === 0 ? (
                 <p class="project-picker-empty">
-                    No T3 Code projects found. Pair with T3 Code first: npx fixhere connect
+                    {projectChoicesHint.value ?? 'No projects found.'}
                 </p>
             ) : (
                 <>

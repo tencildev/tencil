@@ -5,6 +5,7 @@ import { Composer } from './composer.tsx';
 import { Highlight } from './highlight.tsx';
 import { Inbox, PENDING_OPEN_KEY, revealAnchor } from './inbox.tsx';
 import { Pins } from './pins.tsx';
+import { SettingsPanel } from './settings-panel.tsx';
 import { ThreadPanel } from './thread-panel.tsx';
 import { Toolbar } from './toolbar.tsx';
 
@@ -17,6 +18,7 @@ export function App() {
             <Composer />
             <ThreadPanel />
             <Inbox />
+            <SettingsPanel />
             <Toast />
             <Toolbar />
         </div>

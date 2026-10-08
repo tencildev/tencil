@@ -1,12 +1,14 @@
 import {
     ClientMessage,
     PROTOCOL_VERSION,
+    type ProjectSettings,
     type Provider,
     type ProviderMessage,
     type ServerMessage,
     type Thread,
     type ThreadMessage,
 } from '@fixhere/protocol';
+import type { ProjectProviders } from './project-providers.ts';
 import { renderPrompt, stripContext, titleFor } from './prompt.ts';
 import type { ThreadStore } from './thread-store.ts';
 
@@ -15,7 +17,7 @@ export interface BridgeClient {
 }
 
 export interface BridgeOptions {
-    provider: Provider;
+    providers: ProjectProviders;
     store: ThreadStore;
     project: { name: string; root: string };
     version: string;
@@ -36,16 +38,20 @@ export class Bridge {
     /** One provider subscription per provider thread, shared by every pin bound to it. */
     readonly #watches = new Map<string, () => void>();
     readonly #pendingBroadcast = new Map<string, ReturnType<typeof setTimeout>>();
-    readonly #offInfo: () => void;
+    #offInfo: () => void = () => {};
+    readonly #offDefault: () => void;
 
     constructor(options: BridgeOptions) {
         this.#options = options;
-        this.#offInfo = options.provider.onInfoChange(provider =>
-            this.#broadcast({ type: 'provider.status', provider }),
-        );
+        this.#followDefault();
+        this.#offDefault = options.providers.onDefaultChange(() => {
+            this.#followDefault();
+            this.#broadcast({ type: 'settings', settings: this.#settings() });
+            this.#broadcast({ type: 'provider.status', provider: this.#provider().info() });
+        });
         for (const thread of options.store.list()) {
-            if (thread.provider.id === options.provider.id && thread.provider.threadId) {
-                this.#watch(thread.provider.threadId);
+            if (thread.provider.threadId && options.providers.has(thread.provider.id)) {
+                this.#watch(thread.provider.id, thread.provider.threadId);
             }
         }
     }
@@ -73,7 +79,8 @@ export class Bridge {
                         protocol: PROTOCOL_VERSION,
                         version: this.#options.version,
                         project: this.#options.project,
-                        provider: this.#options.provider.info(),
+                        provider: this.#provider().info(),
+                        settings: this.#settings(),
                         threads: this.#options.store.list(),
                     });
                     return;
@@ -86,13 +93,16 @@ export class Bridge {
                     this.#open(message);
                     return;
                 case 'provider.pair':
-                    await this.#options.provider.pair?.();
+                    await this.#provider().pair?.();
                     return;
                 case 'provider.threads':
                     client.send({
                         type: 'provider.threads',
-                        ...(await this.#options.provider.listThreads()),
+                        ...(await this.#provider().listThreads()),
                     });
+                    return;
+                case 'settings.update':
+                    await this.#options.providers.setDefault(message.provider);
                     return;
                 case 'thread.reply':
                     await this.#reply(message);
@@ -100,7 +110,7 @@ export class Bridge {
                 case 'thread.interrupt': {
                     const thread = this.#require(message.threadId);
                     if (thread.provider.threadId) {
-                        await this.#options.provider.interrupt(thread.provider.threadId);
+                        await this.#providerOf(thread).interrupt(thread.provider.threadId);
                     }
                     return;
                 }
@@ -111,12 +121,11 @@ export class Bridge {
                     }));
                     return;
                 case 'thread.delete': {
-                    const providerThreadId = this.#options.store.get(message.threadId)?.provider
-                        .threadId;
+                    const provider = this.#options.store.get(message.threadId)?.provider;
                     if (this.#options.store.delete(message.threadId)) {
                         this.#broadcast({ type: 'thread.removed', threadId: message.threadId });
                     }
-                    if (providerThreadId) this.#release(providerThreadId);
+                    if (provider?.threadId) this.#release(provider.id, provider.threadId);
                     return;
                 }
             }
@@ -132,6 +141,7 @@ export class Bridge {
 
     async dispose(): Promise<void> {
         this.#offInfo();
+        this.#offDefault();
         for (const unwatch of this.#watches.values()) unwatch();
         for (const timer of this.#pendingBroadcast.values()) clearTimeout(timer);
         await this.#options.store.flush();
@@ -140,7 +150,8 @@ export class Bridge {
     /* --------------------------------- actions --------------------------------- */
 
     async #create(message: Extract<ClientMessage, { type: 'thread.create' }>): Promise<void> {
-        const { provider, store } = this.#options;
+        const { store } = this.#options;
+        const provider = this.#provider();
         if (store.get(message.id)) throw new Error(`Thread ${message.id} already exists`);
         const now = new Date().toISOString();
         const thread: Thread = {
@@ -175,7 +186,7 @@ export class Bridge {
                 status: 'working',
                 provider: { id: provider.id, threadId: created.providerThreadId, url: created.url },
             }));
-            this.#watch(created.providerThreadId);
+            this.#watch(provider.id, created.providerThreadId);
             this.#options.log?.(`Pin "${thread.title}" → ${provider.label}`);
         } catch (error) {
             this.#update(thread.id, current => ({
@@ -188,11 +199,13 @@ export class Bridge {
 
     /** Pin an element onto an existing provider thread: the prompt becomes its next message. */
     async #continue(message: Extract<ClientMessage, { type: 'thread.create' }>): Promise<void> {
-        const { provider, store } = this.#options;
+        const { store } = this.#options;
+        // The thread comes from the default provider's list.
+        const provider = this.#provider();
         const providerThreadId = message.providerThreadId!;
         if (store.get(message.id)) throw new Error(`Thread ${message.id} already exists`);
         const now = new Date().toISOString();
-        const sibling = this.#pinsFor(providerThreadId)[0];
+        const sibling = this.#pinsFor(provider.id, providerThreadId)[0];
         const thread: Thread = {
             id: message.id,
             title: titleFor(message.prompt, message.context),
@@ -213,7 +226,7 @@ export class Bridge {
         };
         store.upsert(thread);
         this.#broadcastThread(thread, true);
-        this.#watch(providerThreadId, true);
+        this.#watch(provider.id, providerThreadId, true);
 
         try {
             await provider.sendMessage({
@@ -238,13 +251,15 @@ export class Bridge {
 
     /** Track an existing provider thread without an element, e.g. to continue it from the dock. */
     #open(message: Extract<ClientMessage, { type: 'thread.open' }>): void {
-        const { provider, store } = this.#options;
-        const existing = this.#pinsFor(message.providerThreadId).find(thread => !thread.anchor);
+        const { store } = this.#options;
+        const provider = this.#provider();
+        const pins = this.#pinsFor(provider.id, message.providerThreadId);
+        const existing = pins.find(thread => !thread.anchor);
         if (existing) {
             this.#broadcastThread(existing, true);
             return;
         }
-        const sibling = this.#pinsFor(message.providerThreadId)[0];
+        const sibling = pins[0];
         const now = new Date().toISOString();
         const thread: Thread = {
             id: message.id,
@@ -262,7 +277,7 @@ export class Bridge {
         };
         store.upsert(thread);
         this.#broadcastThread(thread, true);
-        this.#watch(message.providerThreadId, true);
+        this.#watch(provider.id, message.providerThreadId, true);
     }
 
     async #reply(message: Extract<ClientMessage, { type: 'thread.reply' }>): Promise<void> {
@@ -275,7 +290,7 @@ export class Bridge {
             statusDetail: undefined,
             messages: [...current.messages, localMessage(message.text, new Date().toISOString())],
         }));
-        await this.#options.provider.sendMessage({
+        await this.#providerOf(thread).sendMessage({
             providerThreadId: thread.provider.threadId,
             text: message.text,
             attachments: message.attachments,
@@ -289,39 +304,72 @@ export class Bridge {
      * `replay` re-subscribes an existing watch so a newly bound pin receives the
      * provider's snapshot too.
      */
-    #watch(providerThreadId: string, replay = false): void {
-        if (this.#watches.has(providerThreadId) && !replay) return;
-        this.#watches.get(providerThreadId)?.();
+    #watch(providerId: string, providerThreadId: string, replay = false): void {
+        const key = watchKey(providerId, providerThreadId);
+        if (this.#watches.has(key) && !replay) return;
+        this.#watches.get(key)?.();
+        const provider = this.#options.providers.get(providerId);
         const each = (change: (thread: Thread) => Thread) => {
-            for (const thread of this.#pinsFor(providerThreadId)) this.#update(thread.id, change);
+            for (const thread of this.#pinsFor(providerId, providerThreadId)) {
+                this.#update(thread.id, change);
+            }
         };
-        const unwatch = this.#options.provider.watch(providerThreadId, {
+        const unwatch = provider.watch(providerThreadId, {
             message: message => each(thread => mergeMessage(thread, message)),
             status: (status, statusDetail) => each(thread => ({ ...thread, status, statusDetail })),
             gone: () =>
                 each(thread => ({
                     ...thread,
                     status: 'error',
-                    statusDetail: `Thread no longer exists in ${this.#options.provider.label}`,
+                    statusDetail: `Thread no longer exists in ${provider.label}`,
                 })),
         });
-        this.#watches.set(providerThreadId, unwatch);
+        this.#watches.set(key, unwatch);
     }
 
-    #release(providerThreadId: string): void {
-        if (this.#pinsFor(providerThreadId).length > 0) return;
-        this.#watches.get(providerThreadId)?.();
-        this.#watches.delete(providerThreadId);
+    #release(providerId: string, providerThreadId: string): void {
+        if (this.#pinsFor(providerId, providerThreadId).length > 0) return;
+        const key = watchKey(providerId, providerThreadId);
+        this.#watches.get(key)?.();
+        this.#watches.delete(key);
     }
 
-    #pinsFor(providerThreadId: string): Thread[] {
+    #pinsFor(providerId: string, providerThreadId: string): Thread[] {
         return this.#options.store
             .list()
             .filter(
                 thread =>
-                    thread.provider.id === this.#options.provider.id &&
+                    thread.provider.id === providerId &&
                     thread.provider.threadId === providerThreadId,
             );
+    }
+
+    /* -------------------------------- providers -------------------------------- */
+
+    /** The provider new pins go to. */
+    #provider(): Provider {
+        return this.#options.providers.default();
+    }
+
+    /** The provider a pin was made with; switching the default doesn't move old pins. */
+    #providerOf(thread: Thread): Provider {
+        if (!this.#options.providers.has(thread.provider.id)) {
+            throw new Error(`This pin's agent (${thread.provider.id}) isn't available`);
+        }
+        return this.#options.providers.get(thread.provider.id);
+    }
+
+    /** Report the default provider's status, and follow it when the project switches. */
+    #followDefault(): void {
+        this.#offInfo();
+        this.#offInfo = this.#provider().onInfoChange(provider =>
+            this.#broadcast({ type: 'provider.status', provider }),
+        );
+    }
+
+    #settings(): ProjectSettings {
+        const { providers } = this.#options;
+        return { provider: providers.defaultId, providers: providers.choices };
     }
 
     /* --------------------------------- helpers --------------------------------- */
@@ -359,6 +407,10 @@ export class Bridge {
     #broadcast(message: ServerMessage): void {
         for (const client of this.#clients) client.send(message);
     }
+}
+
+function watchKey(providerId: string, providerThreadId: string): string {
+    return `${providerId}:${providerThreadId}`;
 }
 
 function localMessage(text: string, createdAt: string): ThreadMessage {

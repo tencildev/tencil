@@ -115,7 +115,7 @@ export class T3CodeProvider implements Provider {
     readonly #options: T3CodeProviderOptions;
     readonly #credentials: CredentialStore;
     #baseUrl: string;
-    #info: ProviderInfo = { id: 't3code', label: 'T3 Code', state: 'connecting' };
+    #info: ProviderInfo = { id: 't3code', label: 'T3 Code', state: 'connecting', canPair: true };
     #infoListeners = new Set<(info: ProviderInfo) => void>();
     #connection: Connection | undefined;
     #watchers = new Map<string, Watcher>();
@@ -560,7 +560,7 @@ export class T3CodeProvider implements Provider {
     }
 
     #setInfo(next: Omit<ProviderInfo, 'id' | 'label'>): void {
-        const info: ProviderInfo = { id: this.id, label: this.label, ...next };
+        const info: ProviderInfo = { id: this.id, label: this.label, canPair: true, ...next };
         if (
             info.state === this.#info.state &&
             info.detail === this.#info.detail &&

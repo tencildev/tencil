@@ -1,10 +1,15 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { basename, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type { Provider, ServerMessage } from '@fixhere/protocol';
+import {
+    ClaudeCodeProvider,
+    listClaudeCodeProjects,
+    type PermissionMode,
+} from '@fixhere/provider-claude-code';
 import {
     type CredentialStore,
     listT3Projects,
@@ -15,10 +20,12 @@ import {
 } from '@fixhere/provider-t3code';
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
+import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
 import { Bridge, type BridgeClient } from './bridge.ts';
+import { ProjectProviders } from './project-providers.ts';
 import { type Exec, ProjectResolver } from './project-resolver.ts';
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
-import { defaultDataDir, ThreadStore } from './thread-store.ts';
+import { defaultDataDir, projectStorePath, ThreadStore } from './thread-store.ts';
 
 export const DEFAULT_PORT = 4747;
 /** Screenshots ride along as data URLs. */
@@ -34,6 +41,12 @@ export interface DaemonOptions {
     allowedOrigins?: string[];
     /** Pins, credentials and remembered projects; defaults to ~/.config/fixhere. */
     dataDir?: string;
+    /**
+     * The agent of projects that haven't picked one in their settings. Defaults
+     * to the machine's choice (`fixhere setup`), else the agent found on it.
+     */
+    provider?: ProviderName;
+    claudeCode?: { model?: string; permissionMode?: PermissionMode };
     t3?: Pick<T3CodeProviderOptions, 'autoPair' | 'createPairingCode' | 'timeouts'> & {
         url?: string;
         token?: string;
@@ -46,8 +59,8 @@ export interface DaemonOptions {
     resolveProject?: (pageUrl: string) => Promise<string | undefined>;
     /** Overrides process lookups for the default resolver (tests). */
     exec?: Exec;
-    /** Build the provider for a project; defaults to T3 Code. */
-    createProvider?: (root: string) => Provider;
+    /** Build a project's provider by id (tests). */
+    createProvider?: (root: string, id: string) => Provider;
     log?: (message: string) => void;
     /** The CLI flags this daemon runs with, reported on /health so a restart can keep them. */
     flags?: string[];
@@ -71,7 +84,7 @@ export interface Daemon {
 interface Session {
     root: string;
     bridge: Bridge;
-    provider: Provider;
+    providers: ProjectProviders;
     clients: number;
 }
 
@@ -94,17 +107,28 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const sessions = new Map<string, Promise<Session>>();
     const overlayPath = resolveOverlayPath();
 
+    const claudeCodeDir = join(dataDir, 'claude-code');
+    const t3Url = options.t3?.url ?? process.env.FIXHERE_T3_URL;
     const createProvider =
         options.createProvider ??
-        ((root: string) => {
+        ((root: string, id: string): Provider => {
+            const providerLog = (message: string) => log(`[${basename(root)}] ${message}`);
+            if (id === 'claude-code') {
+                return new ClaudeCodeProvider({
+                    ...options.claudeCode,
+                    projectRoot: root,
+                    installDir: claudeCodeDir,
+                    log: providerLog,
+                });
+            }
             const { url, token, ...t3 } = options.t3 ?? {};
             return new T3CodeProvider({
                 ...t3,
                 projectRoot: root,
-                baseUrl: url ?? process.env.FIXHERE_T3_URL,
+                baseUrl: t3Url,
                 token: token ?? process.env.FIXHERE_T3_TOKEN,
                 createProjectIfMissing: t3.createProjectIfMissing ?? true,
-                log: message => log(`[${basename(root)}] ${message}`),
+                log: providerLog,
             });
         });
 
@@ -113,33 +137,56 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         let pending = sessions.get(key);
         if (!pending) {
             pending = (async () => {
-                const provider = createProvider(key);
+                const providers = new ProjectProviders({
+                    choices: PROVIDER_OPTIONS,
+                    // Read per project, so a new choice in setup applies without a restart.
+                    fallback: options.provider ?? (await machineProvider({ dataDir, t3Url })),
+                    create: id => createProvider(key, id),
+                    settingsPath: projectStorePath(key, dataDir).replace(
+                        /\.json$/,
+                        '.settings.json',
+                    ),
+                });
                 const store = new ThreadStore(key, dataDir);
-                await store.load();
+                await Promise.all([store.load(), providers.load()]);
                 const bridge = new Bridge({
-                    provider,
+                    providers,
                     store,
                     project: { name: basename(key), root: key },
                     version: VERSION,
                     log: message => log(`[${basename(key)}] ${message}`),
                 });
-                void provider.start();
-                log(`Serving ${key}`);
-                return { root: key, bridge, provider, clients: 0 };
+                log(`Serving ${key} with ${providers.default().label}`);
+                return { root: key, bridge, providers, clients: 0 };
             })();
             sessions.set(key, pending);
         }
         return pending;
     };
 
-    const choices = async () =>
-        (
-            await listT3Projects({
-                baseUrl: options.t3?.url ?? process.env.FIXHERE_T3_URL,
+    /** Projects either agent knows, offered when a page's project can't be worked out. */
+    const choices = async () => {
+        const [t3, claude] = await Promise.all([
+            listT3Projects({
+                baseUrl: t3Url,
                 token: options.t3?.token ?? process.env.FIXHERE_T3_TOKEN,
                 credentials: options.t3?.credentials,
-            })
-        ).map(project => ({ root: project.workspaceRoot, title: project.title }));
+            }).catch(() => []),
+            listClaudeCodeProjects({ installDir: claudeCodeDir }).catch(() => []),
+        ]);
+        const byRoot = new Map<string, { root: string; title: string }>();
+        for (const project of [...t3, ...claude]) {
+            if (!byRoot.has(project.workspaceRoot)) {
+                byRoot.set(project.workspaceRoot, {
+                    root: project.workspaceRoot,
+                    title: project.title,
+                });
+            }
+        }
+        return [...byRoot.values()];
+    };
+    const noChoicesHint =
+        "No projects found. Open this page's project in T3 Code, or run claude in it once.";
 
     const settled = async () =>
         (await Promise.allSettled(sessions.values()))
@@ -151,7 +198,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
             root: s.root,
             name: basename(s.root),
             clients: s.clients,
-            provider: s.provider.info(),
+            provider: s.providers.default().info(),
         }));
     };
 
@@ -236,7 +283,12 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 pageUrl = message.pageUrl ?? '';
                 const root = await resolveProject(pageUrl).catch(() => undefined);
                 if (root) return attach(root, raw);
-                return client.send({ type: 'project.unknown', pageUrl, choices: await choices() });
+                return client.send({
+                    type: 'project.unknown',
+                    pageUrl,
+                    choices: await choices(),
+                    emptyHint: noChoicesHint,
+                });
             }
             if (message.type === 'project.select' && message.root) {
                 await resolver.remember(pageUrl, message.root);
@@ -301,7 +353,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
             for (const ws of wss.clients) ws.terminate();
             for (const s of await settled()) {
                 await s.bridge.dispose();
-                await s.provider.dispose();
+                await s.providers.dispose();
             }
             await Promise.all(
                 servers.map(server => new Promise<void>(done => server.close(() => done()))),

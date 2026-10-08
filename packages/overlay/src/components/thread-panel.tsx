@@ -1,6 +1,6 @@
 import type { Thread, ThreadMessage } from '@fixhere/protocol';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { provider, send, threads } from '../lib/connection.ts';
+import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { inboxOpen, layoutTick, openThreadId } from '../lib/state.ts';
 import {
@@ -103,7 +103,7 @@ function Header({ thread }: { thread: Thread }) {
                         href={thread.provider.url}
                         target="_blank"
                         rel="noreferrer"
-                        title={`Open in ${provider.value?.label ?? 'agent'}`}
+                        title={`Open in ${providerLabel(thread.provider.id)}`}
                     >
                         <ExternalIcon />
                     </a>
@@ -217,7 +217,7 @@ function StatusLine({ thread }: { thread: Thread }) {
         return (
             <div class="status-line">
                 <span class="live-dot" />
-                <Shimmer text={`Starting a thread in ${provider.value?.label ?? 'the agent'}…`} />
+                <Shimmer text={`Starting a thread in ${providerLabel(thread.provider.id)}…`} />
             </div>
         );
     }

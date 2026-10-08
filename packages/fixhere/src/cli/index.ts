@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { DEFAULT_T3_URL, type RuntimeMode } from '@fixhere/provider-t3code';
 import pc from 'picocolors';
+import { PROVIDERS, type ProviderName, saveProvider } from '../daemon/agents.ts';
 import { DEFAULT_PORT } from '../daemon/server.ts';
 import { runInit } from '../init/run-init.ts';
 import { stopDaemon } from '../service/background.ts';
@@ -36,8 +37,10 @@ ${pc.dim('Usage')}
 
 ${pc.dim('Daemon options')}
   --port <n>              Port (default ${DEFAULT_PORT}, env FIXHERE_PORT)
+  --provider <name>       t3code | claude-code: this machine's agent (setup asks when unset)
   --t3-url <url>          T3 Code server (default ${DEFAULT_T3_URL}, env FIXHERE_T3_URL)
-  --model <inst:model>    Model, e.g. claudeAgent:claude-fable-5-1 (default: project default)
+  --model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
+                          Claude Code: a model, e.g. claude-opus-5-5 (default: its default)
   --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
   --listen <address>      Also listen here, e.g. a Tailscale IP for a remote browser (repeatable)
   --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
@@ -60,6 +63,7 @@ async function main(): Promise<void> {
         options: {
             port: { type: 'string' },
             root: { type: 'string' },
+            provider: { type: 'string' },
             't3-url': { type: 'string' },
             model: { type: 'string' },
             'runtime-mode': { type: 'string' },
@@ -86,6 +90,12 @@ async function main(): Promise<void> {
     const port = values.port
         ? Number.parseInt(values.port, 10)
         : Number(process.env.FIXHERE_PORT ?? DEFAULT_PORT);
+    const provider = values.provider as ProviderName | undefined;
+    if (provider && !PROVIDERS.includes(provider)) {
+        throw new Error(`--provider must be one of ${PROVIDERS.join(', ')}`);
+    }
+    // The machine's choice, so setup doesn't ask and the login service needs no flag.
+    if (provider && command !== 'daemon') await saveProvider(provider);
     const runtimeMode = values['runtime-mode'];
     if (runtimeMode && !RUNTIME_MODES.includes(runtimeMode)) {
         throw new Error(`--runtime-mode must be one of ${RUNTIME_MODES.join(', ')}`);
@@ -106,10 +116,16 @@ async function main(): Promise<void> {
                 t3Url,
             });
         case 'daemon':
-            return runDaemon(values, port, t3Url, runtimeMode as RuntimeMode | undefined);
+            return runDaemon(values, port, provider, t3Url, runtimeMode as RuntimeMode | undefined);
         case 'start':
             if (values.foreground) {
-                return runDaemon(values, port, t3Url, runtimeMode as RuntimeMode | undefined);
+                return runDaemon(
+                    values,
+                    port,
+                    provider,
+                    t3Url,
+                    runtimeMode as RuntimeMode | undefined,
+                );
             }
             return start(daemonCommand);
         case 'setup':
@@ -144,6 +160,7 @@ async function main(): Promise<void> {
                 from: values.from,
                 port,
                 daemon: daemonCommand,
+                t3Url,
             });
         default:
             console.error(`Unknown command "${command}"\n${HELP}`);

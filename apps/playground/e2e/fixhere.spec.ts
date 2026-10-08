@@ -101,3 +101,22 @@ test('closes the thread once it is resolved', async ({ page }) => {
     await thread.getByTitle('Resolve').click();
     await expect(thread).toHaveCount(0);
 });
+
+test("switches the project's agent in settings and remembers it", async ({ page }) => {
+    await openPlayground(page);
+    const settings = overlay(page).locator('.settings-panel');
+    await overlay(page).locator('.tool[title="Project settings"]').click();
+    await expect(settings.getByRole('radio', { name: 'T3 Code' })).toBeChecked();
+
+    await settings.getByText('Claude Code').click();
+    await expect(overlay(page).locator('.status-dot')).toHaveAttribute('title', /^Claude Code/, {
+        timeout: 15_000,
+    });
+
+    await page.reload();
+    await overlay(page).locator('.tool[title="Project settings"]').click();
+    await expect(settings.getByRole('radio', { name: 'Claude Code' })).toBeChecked();
+
+    await settings.getByText('T3 Code').click();
+    await expect(overlay(page).locator('.status-dot')).toHaveAttribute('title', /^T3 Code/);
+});

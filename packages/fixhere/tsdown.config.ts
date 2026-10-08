@@ -11,6 +11,7 @@ export default defineConfig({
     format: 'esm',
     platform: 'node',
     target: 'node22',
+    tsconfig: 'tsconfig.build.json',
     dts: { eager: true },
     // Workspace packages are private; inline them into the published build.
     deps: { alwaysBundle: [/^@fixhere\//] },
