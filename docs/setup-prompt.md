@@ -1,8 +1,8 @@
 # Fixhere teammate setup
 
 Paste everything below the line into your coding agent (T3 Code, Claude Code,
-Codex…) from the root of the project you want to try Fixhere on. You need the
-T3 Code desktop app running and access to `pixel-perfect-agency` on GitHub.
+Codex…) from the root of the app you want to try Fixhere on. You need the T3 Code
+desktop app running and access to `pixel-perfect-agency` on GitHub.
 
 ---
 
@@ -14,38 +14,26 @@ this project with the element's component, source file and a screenshot.
 Do the following, and stop and tell me if a step fails instead of working
 around it:
 
-1. **Get Fixhere.** If `~/Code/fixhere` doesn't exist, clone it:
+1. **Get and package Fixhere.** If `~/Code/fixhere` doesn't exist, clone it:
    `git clone git@github.com:pixel-perfect-agency/fixhere.git ~/Code/fixhere`.
-   Otherwise `git -C ~/Code/fixhere pull`. Then build it:
-   `cd ~/Code/fixhere && pnpm install && pnpm build`.
-   Needs Node 22+ and pnpm.
+   Otherwise `git -C ~/Code/fixhere pull`. Then build a local package:
+   `cd ~/Code/fixhere && pnpm install && pnpm pack:local`.
+   This writes `~/Code/fixhere/.pack/fixhere-<version>.tgz`. Needs Node 22+ and pnpm.
 
-2. **Pair with T3 Code** (skip if `~/.config/fixhere/credentials.json` already
-   exists). T3 Code must be running. Run:
-   `node ~/Code/fixhere/packages/fixhere/dist/cli.mjs connect < /dev/null`
-   It creates a pairing code with the `t3` CLI that matches my T3 Code version
-   and stores the token. It should print `✓ Paired with T3 Code`.
+2. **Run the installer in this project** (from the app's folder, i.e. the one
+   with `next.config.*` or `vite.config.*`):
+   `node ~/Code/fixhere/packages/fixhere/dist/cli.mjs init --from <path to the .tgz>`
+   It shows the changes it will make (Next.js: `withFixhere` in next.config and
+   `<Fixhere />` in the root layout; Vite: the `fixhere()` plugin), installs the
+   package and pairs with T3 Code. Show me the planned changes and ask before
+   applying them (run it with `--dry-run` first, then with `--yes`).
+   If it says the framework isn't supported, tell me instead of editing files.
 
-3. **Load the overlay in development only**, in this project:
-   - **Next.js (app router):** in the root `app/layout.tsx` (or
-     `src/app/layout.tsx`), import `Script` from `next/script` and render, as
-     the last child of `<body>`:
-     `{process.env.NODE_ENV === 'development' && <Script src="http://localhost:4747/fixhere.js" strategy="afterInteractive" />}`
-   - **Vite:** add `<script src="http://localhost:4747/fixhere.js" defer></script>`
-     to `index.html`, or better, only in dev via `transformIndexHtml` if the
-     project already has a plugin setup for that.
-   - **Anything else:** add that same script tag to the dev-only HTML.
-   Match the project's code style. Don't commit this change; it's for local
-   testing.
+3. **Tell me how to try it.** Don't start long-running processes yourself. Tell
+   me to start the project's usual dev server, open the page and press C. The dev
+   server log should show `[fixhere] Connected to T3 Code …`.
 
-4. **Tell me how to run it.** Don't start long-running processes yourself.
-   Give me these two commands for separate terminals:
-   - from this project's root: `node ~/Code/fixhere/packages/fixhere/dist/cli.mjs`
-     (it should log `Connected to T3 Code … project "<name>" … protocol v1`;
-     if the folder isn't a T3 Code project yet, Fixhere adds it)
-   - the project's usual dev server command.
-
-Finish with a short summary of what you changed and the two commands.
+Don't commit any of these changes; they're for local testing.
 
 ---
 
@@ -56,6 +44,8 @@ Finish with a short summary of what you changed and the two commands.
 - The tray icon opens the inbox; the **T3 Code** tab lists every thread in the project.
 - Drag the toolbar by its separator line to move it to any corner.
 - The agent runs in T3 Code's `full-access` mode and edits your working copy.
-  Start the bridge with `--runtime-mode approval-required` to approve changes in T3 Code first.
+
+To update later: `git -C ~/Code/fixhere pull && pnpm -C ~/Code/fixhere pack:local`,
+then run the `init --from` step again with the new file (it only reinstalls).
 
 Feedback and bugs: tell Willem-Jaap or open an issue on the repo.

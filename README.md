@@ -25,49 +25,56 @@ that matches your dev site's folder, so you can continue any conversation there.
 
 ## Quick start
 
-> Fixhere isn't published yet. Teammates: follow [docs/setup-prompt.md](docs/setup-prompt.md)
-> (paste it into your coding agent), which runs the CLI from a local clone. The
-> `npx fixhere` commands below apply once it's published.
+You need the [T3 Code](https://github.com/pingdotgg/t3code) desktop app running. Then, in your app:
 
-1. **Pair with T3 Code** (once). In T3 Code open **Settings → Connections** and
-   create a pairing link (or run `npx t3 pair`), then:
+```sh
+npx fixhere init
+```
 
-   ```sh
-   npx fixhere connect "<pairing link>"
-   ```
+`init` detects Next.js or Vite, shows the changes it will make and applies them,
+installs `fixhere` as a dev dependency and pairs with T3 Code. Start your dev
+server as usual and press <kbd>C</kbd> on the page. The bridge starts with your dev
+server; there's no second terminal.
 
-2. **Run the bridge** in your project root:
+> Fixhere isn't on npm yet. Teammates: follow [docs/setup-prompt.md](docs/setup-prompt.md).
 
-   ```sh
-   npx fixhere
-   ```
+### What `init` sets up
 
-   The folder is matched to a T3 Code project by its workspace root (it is added
-   as a project when missing).
+**Next.js** (app router; the pages router uses `pages/_document`):
 
-3. **Load the overlay** in development:
+```ts
+// next.config.ts
+import { withFixhere } from "fixhere/next";
+export default withFixhere(nextConfig);
+```
 
-   ```html
-   <script src="http://localhost:4747/fixhere.js" defer></script>
-   ```
+```tsx
+// app/layout.tsx: renders nothing outside `next dev`
+import { Fixhere } from "fixhere/react";
+<body>{children}<Fixhere /></body>
+```
 
-   **Next.js** (`app/layout.tsx`):
+**Vite** (React, Vue, Svelte, TanStack Start, Astro and others):
 
-   ```tsx
-   import Script from "next/script";
+```ts
+import fixhere from "fixhere/vite";
+export default defineConfig({ plugins: [react(), fixhere()] });
+```
 
-   {process.env.NODE_ENV === "development" && (
-     <Script src="http://localhost:4747/fixhere.js" strategy="afterInteractive" />
-   )}
-   ```
+**Anything else:** run `npx fixhere` in the project and add the script tag it prints
+to your dev HTML.
 
-   **Vite**: the plugin injects the script and runs the bridge inside the dev server.
+### Pairing
 
-   ```ts
-   import fixhere from "fixhere/vite";
+The first time it runs, Fixhere pairs with the T3 Code on your machine by itself.
+If that isn't possible (for example T3 Code runs on another machine), use the
+**Pair** button in the overlay or create a pairing link in T3 Code → Settings →
+Connections and run `npx fixhere connect "<link>"`.
 
-   export default defineConfig({ plugins: [react(), fixhere()] });
-   ```
+### Several projects
+
+Each project gets its own bridge on the first free port from 4747. Dev servers that
+load their config in several processes (Next.js) share one bridge per project.
 
 ## Using it
 
@@ -89,16 +96,19 @@ the agent waits for approval, red on errors, grey once resolved.
 ## CLI
 
 ```
+fixhere init [options]         Set up Fixhere in this project (Next.js, Vite)
 fixhere [dev] [options]        Start the bridge for the current project
-fixhere connect [pairing-link] Pair with T3 Code
+fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
---port <n>              Bridge port (default 4747)
+--port <n>              Bridge port (default: first free from 4747)
 --root <dir>            Project root (default: cwd)
 --t3-url <url>          T3 Code server (default: last paired, then http://127.0.0.1:3773)
 --model <inst:model>    e.g. claudeAgent:claude-fable-5-1 (default: project default)
 --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
 --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
 --no-create-project     Don't register the folder in T3 Code when missing
+
+init: -y/--yes, --dry-run, --skip-install, --skip-pair, --from <package spec>
 ```
 
 ## Security
@@ -110,7 +120,8 @@ The bridge can make an agent edit your code, so it is locked down by default:
   reach the page. The token only carries `orchestration:read` and `orchestration:operate`.
 - The bridge listens on `127.0.0.1` and only accepts WebSocket connections from
   loopback origins (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`) unless you
-  pass `--allow-origin`.
+  pass `--allow-origin`. Requests addressed to any other host name are refused,
+  which blocks DNS rebinding.
 - Agent replies are rendered as text nodes (no `innerHTML`).
 
 ## Providers
@@ -129,17 +140,33 @@ the prompt, so every provider receives identical input.
 
 ```sh
 pnpm install
-pnpm build        # overlay IIFE + bridge
-pnpm test         # vitest
-pnpm typecheck
-pnpm lint
+pnpm build          # overlay IIFE + bridge
+pnpm check          # lint, typecheck, unit and integration tests
+pnpm test:e2e       # browser tests (Playwright) against the playground
 ```
-
-`apps/playground` is a Vite + React app wired up with the Vite plugin.
 
 | Package | What |
 | --- | --- |
-| `packages/fixhere` | Published CLI, bridge server, Vite plugin |
+| `packages/fixhere` | Published CLI, bridge, `init`, Vite plugin, Next.js and React integrations |
 | `packages/overlay` | Browser overlay (Preact + signals, shadow DOM, bippy) |
 | `packages/protocol` | Wire schemas (zod) and the provider interface |
-| `packages/provider-t3code` | T3 Code provider |
+| `packages/provider-t3code` | T3 Code provider (orchestration V1 and V2) |
+| `packages/testing` | Fake T3 Code server used by the integration and browser tests |
+| `apps/playground` | Vite + React app with the plugin, also the e2e test target |
+
+### Tests
+
+- **Unit:** prompt rendering, trackers, codemods, path handling, stores.
+- **Integration:** the provider and the bridge against a fake T3 Code that speaks
+  the real wire protocol (both versions), including streaming, interrupts, uploads,
+  reconnects, pairing, stalled servers, port sharing and the origin and host checks.
+- **Browser:** Playwright drives the overlay in Chromium: pinning, streamed replies,
+  follow-ups, persistence across reloads, the thread list, dragging the toolbar.
+- **Package:** CI packs `fixhere` exactly as npm would publish it and installs it
+  into an empty project.
+
+### Releasing
+
+Changes that affect users get a changeset (`pnpm changeset`). With the repository
+variable `RELEASE_ENABLED=true` and an `NPM_TOKEN` secret, merging to `main` opens a
+"Version packages" PR, and merging that PR publishes `fixhere` to npm.
