@@ -1,5 +1,11 @@
 # fixhere
 
+## 0.2.0
+
+### Minor Changes
+
+- [`bb1db0b`](https://github.com/pixel-perfect-agency/fixhere/commit/bb1db0bdb764bf1ff01c9fb8bfc00ebd422f4a1b) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Add `npx fixhere setup`: one command per machine that starts Fixhere, asks whether it should start when you log in (yes by default) and pairs with T3 Code. The login service now works from npx: it keeps its own copy of Fixhere in `~/.config/fixhere/runtime`. `start` and `init` update a login service in place instead of fighting it for the port, and `stop` stops it until the next login.
+
 ## 0.1.1
 
 ### Patch Changes
