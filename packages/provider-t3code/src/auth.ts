@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -110,12 +111,17 @@ export async function createLocalPairingCode(
     const { serverVersion } = (await response.json()) as { serverVersion?: string };
     if (!serverVersion) return undefined;
     const { spawnSync } = await import('node:child_process');
-    const result = spawnSync(
-        process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        ['-y', `t3@${serverVersion}`, 'auth', 'pairing', 'create', '--base-dir', baseDir],
-        // Windows needs a shell to run .cmd shims.
-        { encoding: 'utf8', timeout: 120_000, shell: process.platform === 'win32' },
-    );
+    const args = ['auth', 'pairing', 'create', '--base-dir', baseDir];
+    // T3 Code installs its runtime here (desktop app, SSH launch); fall back to npm.
+    const installed = join(baseDir, 'runtime', 'versions', serverVersion, 't3');
+    const result = existsSync(installed)
+        ? spawnSync(installed, args, { encoding: 'utf8', timeout: 30_000 })
+        : spawnSync(
+              process.platform === 'win32' ? 'npx.cmd' : 'npx',
+              ['-y', `t3@${serverVersion}`, ...args],
+              // Windows needs a shell to run .cmd shims.
+              { encoding: 'utf8', timeout: 120_000, shell: process.platform === 'win32' },
+          );
     return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.match(/^Token:\s*(\S+)/m)?.[1];
 }
 
