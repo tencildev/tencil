@@ -1,0 +1,243 @@
+import { mkdtempSync, realpathSync } from "node:fs";
+import { request } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ServerMessage, Thread } from "@fixhere/protocol";
+import { CredentialStore } from "@fixhere/provider-t3code";
+import { FakeT3Server, waitFor } from "@fixhere/testing";
+import { afterEach, describe, expect, it } from "vitest";
+import WebSocket from "ws";
+import { type Daemon, type DaemonOptions, startDaemon } from "./daemon.ts";
+
+const FAST = { httpMs: 300, rpcMs: 2_000, retryMinMs: 20, retryMaxMs: 100 };
+const CONTEXT = {
+  tagName: "button",
+  selector: "main > button",
+  html: '<button class="cta">Buy</button>',
+  text: "Buy",
+  components: [{ name: "Pricing", source: { file: "src/Pricing.tsx", line: 12 } }],
+  rect: { x: 0, y: 0, width: 100, height: 40 },
+  viewport: { width: 1280, height: 800, dpr: 2 },
+};
+const ANCHOR = { selector: "main > button", offsetX: 0.5, offsetY: 0.5 };
+
+const cleanup: Array<() => Promise<void> | void> = [];
+afterEach(async () => {
+  while (cleanup.length) await cleanup.pop()?.();
+});
+
+const tmp = (prefix: string) => realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
+
+/**
+ * One daemon, one fake T3 Code with two projects. Pages on port 3001 belong
+ * to project A, 3002 to project B; anything else is unknown.
+ */
+async function setup(
+  options: { protocol?: 1 | 2; paired?: boolean } & Partial<DaemonOptions> = {},
+) {
+  const projectA = tmp("fixhere-a-");
+  const projectB = tmp("fixhere-b-");
+  const t3 = await FakeT3Server.start({
+    protocol: options.protocol ?? 1,
+    projects: [
+      { id: "proj-a", title: "alpha", workspaceRoot: projectA },
+      { id: "proj-b", title: "beta", workspaceRoot: projectB },
+    ],
+  });
+  const credentials = new CredentialStore(join(tmp("fixhere-creds-"), "credentials.json"));
+  if (options.paired !== false) {
+    await credentials.set(t3.url, {
+      token: t3.token,
+      scope: "orchestration:read orchestration:operate",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+  }
+  const byPort: Record<string, string> = { "3001": projectA, "3002": projectB };
+  const daemon = await startDaemon({
+    port: 0,
+    dataDir: tmp("fixhere-data-"),
+    t3: {
+      url: t3.url,
+      credentials,
+      timeouts: FAST,
+      autoPair: false,
+      createPairingCode: async () => t3.issuePairingCode(),
+    },
+    resolveProject: async (pageUrl) => byPort[new URL(pageUrl).port],
+    ...options,
+  });
+  cleanup.push(async () => {
+    await daemon.close();
+    await t3.close();
+  });
+  return { t3, daemon, projectA, projectB };
+}
+
+/** Stand-in for the overlay on a given page. */
+async function connectPage(daemon: Daemon, pageUrl: string, origin = new URL(pageUrl).origin) {
+  const ws = new WebSocket(`${daemon.url.replace("http", "ws")}/ws`, { origin });
+  const received: ServerMessage[] = [];
+  ws.on("message", (data) => received.push(JSON.parse(String(data)) as ServerMessage));
+  await new Promise<void>((resolve, reject) => {
+    ws.once("open", () => resolve());
+    ws.once("error", reject);
+  });
+  cleanup.push(() => ws.close());
+  const send = (message: unknown) => ws.send(JSON.stringify(message));
+  const latest = (id: string): Thread | undefined =>
+    received
+      .filter(
+        (m): m is Extract<ServerMessage, { type: "thread.upsert" }> => m.type === "thread.upsert",
+      )
+      .map((m) => m.thread)
+      .filter((t) => t.id === id)
+      .at(-1);
+  send({ type: "hello", protocol: 1, pageUrl });
+  return { received, send, latest };
+}
+
+const ready = (received: ServerMessage[]) =>
+  waitFor(
+    () =>
+      received.some(
+        (m) => (m.type === "ready" || m.type === "provider.status") && m.provider.state === "ready",
+      ),
+    { message: "provider ready" },
+  );
+
+const pin = (id: string, prompt: string, pageUrl: string) => ({
+  type: "thread.create",
+  id,
+  pageUrl,
+  prompt,
+  anchor: ANCHOR,
+  context: CONTEXT,
+});
+
+function httpGet(url: string, headers: Record<string, string> = {}) {
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const req = request(url, { headers }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+describe.each([1, 2] as const)("daemon end to end, protocol v%i", (protocol) => {
+  it("pins an element and streams the reply, with the element context sent to the agent", async () => {
+    const { t3, daemon } = await setup({ protocol });
+    const page = await connectPage(daemon, "http://localhost:3001/pricing");
+    await ready(page.received);
+
+    page.send(pin("pin-1", "Make the button green", "http://localhost:3001/pricing"));
+    const done = await waitFor(() => {
+      const thread = page.latest("pin-1");
+      return thread?.status === "idle" && thread.messages.some((m) => m.role === "assistant")
+        ? thread
+        : undefined;
+    });
+
+    const sent = [...t3.threads.values()][0];
+    expect(sent?.projectId).toBe("proj-a");
+    expect(sent?.messages[0]?.text).toContain("<fixhere-context>");
+    expect(sent?.messages[0]?.text).toContain("Pricing (src/Pricing.tsx:12)");
+    expect(done.messages.find((m) => m.role === "user")?.text).toBe("Make the button green");
+    expect(done.messages.find((m) => m.role === "assistant")?.text).toBe(
+      "Done: Make the button green",
+    );
+  });
+
+  it("serves two projects at once, each with its own pins", async () => {
+    const { t3, daemon, projectA, projectB } = await setup({ protocol });
+    const a = await connectPage(daemon, "http://localhost:3001/");
+    const b = await connectPage(daemon, "http://localhost:3002/");
+    await ready(a.received);
+    await ready(b.received);
+
+    a.send(pin("a-1", "Fix A", "http://localhost:3001/"));
+    b.send(pin("b-1", "Fix B", "http://localhost:3002/"));
+    await waitFor(() => a.latest("a-1")?.status === "idle");
+    await waitFor(() => b.latest("b-1")?.status === "idle");
+
+    expect(a.latest("b-1")).toBeUndefined();
+    expect(b.latest("a-1")).toBeUndefined();
+    expect([...t3.threads.values()].map((t) => t.projectId).sort()).toEqual(["proj-a", "proj-b"]);
+
+    const health = JSON.parse((await httpGet(`${daemon.url}/health`)).body);
+    expect(health.projects.map((p: { root: string }) => p.root).sort()).toEqual(
+      [projectA, projectB].sort(),
+    );
+  });
+});
+
+describe("unknown pages", () => {
+  it("asks which project a page belongs to and remembers the answer", async () => {
+    const { daemon, projectB } = await setup({
+      // Only remembered picks resolve; the OS lookup finds nothing.
+      resolveProject: undefined,
+      exec: async () => "",
+    });
+    const first = await connectPage(daemon, "http://localhost:9999/");
+    const unknown = await waitFor(() =>
+      first.received.find(
+        (m): m is Extract<ServerMessage, { type: "project.unknown" }> =>
+          m.type === "project.unknown",
+      ),
+    );
+    expect(unknown.choices.map((c) => c.title).sort()).toEqual(["alpha", "beta"]);
+
+    first.send({ type: "project.select", root: projectB });
+    await waitFor(() =>
+      first.received.find((m) => m.type === "ready" && m.project.root === projectB),
+    );
+
+    const again = await connectPage(daemon, "http://localhost:9999/other");
+    await waitFor(() =>
+      again.received.find((m) => m.type === "ready" && m.project.root === projectB),
+    );
+    expect(again.received.some((m) => m.type === "project.unknown")).toBe(false);
+  });
+});
+
+describe("pairing from the overlay", () => {
+  it("pairs when the overlay asks", async () => {
+    const { daemon } = await setup({ paired: false });
+    const page = await connectPage(daemon, "http://localhost:3001/");
+    await waitFor(() =>
+      page.received.some(
+        (m) =>
+          (m.type === "provider.status" || m.type === "ready") &&
+          m.provider.state === "unauthorized",
+      ),
+    );
+    page.send({ type: "provider.pair" });
+    await ready(page.received);
+  });
+});
+
+describe("security", () => {
+  it("rejects pages from other origins", async () => {
+    const { daemon } = await setup();
+    await expect(
+      connectPage(daemon, "http://localhost:3001/", "https://evil.example"),
+    ).rejects.toThrow(/403/);
+  });
+
+  it("rejects requests addressed to another host name (DNS rebinding)", async () => {
+    const { daemon } = await setup();
+    expect((await httpGet(`${daemon.url}/health`)).status).toBe(200);
+    expect((await httpGet(`${daemon.url}/health`, { host: "evil.example" })).status).toBe(403);
+  });
+
+  it("serves the overlay script", async () => {
+    const { daemon } = await setup();
+    const script = await httpGet(daemon.scriptUrl);
+    expect(script.status).toBe(200);
+    expect(script.body.length).toBeGreaterThan(1000);
+  });
+});
