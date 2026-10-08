@@ -8,6 +8,7 @@ import {
     send,
     upsertLocal,
 } from '../lib/connection.ts';
+import { newId } from '../lib/id.ts';
 import { getHost } from '../lib/overlay-host.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { captureElement } from '../lib/screenshot.ts';
@@ -60,7 +61,7 @@ export function Composer() {
                 const shot = await captureElement(pending.element, getHost());
                 if (shot) attachments.push(shot);
             }
-            const id = crypto.randomUUID();
+            const id = newId();
             const anchor = { ...pending.anchor, selector: context.selector };
             const ok = send({
                 type: 'thread.create',

@@ -7,6 +7,7 @@ import type {
     Thread,
 } from '@fixhere/protocol';
 import { batch, signal } from '@preact/signals';
+import { newId } from './id.ts';
 
 export type BridgeState = 'connecting' | 'open' | 'closed';
 
@@ -128,7 +129,7 @@ export function openProviderThread(summary: ProviderThreadSummary): string | nul
     for (const thread of threads.value.values()) {
         if (thread.provider.threadId === summary.id && !thread.anchor) return thread.id;
     }
-    const id = crypto.randomUUID();
+    const id = newId();
     const sent = send({
         type: 'thread.open',
         id,
