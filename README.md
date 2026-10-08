@@ -13,10 +13,10 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
 ```
  your dev site (any origin on localhost)          your machine
 ┌────────────────────────────────────┐   ws    ┌─────────────────────┐   ws/rpc   ┌───────────┐
-│ overlay (Preact, shadow DOM)       │ ──────▶ │ fixhere bridge    │ ─────────▶ │ T3 Code   │
+│ overlay (Preact, shadow DOM)       │ ──────▶ │ fixhere bridge      │ ─────────▶ │ T3 Code   │
 │  • picker, pins, threads, inbox    │ ◀────── │  • holds credentials│ ◀───────── │ (threads) │
 │  • React source via owner stacks   │         │  • provider adapters│            └───────────┘
-└────────────────────────────────────┘         │  • .fixhere/ store│
+└────────────────────────────────────┘         │  • pin store        │
                                                └─────────────────────┘
 ```
 
@@ -105,6 +105,7 @@ fixhere connect [pairing-link] Pair with T3 Code
 
 The bridge can make an agent edit your code, so it is locked down by default:
 
+- Pins are stored per project in `~/.config/fixhere/projects/`, never inside your repo.
 - Credentials live in `~/.config/fixhere/credentials.json` (mode `0600`) and never
   reach the page. The token only carries `orchestration:read` and `orchestration:operate`.
 - The bridge listens on `127.0.0.1` and only accepts WebSocket connections from

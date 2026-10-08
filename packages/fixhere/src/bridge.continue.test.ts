@@ -68,7 +68,7 @@ const context = {
 
 function setup() {
   const provider = new FakeProvider();
-  const store = new ThreadStore(mkdtempSync(join(tmpdir(), "fixhere-")));
+  const store = new ThreadStore("/projects/acme", mkdtempSync(join(tmpdir(), "fixhere-")));
   const bridge = new Bridge({ provider, store, project: { name: "x", root: "/x" }, version: "0" });
   const received: ServerMessage[] = [];
   const client: BridgeClient = { send: (message) => received.push(message) };

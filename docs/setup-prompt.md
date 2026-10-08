@@ -38,10 +38,7 @@ around it:
    Match the project's code style. Don't commit this change; it's for local
    testing.
 
-4. **Keep pin data out of git:** append `.fixhere/` to `.git/info/exclude`
-   (local only, so nothing to commit).
-
-5. **Tell me how to run it.** Don't start long-running processes yourself.
+4. **Tell me how to run it.** Don't start long-running processes yourself.
    Give me these two commands for separate terminals:
    - from this project's root: `node ~/Code/fixhere/packages/fixhere/dist/cli.mjs`
      (it should log `Connected to T3 Code … project "<name>" … protocol v1`;

@@ -1,31 +1,56 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { Thread } from "@fixhere/protocol";
 import { z } from "zod";
 
-const StoreFile = z.object({ version: z.literal(1), threads: z.array(Thread) });
+const StoreFile = z.object({
+  version: z.literal(1),
+  /** Project the pins belong to; informational, the file name is the key. */
+  root: z.string().optional(),
+  threads: z.array(Thread),
+});
+
+/** Where Fixhere keeps per-machine state, shared by every project. */
+export function defaultDataDir(): string {
+  return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "fixhere");
+}
 
 /**
- * Pins for one project, persisted to `.fixhere/threads.json` so they survive
- * bridge restarts and page reloads. Writes are debounced and atomic.
+ * One file per project under the global data dir, named after the folder plus
+ * a hash of its path: readable when browsing, unique per checkout, and never
+ * shared between two bridges.
+ */
+export function projectStorePath(projectRoot: string, dataDir = defaultDataDir()): string {
+  const root = resolve(projectRoot);
+  const hash = createHash("sha256").update(root).digest("hex").slice(0, 10);
+  const slug =
+    basename(root)
+      .replace(/[^a-z0-9._-]+/gi, "-")
+      .slice(0, 40) || "project";
+  return join(dataDir, "projects", `${slug}-${hash}.json`);
+}
+
+/**
+ * Pins for one project, persisted outside the repo so they survive bridge
+ * restarts without leaving files in the project. Writes are debounced and atomic.
  */
 export class ThreadStore {
   readonly path: string;
+  readonly #root: string;
   #threads = new Map<string, Thread>();
   #writeTimer: ReturnType<typeof setTimeout> | undefined;
   #writing: Promise<void> = Promise.resolve();
 
-  constructor(projectRoot: string) {
-    this.path = join(projectRoot, ".fixhere", "threads.json");
+  constructor(projectRoot: string, dataDir?: string) {
+    this.#root = resolve(projectRoot);
+    this.path = projectStorePath(this.#root, dataDir);
   }
 
   async load(): Promise<void> {
-    let raw: string;
-    try {
-      raw = await readFile(this.path, "utf8");
-    } catch {
-      return;
-    }
+    const raw = await readFile(this.path, "utf8").catch(() => undefined);
+    if (raw === undefined) return;
     const parsed = StoreFile.safeParse(JSON.parse(raw));
     if (!parsed.success) return;
     for (const thread of parsed.data.threads) {
@@ -84,11 +109,12 @@ export class ThreadStore {
   }
 
   #write(): void {
-    const body = `${JSON.stringify({ version: 1, threads: this.list() }, null, 2)}\n`;
+    const body = `${JSON.stringify({ version: 1, root: this.#root, threads: this.list() }, null, 2)}\n`;
     this.#writing = this.#writing.then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
       const temp = `${this.path}.tmp`;
-      await writeFile(temp, body);
+      // Prompts and agent replies are private; same permissions as credentials.
+      await writeFile(temp, body, { mode: 0o600 });
       await rename(temp, this.path);
     });
   }

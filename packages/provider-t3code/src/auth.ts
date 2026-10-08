@@ -175,17 +175,12 @@ export class CredentialStore {
   }
 
   async #read(): Promise<CredentialFile> {
-    // Fixhere was called Pinprompt; keep honoring pairings made under the old name.
-    const legacy = join(dirname(dirname(this.path)), "pinprompt", "credentials.json");
-    for (const path of [this.path, legacy]) {
-      try {
-        const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<CredentialFile>;
-        return { lastBaseUrl: parsed.lastBaseUrl, servers: parsed.servers ?? {} };
-      } catch {
-        // Try the next location.
-      }
+    try {
+      const parsed = JSON.parse(await readFile(this.path, "utf8")) as Partial<CredentialFile>;
+      return { lastBaseUrl: parsed.lastBaseUrl, servers: parsed.servers ?? {} };
+    } catch {
+      return { servers: {} };
     }
-    return { servers: {} };
   }
 }
 

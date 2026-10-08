@@ -1,5 +1,4 @@
 node_modules
 dist
-.fixhere
 *.log
 .DS_Store
