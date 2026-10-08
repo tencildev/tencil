@@ -1,6 +1,6 @@
 {
     "name": "fixhere",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "Point at any element of your running app and tell your coding agent what to fix.",
     "license": "MIT",
     "author": "Pixel Perfect Agency",
