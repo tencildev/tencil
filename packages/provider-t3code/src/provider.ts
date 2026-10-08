@@ -119,6 +119,8 @@ export class T3CodeProvider implements Provider {
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
   #disposed = false;
   #connecting = false;
+  /** Set once a project was resolved; later reconnects never re-create a deleted project. */
+  #hadProject = false;
   /** Auto-pairing runs once per server; after that the user pairs explicitly. */
   #autoPaired = new Set<string>();
 
@@ -430,9 +432,12 @@ export class T3CodeProvider implements Provider {
         match = { ...project, workspaceRoot: projectRoot };
       }
     }
-    if (match) return match;
+    if (match) {
+      this.#hadProject = true;
+      return match;
+    }
 
-    if (!this.#options.createProjectIfMissing) {
+    if (!this.#options.createProjectIfMissing || this.#hadProject) {
       throw new Error(`No T3 Code project for ${root}. Add the folder in T3 Code first.`);
     }
     const project: WireProject = {
@@ -447,6 +452,7 @@ export class T3CodeProvider implements Provider {
       workspaceRoot: project.workspaceRoot,
     });
     this.#log(`Added ${root} to T3 Code as project "${project.title}"`);
+    this.#hadProject = true;
     return project;
   }
 

@@ -226,3 +226,18 @@ describe("isInside", () => {
     expect(isInside("/a", "/a/b")).toBe(false);
   });
 });
+
+describe("project lifecycle", () => {
+  it("doesn't re-create a project deleted while the bridge runs", async () => {
+    const { provider, server } = await setup(1, { seedProject: false });
+    await provider.start();
+    await ready(provider);
+    expect(server.projects).toHaveLength(1);
+
+    server.projects.splice(0);
+    server.disconnectAll();
+    await waitFor(() => provider.info().state === "unavailable", { message: "no project" });
+    expect(provider.info().detail).toMatch(/No T3 Code project/);
+    expect(server.projects).toHaveLength(0);
+  });
+});
