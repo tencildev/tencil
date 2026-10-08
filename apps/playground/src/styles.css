@@ -1,108 +1,108 @@
 * {
-  box-sizing: border-box;
+    box-sizing: border-box;
 }
 body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
-  color: #1a1a1a;
-  background: #fafafa;
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    color: #1a1a1a;
+    background: #fafafa;
 }
 a {
-  color: inherit;
-  text-decoration: none;
+    color: inherit;
+    text-decoration: none;
 }
 .navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 32px;
-  border-bottom: 1px solid #eee;
-  background: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 32px;
+    border-bottom: 1px solid #eee;
+    background: white;
 }
 .navbar nav {
-  display: flex;
-  gap: 20px;
-  align-items: center;
+    display: flex;
+    gap: 20px;
+    align-items: center;
 }
 .logo {
-  font-weight: 800;
-  font-size: 20px;
+    font-weight: 800;
+    font-size: 20px;
 }
 .hero {
-  text-align: center;
-  padding: 96px 24px 64px;
+    text-align: center;
+    padding: 96px 24px 64px;
 }
 .hero h1 {
-  font-size: 48px;
-  margin: 0 0 16px;
-  letter-spacing: -0.02em;
+    font-size: 48px;
+    margin: 0 0 16px;
+    letter-spacing: -0.02em;
 }
 .hero p {
-  font-size: 18px;
-  color: #555;
-  margin: 0 auto 32px;
-  max-width: 520px;
+    font-size: 18px;
+    color: #555;
+    margin: 0 auto 32px;
+    max-width: 520px;
 }
 .hero-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
 }
 .button {
-  border: 0;
-  border-radius: 8px;
-  padding: 12px 20px;
-  font: inherit;
-  font-weight: 600;
-  background: #111;
-  color: white;
-  cursor: pointer;
+    border: 0;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font: inherit;
+    font-weight: 600;
+    background: #111;
+    color: white;
+    cursor: pointer;
 }
 .button-small {
-  padding: 8px 14px;
+    padding: 8px 14px;
 }
 .button-ghost {
-  background: transparent;
-  color: #111;
-  border: 1px solid #ddd;
+    background: transparent;
+    color: #111;
+    border: 1px solid #ddd;
 }
 .pricing {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 260px));
-  gap: 20px;
-  justify-content: center;
-  padding: 0 24px 96px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 260px));
+    gap: 20px;
+    justify-content: center;
+    padding: 0 24px 96px;
 }
 .card {
-  background: white;
-  border: 1px solid #eee;
-  border-radius: 14px;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 14px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 .card-featured {
-  border-color: #111;
-  box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.25);
+    border-color: #111;
+    box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.25);
 }
 .card h2 {
-  margin: 0;
-  font-size: 18px;
+    margin: 0;
+    font-size: 18px;
 }
 .price {
-  font-size: 36px;
-  font-weight: 800;
-  margin: 0;
+    font-size: 36px;
+    font-weight: 800;
+    margin: 0;
 }
 .price span {
-  font-size: 14px;
-  color: #777;
-  font-weight: 500;
+    font-size: 14px;
+    color: #777;
+    font-weight: 500;
 }
 .card ul {
-  margin: 0;
-  padding-left: 18px;
-  color: #444;
-  flex: 1;
+    margin: 0;
+    padding-left: 18px;
+    color: #444;
+    flex: 1;
 }

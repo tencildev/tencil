@@ -1,45 +1,45 @@
-import type { ImageAttachment, ProviderMessage, ThreadStatus } from "@fixhere/protocol";
-import type { RpcSocket } from "./rpc.ts";
+import type { ImageAttachment, ProviderMessage, ThreadStatus } from '@fixhere/protocol';
+import type { RpcSocket } from '../rpc-socket.ts';
 
-export type RuntimeMode = "approval-required" | "auto-accept-edits" | "auto" | "full-access";
+export type RuntimeMode = 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access';
 
 export interface ModelSelection {
-  instanceId: string;
-  model: string;
+    instanceId: string;
+    model: string;
 }
 
 export interface TrackerUpdate {
-  messages: ProviderMessage[];
-  status?: { status: Exclude<ThreadStatus, "starting">; detail?: string };
-  gone?: boolean;
+    messages: ProviderMessage[];
+    status?: { status: Exclude<ThreadStatus, 'starting'>; detail?: string };
+    gone?: boolean;
 }
 
 /** Folds one protocol's thread stream into Fixhere messages + status. */
 export interface ThreadTracker {
-  apply(item: unknown): TrackerUpdate;
-  status(): { status: Exclude<ThreadStatus, "starting">; detail?: string };
-  /** What an interrupt should target (run id in V2, turn id in V1). */
-  activeTurnId(): string | undefined;
+    apply(item: unknown): TrackerUpdate;
+    status(): { status: Exclude<ThreadStatus, 'starting'>; detail?: string };
+    /** What an interrupt should target (run id in V2, turn id in V1). */
+    activeTurnId(): string | undefined;
 }
 
 export interface StartThreadInput {
-  threadId: string;
-  projectId: string;
-  title: string;
-  text: string;
-  attachments: ImageAttachment[];
-  modelSelection: ModelSelection;
-  runtimeMode: RuntimeMode;
-  interactionMode: "default" | "plan";
+    threadId: string;
+    projectId: string;
+    title: string;
+    text: string;
+    attachments: ImageAttachment[];
+    modelSelection: ModelSelection;
+    runtimeMode: RuntimeMode;
+    interactionMode: 'default' | 'plan';
 }
 
 export interface SendInput {
-  threadId: string;
-  text: string;
-  attachments: ImageAttachment[];
-  busy: boolean;
-  runtimeMode: RuntimeMode;
-  interactionMode: "default" | "plan";
+    threadId: string;
+    text: string;
+    attachments: ImageAttachment[];
+    busy: boolean;
+    runtimeMode: RuntimeMode;
+    interactionMode: 'default' | 'plan';
 }
 
 /**
@@ -49,17 +49,17 @@ export interface SendInput {
  *   (`orchestration.launchThread`, runs, turn items)
  */
 export interface ProtocolAdapter {
-  readonly version: 1 | 2;
-  createProject(
-    socket: RpcSocket,
-    input: { projectId: string; title: string; workspaceRoot: string },
-  ): Promise<void>;
-  startThread(socket: RpcSocket, input: StartThreadInput): Promise<void>;
-  sendMessage(socket: RpcSocket, input: SendInput): Promise<void>;
-  interrupt(socket: RpcSocket, threadId: string, turnId: string): Promise<void>;
-  createTracker(): ThreadTracker;
+    readonly version: 1 | 2;
+    createProject(
+        socket: RpcSocket,
+        input: { projectId: string; title: string; workspaceRoot: string },
+    ): Promise<void>;
+    startThread(socket: RpcSocket, input: StartThreadInput): Promise<void>;
+    sendMessage(socket: RpcSocket, input: SendInput): Promise<void>;
+    interrupt(socket: RpcSocket, threadId: string, turnId: string): Promise<void>;
+    createTracker(): ThreadTracker;
 }
 
 export function decodedSize(dataUrl: string): number {
-  return Buffer.from(dataUrl.split(",", 2)[1] ?? "", "base64").byteLength;
+    return Buffer.from(dataUrl.split(',', 2)[1] ?? '', 'base64').byteLength;
 }

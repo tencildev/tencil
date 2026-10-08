@@ -1,11 +1,17 @@
-import { defineConfig } from "tsdown";
+import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/cli.ts", "src/vite.ts", "src/react.ts"],
-  format: "esm",
-  platform: "node",
-  target: "node22",
-  dts: { eager: true },
-  // Workspace packages are private; inline them into the published build.
-  deps: { alwaysBundle: [/^@fixhere\//] },
+    // Keys are the published file names (dist/cli.mjs, dist/vite.mjs, …).
+    entry: {
+        index: 'src/index.ts',
+        cli: 'src/cli/index.ts',
+        vite: 'src/integrations/vite.ts',
+        react: 'src/integrations/react.ts',
+    },
+    format: 'esm',
+    platform: 'node',
+    target: 'node22',
+    dts: { eager: true },
+    // Workspace packages are private; inline them into the published build.
+    deps: { alwaysBundle: [/^@fixhere\//] },
 });

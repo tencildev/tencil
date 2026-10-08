@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement } from 'react';
 
 /**
  * Loads the Fixhere overlay in development from the daemon on this machine
@@ -8,6 +8,6 @@ import { createElement } from "react";
  *   <body>{children}<Fixhere /></body>
  */
 export function Fixhere({ port = 4747 }: { port?: number }) {
-  if (process.env.NODE_ENV !== "development") return null;
-  return createElement("script", { src: `http://localhost:${port}/fixhere.js`, async: true });
+    if (process.env.NODE_ENV !== 'development') return null;
+    return createElement('script', { src: `http://localhost:${port}/fixhere.js`, async: true });
 }

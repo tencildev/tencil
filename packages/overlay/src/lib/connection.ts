@@ -1,16 +1,16 @@
 import type {
-  ClientMessageInput,
-  ProviderInfo,
-  ProviderProject,
-  ProviderThreadSummary,
-  ServerMessage,
-  Thread,
-} from "@fixhere/protocol";
-import { batch, signal } from "@preact/signals";
+    ClientMessageInput,
+    ProviderInfo,
+    ProviderProject,
+    ProviderThreadSummary,
+    ServerMessage,
+    Thread,
+} from '@fixhere/protocol';
+import { batch, signal } from '@preact/signals';
 
-export type BridgeState = "connecting" | "open" | "closed";
+export type BridgeState = 'connecting' | 'open' | 'closed';
 
-export const bridgeState = signal<BridgeState>("connecting");
+export const bridgeState = signal<BridgeState>('connecting');
 export const provider = signal<ProviderInfo | null>(null);
 export const project = signal<{ name: string; root: string } | null>(null);
 export const threads = signal<ReadonlyMap<string, Thread>>(new Map());
@@ -23,113 +23,117 @@ export const lastError = signal<{ message: string; threadId?: string; at: number
 
 let socket: WebSocket | undefined;
 let retry = 500;
-let bridgeUrl = "";
+let bridgeUrl = '';
 
 export function connect(url: string): void {
-  bridgeUrl = url;
-  open();
+    bridgeUrl = url;
+    open();
 }
 
 export function send(message: ClientMessageInput): boolean {
-  if (socket?.readyState !== WebSocket.OPEN) {
-    lastError.value = { message: "Not connected to the Fixhere bridge", at: Date.now() };
-    return false;
-  }
-  socket.send(JSON.stringify(message));
-  return true;
+    if (socket?.readyState !== WebSocket.OPEN) {
+        lastError.value = { message: 'Not connected to the Fixhere bridge', at: Date.now() };
+        return false;
+    }
+    socket.send(JSON.stringify(message));
+    return true;
 }
 
 /** Optimistic insert so a new pin renders before the bridge round-trips. */
 export function upsertLocal(thread: Thread): void {
-  const next = new Map(threads.value);
-  next.set(thread.id, thread);
-  threads.value = next;
+    const next = new Map(threads.value);
+    next.set(thread.id, thread);
+    threads.value = next;
 }
 
 function open(): void {
-  const wsUrl = new URL("/ws", bridgeUrl);
-  wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
-  bridgeState.value = "connecting";
-  const ws = new WebSocket(wsUrl);
-  socket = ws;
+    const wsUrl = new URL('/ws', bridgeUrl);
+    wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    bridgeState.value = 'connecting';
+    const ws = new WebSocket(wsUrl);
+    socket = ws;
 
-  ws.addEventListener("open", () => {
-    retry = 500;
-    ws.send(JSON.stringify({ type: "hello", protocol: 1, pageUrl: location.href }));
-  });
-  ws.addEventListener("message", (event) => {
-    try {
-      handle(JSON.parse(String(event.data)) as ServerMessage);
-    } catch (error) {
-      console.warn("[fixhere] bad message", error);
-    }
-  });
-  ws.addEventListener("close", () => {
-    if (socket !== ws) return;
-    bridgeState.value = "closed";
-    setTimeout(open, retry);
-    retry = Math.min(retry * 2, 10_000);
-  });
+    ws.addEventListener('open', () => {
+        retry = 500;
+        ws.send(JSON.stringify({ type: 'hello', protocol: 1, pageUrl: location.href }));
+    });
+    ws.addEventListener('message', event => {
+        try {
+            handle(JSON.parse(String(event.data)) as ServerMessage);
+        } catch (error) {
+            console.warn('[fixhere] bad message', error);
+        }
+    });
+    ws.addEventListener('close', () => {
+        if (socket !== ws) return;
+        bridgeState.value = 'closed';
+        setTimeout(open, retry);
+        retry = Math.min(retry * 2, 10_000);
+    });
 }
 
 function handle(message: ServerMessage): void {
-  switch (message.type) {
-    case "ready":
-      batch(() => {
-        bridgeState.value = "open";
-        projectChoices.value = null;
-        provider.value = message.provider;
-        project.value = message.project;
-        threads.value = new Map(message.threads.map((thread) => [thread.id, thread]));
-      });
-      return;
-    case "project.unknown":
-      batch(() => {
-        bridgeState.value = "open";
-        projectChoices.value = message.choices;
-      });
-      return;
-    case "provider.status":
-      provider.value = message.provider;
-      return;
-    case "thread.upsert":
-      upsertLocal(message.thread);
-      return;
-    case "thread.removed": {
-      const next = new Map(threads.value);
-      next.delete(message.threadId);
-      threads.value = next;
-      return;
+    switch (message.type) {
+        case 'ready':
+            batch(() => {
+                bridgeState.value = 'open';
+                projectChoices.value = null;
+                provider.value = message.provider;
+                project.value = message.project;
+                threads.value = new Map(message.threads.map(thread => [thread.id, thread]));
+            });
+            return;
+        case 'project.unknown':
+            batch(() => {
+                bridgeState.value = 'open';
+                projectChoices.value = message.choices;
+            });
+            return;
+        case 'provider.status':
+            provider.value = message.provider;
+            return;
+        case 'thread.upsert':
+            upsertLocal(message.thread);
+            return;
+        case 'thread.removed': {
+            const next = new Map(threads.value);
+            next.delete(message.threadId);
+            threads.value = next;
+            return;
+        }
+        case 'provider.threads':
+            batch(() => {
+                providerThreads.value = message.threads;
+                providerProject.value = message.project;
+            });
+            return;
+        case 'error':
+            lastError.value = {
+                message: message.message,
+                threadId: message.threadId,
+                at: Date.now(),
+            };
+            return;
     }
-    case "provider.threads":
-      batch(() => {
-        providerThreads.value = message.threads;
-        providerProject.value = message.project;
-      });
-      return;
-    case "error":
-      lastError.value = { message: message.message, threadId: message.threadId, at: Date.now() };
-      return;
-  }
 }
 
 export function refreshProviderThreads(): void {
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "provider.threads" }));
-  }
+    if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'provider.threads' }));
+    }
 }
 
 /** Open a provider thread in the dock, reusing an existing unpinned record. */
 export function openProviderThread(summary: ProviderThreadSummary): string | null {
-  for (const thread of threads.value.values()) {
-    if (thread.provider.threadId === summary.id && !thread.anchor) return thread.id;
-  }
-  const id = crypto.randomUUID();
-  const sent = send({
-    type: "thread.open",
-    id,
-    providerThreadId: summary.id,
-    title: summary.title,
-  });
-  return sent ? id : null;
+    for (const thread of threads.value.values()) {
+        if (thread.provider.threadId === summary.id && !thread.anchor) return thread.id;
+    }
+    const id = crypto.randomUUID();
+    const sent = send({
+        type: 'thread.open',
+        id,
+        providerThreadId: summary.id,
+        title: summary.title,
+    });
+    return sent ? id : null;
 }

@@ -1,154 +1,130 @@
-import { useRef } from "preact/hooks";
-import { bridgeState, projectChoices, provider, send } from "../connection.ts";
+import { useRef } from 'preact/hooks';
+import { bridgeState, projectChoices, provider, send } from '../lib/connection.ts';
+import { dock, moveDockBy, startDrag } from '../lib/dock.ts';
 import {
-  activeCount,
-  hidden,
-  inboxOpen,
-  mode,
-  startPicking,
-  stopPicking,
-  unresolvedCount,
-} from "../state.ts";
-import { dock, moveDockBy, startDrag } from "./dock.ts";
-import { CommentIcon, EyeIcon, EyeOffIcon, InboxIcon } from "./icons.tsx";
+    activeCount,
+    hidden,
+    inboxOpen,
+    mode,
+    startPicking,
+    stopPicking,
+    unresolvedCount,
+} from '../lib/state.ts';
+import { CommentIcon, EyeIcon, EyeOffIcon, InboxIcon } from './icons.tsx';
+import { ProjectPicker } from './project-picker.tsx';
 
 export function Toolbar() {
-  const status = connectionStatus();
-  const picking = mode.value === "picking";
-  const ref = useRef<HTMLDivElement>(null);
-  return (
-    <div ref={ref} class={`toolbar-wrap dock-${dock.value}`}>
-      {picking && <div class="toolbar-hint">Click any element to pin a prompt · Esc to cancel</div>}
-      {!picking && projectChoices.value && <ProjectPicker />}
-      {!picking && !projectChoices.value && status.hint && (
-        <div class={`toolbar-hint hint-${status.tone}`}>
-          {status.hint}
-          {status.action && (
-            <button type="button" class="hint-action" onClick={status.action.run}>
-              {status.action.label}
-            </button>
-          )}
+    const status = connectionStatus();
+    const picking = mode.value === 'picking';
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+        <div ref={ref} class={`toolbar-wrap dock-${dock.value}`}>
+            {picking && (
+                <div class="toolbar-hint">Click any element to pin a prompt · Esc to cancel</div>
+            )}
+            {!picking && projectChoices.value && <ProjectPicker />}
+            {!picking && !projectChoices.value && status.hint && (
+                <div class={`toolbar-hint hint-${status.tone}`}>
+                    {status.hint}
+                    {status.action && (
+                        <button type="button" class="hint-action" onClick={status.action.run}>
+                            {status.action.label}
+                        </button>
+                    )}
+                </div>
+            )}
+            <div class="toolbar">
+                <span class={`status-dot status-${status.tone}`} title={status.title}>
+                    {activeCount.value > 0 && <span class="status-ping" />}
+                </span>
+                <button
+                    type="button"
+                    class="divider"
+                    aria-label="Move toolbar (drag, or use arrow keys)"
+                    title="Drag to move"
+                    onPointerDown={event => ref.current && startDrag(event, ref.current)}
+                    onKeyDown={event => {
+                        if (ref.current && moveDockBy(event.key, ref.current))
+                            event.preventDefault();
+                    }}
+                />
+                <button
+                    type="button"
+                    class={`tool${picking ? ' tool-active' : ''}`}
+                    title="Comment (C)"
+                    onClick={() => (picking ? stopPicking() : startPicking())}
+                >
+                    <CommentIcon />
+                    <span class="tool-label">Comment</span>
+                    <kbd>C</kbd>
+                </button>
+                <button
+                    type="button"
+                    class={`tool${inboxOpen.value ? ' tool-active' : ''}`}
+                    title="Pins"
+                    onClick={() => {
+                        inboxOpen.value = !inboxOpen.value;
+                    }}
+                >
+                    <InboxIcon />
+                    {unresolvedCount.value > 0 && (
+                        <span class="badge">{unresolvedCount.value}</span>
+                    )}
+                </button>
+                <button
+                    type="button"
+                    class="tool"
+                    title={hidden.value ? 'Show pins' : 'Hide pins'}
+                    onClick={() => {
+                        hidden.value = !hidden.value;
+                        if (hidden.value) stopPicking();
+                    }}
+                >
+                    {hidden.value ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+            </div>
         </div>
-      )}
-      <div class="toolbar">
-        <span class={`status-dot status-${status.tone}`} title={status.title}>
-          {activeCount.value > 0 && <span class="status-ping" />}
-        </span>
-        <button
-          type="button"
-          class="divider"
-          aria-label="Move toolbar (drag, or use arrow keys)"
-          title="Drag to move"
-          onPointerDown={(event) => ref.current && startDrag(event, ref.current)}
-          onKeyDown={(event) => {
-            if (ref.current && moveDockBy(event.key, ref.current)) event.preventDefault();
-          }}
-        />
-        <button
-          type="button"
-          class={`tool${picking ? " tool-active" : ""}`}
-          title="Comment (C)"
-          onClick={() => (picking ? stopPicking() : startPicking())}
-        >
-          <CommentIcon />
-          <span class="tool-label">Comment</span>
-          <kbd>C</kbd>
-        </button>
-        <button
-          type="button"
-          class={`tool${inboxOpen.value ? " tool-active" : ""}`}
-          title="Pins"
-          onClick={() => {
-            inboxOpen.value = !inboxOpen.value;
-          }}
-        >
-          <InboxIcon />
-          {unresolvedCount.value > 0 && <span class="badge">{unresolvedCount.value}</span>}
-        </button>
-        <button
-          type="button"
-          class="tool"
-          title={hidden.value ? "Show pins" : "Hide pins"}
-          onClick={() => {
-            hidden.value = !hidden.value;
-            if (hidden.value) stopPicking();
-          }}
-        >
-          {hidden.value ? <EyeOffIcon /> : <EyeIcon />}
-        </button>
-      </div>
-    </div>
-  );
+    );
 }
 
 interface ConnectionStatus {
-  tone: "ok" | "warn" | "error";
-  title: string;
-  hint?: string;
-  action?: { label: string; run: () => void };
-}
-
-/** Shown when the daemon couldn't match this page to a project. */
-function ProjectPicker() {
-  const choices = projectChoices.value ?? [];
-  return (
-    <div class="project-picker">
-      <p class="project-picker-title">Which project is this page?</p>
-      {choices.length === 0 ? (
-        <p class="project-picker-empty">
-          No T3 Code projects found. Pair with T3 Code first: npx fixhere connect
-        </p>
-      ) : (
-        <div class="project-picker-list">
-          {choices.map((choice) => (
-            <button
-              key={choice.root}
-              type="button"
-              class="project-picker-option"
-              title={choice.root}
-              onClick={() => send({ type: "project.select", root: choice.root })}
-            >
-              <span class="project-picker-name">{choice.title}</span>
-              <span class="project-picker-root">{choice.root}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+    tone: 'ok' | 'warn' | 'error';
+    title: string;
+    hint?: string;
+    action?: { label: string; run: () => void };
 }
 
 function connectionStatus(): ConnectionStatus {
-  if (bridgeState.value !== "open") {
-    return {
-      tone: "error",
-      title: "Fixhere daemon offline",
-      hint:
-        bridgeState.value === "connecting"
-          ? undefined
-          : "The Fixhere daemon stopped. Start it again with npx fixhere start.",
-    };
-  }
-  if (projectChoices.value) return { tone: "warn", title: "Pick this page's project" };
-  const info = provider.value;
-  if (!info) return { tone: "warn", title: "Connecting…" };
-  switch (info.state) {
-    case "ready":
-      return { tone: "ok", title: `${info.label}${info.target ? ` · ${info.target}` : ""}` };
-    case "unauthorized":
-      return {
-        tone: "warn",
-        title: `${info.label}: not paired`,
-        hint: `Not paired with ${info.label}`,
-        action: { label: "Pair", run: () => send({ type: "provider.pair" }) },
-      };
-    case "unavailable":
-      return {
-        tone: "error",
-        title: info.detail ?? `${info.label} unavailable`,
-        hint: info.detail,
-      };
-    default:
-      return { tone: "warn", title: `Connecting to ${info.label}…` };
-  }
+    if (bridgeState.value !== 'open') {
+        return {
+            tone: 'error',
+            title: 'Fixhere daemon offline',
+            hint:
+                bridgeState.value === 'connecting'
+                    ? undefined
+                    : 'The Fixhere daemon stopped. Start it again with npx fixhere start.',
+        };
+    }
+    if (projectChoices.value) return { tone: 'warn', title: "Pick this page's project" };
+    const info = provider.value;
+    if (!info) return { tone: 'warn', title: 'Connecting…' };
+    switch (info.state) {
+        case 'ready':
+            return { tone: 'ok', title: `${info.label}${info.target ? ` · ${info.target}` : ''}` };
+        case 'unauthorized':
+            return {
+                tone: 'warn',
+                title: `${info.label}: not paired`,
+                hint: `Not paired with ${info.label}`,
+                action: { label: 'Pair', run: () => send({ type: 'provider.pair' }) },
+            };
+        case 'unavailable':
+            return {
+                tone: 'error',
+                title: info.detail ?? `${info.label} unavailable`,
+                hint: info.detail,
+            };
+        default:
+            return { tone: 'warn', title: `Connecting to ${info.label}…` };
+    }
 }

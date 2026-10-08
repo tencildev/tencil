@@ -1,19 +1,19 @@
-import type { Anchor, ElementContext } from "@fixhere/protocol";
-import { computed, signal } from "@preact/signals";
-import { threads } from "./connection.ts";
+import type { Anchor, ElementContext } from '@fixhere/protocol';
+import { computed, signal } from '@preact/signals';
+import { threads } from './connection.ts';
 
-export type Mode = "idle" | "picking";
+export type Mode = 'idle' | 'picking';
 
 export interface Draft {
-  element: Element;
-  anchor: Anchor;
-  /** Component name or tag, available synchronously for the composer chip. */
-  label: string;
-  /** Source maps are fetched lazily, so the full context resolves later. */
-  context: Promise<ElementContext>;
+    element: Element;
+    anchor: Anchor;
+    /** Component name or tag, available synchronously for the composer chip. */
+    label: string;
+    /** Source maps are fetched lazily, so the full context resolves later. */
+    context: Promise<ElementContext>;
 }
 
-export const mode = signal<Mode>("idle");
+export const mode = signal<Mode>('idle');
 export const hovered = signal<Element | null>(null);
 export const draft = signal<Draft | null>(null);
 export const openThreadId = signal<string | null>(null);
@@ -28,45 +28,46 @@ export const layoutTick = signal(0);
 export const currentPage = signal(pageKey(location.href));
 
 export function pageKey(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname.replace(/\/$/, "") || "/"}`;
-  } catch {
-    return url;
-  }
+    try {
+        const parsed = new URL(url);
+        return `${parsed.origin}${parsed.pathname.replace(/\/$/, '') || '/'}`;
+    } catch {
+        return url;
+    }
 }
 
 export const sortedThreads = computed(() =>
-  [...threads.value.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [...threads.value.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
 
 export const pageThreads = computed(() =>
-  sortedThreads.value
-    .filter(
-      (thread) => thread.anchor && thread.pageUrl && pageKey(thread.pageUrl) === currentPage.value,
-    )
-    .filter((thread) => showResolved.value || !thread.resolved)
-    .reverse(),
+    sortedThreads.value
+        .filter(
+            thread =>
+                thread.anchor && thread.pageUrl && pageKey(thread.pageUrl) === currentPage.value,
+        )
+        .filter(thread => showResolved.value || !thread.resolved)
+        .reverse(),
 );
 
 export const unresolvedCount = computed(
-  () => sortedThreads.value.filter((thread) => !thread.resolved).length,
+    () => sortedThreads.value.filter(thread => !thread.resolved).length,
 );
 
 export const activeCount = computed(
-  () =>
-    sortedThreads.value.filter(
-      (thread) => thread.status === "working" || thread.status === "starting",
-    ).length,
+    () =>
+        sortedThreads.value.filter(
+            thread => thread.status === 'working' || thread.status === 'starting',
+        ).length,
 );
 
 export function startPicking(): void {
-  draft.value = null;
-  openThreadId.value = null;
-  mode.value = "picking";
+    draft.value = null;
+    openThreadId.value = null;
+    mode.value = 'picking';
 }
 
 export function stopPicking(): void {
-  mode.value = "idle";
-  hovered.value = null;
+    mode.value = 'idle';
+    hovered.value = null;
 }
