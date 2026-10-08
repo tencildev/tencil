@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 
 export const DEFAULT_T3_URL = 'http://127.0.0.1:3773';
 
-/** Scopes Fixhere needs: read thread state and launch/steer threads. */
+/** Scopes Tencil needs: read thread state and launch/steer threads. */
 const SCOPES = 'orchestration:read orchestration:operate';
 
 export interface StoredCredential {
@@ -49,7 +49,7 @@ export function normalizeBaseUrl(raw: string): string {
 
 export async function exchangePairingCredential(
     target: PairingTarget,
-    clientLabel = 'Fixhere',
+    clientLabel = 'Tencil',
 ): Promise<StoredCredential> {
     const body = new URLSearchParams({
         grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
@@ -143,7 +143,7 @@ export async function requestWebSocketTicket(
 
 export class UnauthorizedError extends Error {
     constructor() {
-        super('T3 Code rejected the stored token. Run `fixhere connect` to pair again.');
+        super('T3 Code rejected the stored token. Run `tencil connect` to pair again.');
         this.name = 'UnauthorizedError';
     }
 }
@@ -159,7 +159,7 @@ export class CredentialStore {
     constructor(
         readonly path = join(
             process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'),
-            'fixhere',
+            'tencil',
             'credentials.json',
         ),
     ) {}

@@ -10,7 +10,7 @@ import type {
     ProviderThreadSummary,
     SendMessageInput,
     ThreadSink,
-} from '@fixhere/protocol';
+} from '@tencil/protocol';
 import {
     CredentialStore,
     createLocalPairingCode,
@@ -33,9 +33,9 @@ import { RpcError, RpcSocket } from './rpc-socket.ts';
 export interface T3CodeProviderOptions {
     /** Directory the dev site lives in; mapped to a T3 Code project by workspace root. */
     projectRoot: string;
-    /** Defaults to the server `fixhere connect` paired with last, then localhost:3773. */
+    /** Defaults to the server `tencil connect` paired with last, then localhost:3773. */
     baseUrl?: string;
-    /** Explicit bearer token. Defaults to the one stored by `fixhere connect`. */
+    /** Explicit bearer token. Defaults to the one stored by `tencil connect`. */
     token?: string;
     credentials?: CredentialStore;
     modelSelection?: ModelSelection;
@@ -115,7 +115,7 @@ export class T3CodeProvider implements Provider {
     readonly #options: T3CodeProviderOptions;
     readonly #credentials: CredentialStore;
     #baseUrl: string;
-    #info: ProviderInfo = { id: 't3code', label: 'T3 Code', state: 'connecting' };
+    #info: ProviderInfo = { id: 't3code', label: 'T3 Code', state: 'connecting', canPair: true };
     #infoListeners = new Set<(info: ProviderInfo) => void>();
     #connection: Connection | undefined;
     #watchers = new Map<string, Watcher>();
@@ -156,7 +156,7 @@ export class T3CodeProvider implements Provider {
         if (!code) {
             this.#setInfo({
                 state: 'unauthorized',
-                detail: "Couldn't pair automatically. Run `npx fixhere connect` with a pairing link from T3 Code.",
+                detail: "Couldn't pair automatically. Run `npx tencil connect` with a pairing link from T3 Code.",
             });
             return;
         }
@@ -379,7 +379,7 @@ export class T3CodeProvider implements Provider {
         }>(
             '/.well-known/t3/environment',
             undefined,
-            `T3 Code isn't running at ${this.#baseUrl}. Open T3 Code and Fixhere connects on its own.`,
+            `T3 Code isn't running at ${this.#baseUrl}. Open T3 Code and Tencil connects on its own.`,
         );
         const protocol = environment.orchestrationProtocolVersion === 2 ? v2 : v1;
 
@@ -560,7 +560,7 @@ export class T3CodeProvider implements Provider {
     }
 
     #setInfo(next: Omit<ProviderInfo, 'id' | 'label'>): void {
-        const info: ProviderInfo = { id: this.id, label: this.label, ...next };
+        const info: ProviderInfo = { id: this.id, label: this.label, canPair: true, ...next };
         if (
             info.state === this.#info.state &&
             info.detail === this.#info.detail &&

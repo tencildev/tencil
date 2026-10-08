@@ -1,3 +1,4 @@
+export { FakeAgentSdk, type FakeQueryRecord, type FakeSession } from './fake-agent-sdk.ts';
 export {
     type FakeMessage,
     type FakeProject,

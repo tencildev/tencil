@@ -1,5 +1,5 @@
-import type { Anchor, ElementContext } from '@fixhere/protocol';
 import { computed, signal } from '@preact/signals';
+import type { Anchor, ElementContext } from '@tencil/protocol';
 import { threads } from './connection.ts';
 
 export type Mode = 'idle' | 'picking';
@@ -18,6 +18,7 @@ export const hovered = signal<Element | null>(null);
 export const draft = signal<Draft | null>(null);
 export const openThreadId = signal<string | null>(null);
 export const inboxOpen = signal(false);
+export const settingsOpen = signal(false);
 export const showResolved = signal(false);
 export const hidden = signal(false);
 

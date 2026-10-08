@@ -1,5 +1,5 @@
-import type { Thread } from '@fixhere/protocol';
 import { computed } from '@preact/signals';
+import type { Thread } from '@tencil/protocol';
 import { resolveAnchor } from '../lib/position.ts';
 import {
     draft,

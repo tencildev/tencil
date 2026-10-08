@@ -7,7 +7,7 @@ const FAKE_T3_PORT = 47390;
 const DAEMON_PORT = 47391;
 const APP_PORT = 5190;
 // Fresh credentials and pin store per run, so local state never leaks in.
-const configHome = mkdtempSync(join(tmpdir(), 'fixhere-e2e-'));
+const configHome = mkdtempSync(join(tmpdir(), 'tencil-e2e-'));
 
 export default defineConfig({
     testDir: 'e2e',
@@ -30,11 +30,11 @@ export default defineConfig({
         {
             // The real daemon from the built CLI; it finds the playground's folder
             // from the Vite dev server's port, like it would on a developer's machine.
-            command: `node ../../packages/fixhere/dist/cli.mjs daemon --port ${DAEMON_PORT}`,
+            command: `node ../../packages/tencil/dist/cli.mjs daemon --port ${DAEMON_PORT}`,
             url: `http://127.0.0.1:${DAEMON_PORT}/health`,
             env: {
-                FIXHERE_T3_URL: `http://127.0.0.1:${FAKE_T3_PORT}`,
-                FIXHERE_T3_TOKEN: 'test-token',
+                TENCIL_T3_URL: `http://127.0.0.1:${FAKE_T3_PORT}`,
+                TENCIL_T3_TOKEN: 'test-token',
                 XDG_CONFIG_HOME: configHome,
             },
             reuseExistingServer: false,
@@ -42,7 +42,7 @@ export default defineConfig({
         {
             command: `vite --port ${APP_PORT} --strictPort`,
             url: `http://localhost:${APP_PORT}`,
-            env: { FIXHERE_PORT: String(DAEMON_PORT) },
+            env: { TENCIL_PORT: String(DAEMON_PORT) },
             reuseExistingServer: false,
         },
     ],

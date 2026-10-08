@@ -26,7 +26,7 @@ export const ThreadMessage = z.object({
 export type ThreadMessage = z.infer<typeof ThreadMessage>;
 
 /**
- * A conversation Fixhere tracks, backed by one provider thread. Owned and
+ * A conversation Tencil tracks, backed by one provider thread. Owned and
  * persisted by the bridge. Pinned threads sit on an element of a page;
  * threads opened from the provider's list have no anchor and live in the dock.
  * Several pins may continue the same provider thread.

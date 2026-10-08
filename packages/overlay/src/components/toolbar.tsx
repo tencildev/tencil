@@ -1,16 +1,17 @@
 import { useRef } from 'preact/hooks';
-import { bridgeState, projectChoices, provider, send } from '../lib/connection.ts';
+import { bridgeState, project, projectChoices, provider, send } from '../lib/connection.ts';
 import { dock, moveDockBy, startDrag } from '../lib/dock.ts';
 import {
     activeCount,
     hidden,
     inboxOpen,
     mode,
+    settingsOpen,
     startPicking,
     stopPicking,
     unresolvedCount,
 } from '../lib/state.ts';
-import { CommentIcon, EyeIcon, EyeOffIcon, InboxIcon } from './icons.tsx';
+import { CommentIcon, EyeIcon, EyeOffIcon, InboxIcon, SettingsIcon } from './icons.tsx';
 import { ProjectPicker } from './project-picker.tsx';
 
 export function Toolbar() {
@@ -64,6 +65,7 @@ export function Toolbar() {
                     title="Pins"
                     onClick={() => {
                         inboxOpen.value = !inboxOpen.value;
+                        settingsOpen.value = false;
                     }}
                 >
                     <InboxIcon />
@@ -82,6 +84,18 @@ export function Toolbar() {
                 >
                     {hidden.value ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
+                <button
+                    type="button"
+                    class={`tool${settingsOpen.value ? ' tool-active' : ''}`}
+                    title="Project settings"
+                    disabled={!project.value}
+                    onClick={() => {
+                        settingsOpen.value = !settingsOpen.value;
+                        inboxOpen.value = false;
+                    }}
+                >
+                    <SettingsIcon />
+                </button>
             </div>
         </div>
     );
@@ -94,15 +108,24 @@ interface ConnectionStatus {
     action?: { label: string; run: () => void };
 }
 
+/** The other agent may well be running; offer it from the status hint. */
+const switchAgent = {
+    label: 'Switch agent',
+    run: () => {
+        settingsOpen.value = true;
+        inboxOpen.value = false;
+    },
+};
+
 function connectionStatus(): ConnectionStatus {
     if (bridgeState.value !== 'open') {
         return {
             tone: 'error',
-            title: 'Fixhere daemon offline',
+            title: 'Tencil daemon offline',
             hint:
                 bridgeState.value === 'connecting'
                     ? undefined
-                    : 'The Fixhere daemon stopped. Start it again with npx fixhere start.',
+                    : 'The Tencil daemon stopped. Start it again with npx tencil start.',
         };
     }
     if (projectChoices.value) return { tone: 'warn', title: "Pick this page's project" };
@@ -112,17 +135,25 @@ function connectionStatus(): ConnectionStatus {
         case 'ready':
             return { tone: 'ok', title: `${info.label}${info.target ? ` · ${info.target}` : ''}` };
         case 'unauthorized':
-            return {
-                tone: 'warn',
-                title: `${info.label}: not paired`,
-                hint: `Not paired with ${info.label}`,
-                action: { label: 'Pair', run: () => send({ type: 'provider.pair' }) },
-            };
+            return info.canPair
+                ? {
+                      tone: 'warn',
+                      title: `${info.label}: not paired`,
+                      hint: `Not paired with ${info.label}`,
+                      action: { label: 'Pair', run: () => send({ type: 'provider.pair' }) },
+                  }
+                : {
+                      tone: 'warn',
+                      title: `${info.label}: not signed in`,
+                      hint: info.detail ?? `Sign in to ${info.label}`,
+                      action: switchAgent,
+                  };
         case 'unavailable':
             return {
                 tone: 'error',
                 title: info.detail ?? `${info.label} unavailable`,
-                hint: info.detail,
+                hint: info.detail ?? `${info.label} is unavailable`,
+                action: switchAgent,
             };
         default:
             return { tone: 'warn', title: `Connecting to ${info.label}…` };

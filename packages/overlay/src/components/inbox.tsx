@@ -1,4 +1,4 @@
-import type { ProviderProject, ProviderThreadSummary, Thread } from '@fixhere/protocol';
+import type { ProviderProject, ProviderThreadSummary, Thread } from '@tencil/protocol';
 import { useEffect, useState } from 'preact/hooks';
 import {
     bridgeState,
@@ -22,7 +22,7 @@ import { CloseIcon } from './icons.tsx';
 import { pinNumbers, pinVariant } from './pins.tsx';
 
 /** Survives the full reload when jumping to a pin on another page. */
-export const PENDING_OPEN_KEY = 'fixhere:open';
+export const PENDING_OPEN_KEY = 'tencil:open';
 
 type Scope = 'page' | 'all' | 'provider';
 
@@ -31,10 +31,11 @@ export function Inbox() {
     const label = provider.value?.label ?? 'Agent';
 
     const ready = bridgeState.value === 'open' && provider.value?.state === 'ready';
-    // Re-request once the bridge or provider (re)connects; earlier requests are dropped.
+    const providerId = provider.value?.id;
+    // Re-request once the bridge or provider (re)connects, or the project switches provider.
     useEffect(() => {
         if (ready && inboxOpen.value && scope === 'provider') refreshProviderThreads();
-    }, [scope, inboxOpen.value, ready]);
+    }, [scope, inboxOpen.value, ready, providerId]);
 
     if (!inboxOpen.value) return null;
 

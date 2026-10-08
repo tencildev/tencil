@@ -1,4 +1,0 @@
-{
-    "extends": "@fixhere/tsconfig/node.json",
-    "include": ["src", "tsdown.config.ts"]
-}

@@ -68,17 +68,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       # Pack exactly what npm would publish and install it into a clean project.
-      - run: pnpm --filter fixhere pack --pack-destination "$RUNNER_TEMP"
+      - run: pnpm --filter tencil pack --pack-destination "$RUNNER_TEMP"
       - name: Smoke-test the packed CLI
         run: |
           mkdir "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
           npm init -y >/dev/null
-          npm install "$RUNNER_TEMP"/fixhere-*.tgz
-          npx fixhere --version
-          node -e "import('fixhere').then(m => { if (typeof m.startDaemon !== 'function') process.exit(1) })"
+          npm install "$RUNNER_TEMP"/tencil-*.tgz
+          npx tencil --version
+          node -e "import('tencil').then(m => { if (typeof m.startDaemon !== 'function') process.exit(1) })"
           # The packed daemon starts, answers and stops.
-          export XDG_CONFIG_HOME="$RUNNER_TEMP/config" FIXHERE_PORT=48777
-          npx fixhere start
-          npx fixhere status
-          curl -sf http://127.0.0.1:48777/fixhere.js > /dev/null
-          npx fixhere stop
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/config" TENCIL_PORT=48777
+          npx tencil start
+          npx tencil status
+          curl -sf http://127.0.0.1:48777/tencil.js > /dev/null
+          npx tencil stop

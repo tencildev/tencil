@@ -1,18 +1,21 @@
+import { batch, signal } from '@preact/signals';
 import type {
     ClientMessageInput,
+    ProjectSettings,
     ProviderInfo,
     ProviderProject,
     ProviderThreadSummary,
     ServerMessage,
     Thread,
-} from '@fixhere/protocol';
-import { batch, signal } from '@preact/signals';
+} from '@tencil/protocol';
 import { newId } from './id.ts';
 
 export type BridgeState = 'connecting' | 'open' | 'closed';
 
 export const bridgeState = signal<BridgeState>('connecting');
+/** The provider new pins go to. */
 export const provider = signal<ProviderInfo | null>(null);
+export const settings = signal<ProjectSettings | null>(null);
 export const project = signal<{ name: string; root: string } | null>(null);
 export const threads = signal<ReadonlyMap<string, Thread>>(new Map());
 /** The provider's own threads for this project (null until first fetched). */
@@ -20,6 +23,8 @@ export const providerThreads = signal<ProviderThreadSummary[] | null>(null);
 export const providerProject = signal<ProviderProject | null>(null);
 /** Set when the daemon can't tell which project this page belongs to. */
 export const projectChoices = signal<Array<{ root: string; title: string }> | null>(null);
+/** What to do when there are no project choices. */
+export const projectChoicesHint = signal<string | undefined>(undefined);
 export const lastError = signal<{ message: string; threadId?: string; at: number } | null>(null);
 
 let socket: WebSocket | undefined;
@@ -33,7 +38,7 @@ export function connect(url: string): void {
 
 export function send(message: ClientMessageInput): boolean {
     if (socket?.readyState !== WebSocket.OPEN) {
-        lastError.value = { message: 'Not connected to the Fixhere bridge', at: Date.now() };
+        lastError.value = { message: 'Not connected to the Tencil bridge', at: Date.now() };
         return false;
     }
     socket.send(JSON.stringify(message));
@@ -62,7 +67,7 @@ function open(): void {
         try {
             handle(JSON.parse(String(event.data)) as ServerMessage);
         } catch (error) {
-            console.warn('[fixhere] bad message', error);
+            console.warn('[tencil] bad message', error);
         }
     });
     ws.addEventListener('close', () => {
@@ -80,6 +85,7 @@ function handle(message: ServerMessage): void {
                 bridgeState.value = 'open';
                 projectChoices.value = null;
                 provider.value = message.provider;
+                settings.value = message.settings;
                 project.value = message.project;
                 threads.value = new Map(message.threads.map(thread => [thread.id, thread]));
             });
@@ -88,10 +94,19 @@ function handle(message: ServerMessage): void {
             batch(() => {
                 bridgeState.value = 'open';
                 projectChoices.value = message.choices;
+                projectChoicesHint.value = message.emptyHint;
             });
             return;
         case 'provider.status':
             provider.value = message.provider;
+            return;
+        case 'settings':
+            batch(() => {
+                settings.value = message.settings;
+                // The thread list was the previous provider's.
+                providerThreads.value = null;
+                providerProject.value = null;
+            });
             return;
         case 'thread.upsert':
             upsertLocal(message.thread);
@@ -116,6 +131,11 @@ function handle(message: ServerMessage): void {
             };
             return;
     }
+}
+
+/** A provider's name, e.g. for a pin made with a provider that is no longer the default. */
+export function providerLabel(id: string): string {
+    return settings.value?.providers.find(option => option.id === id)?.label ?? id;
 }
 
 export function refreshProviderThreads(): void {

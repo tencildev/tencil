@@ -1,4 +1,4 @@
 {
-    "extends": "@fixhere/tsconfig/base.json",
+    "extends": "@tencil/tsconfig/base.json",
     "include": ["src"]
 }

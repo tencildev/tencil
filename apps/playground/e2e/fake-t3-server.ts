@@ -1,4 +1,4 @@
-import { FakeT3Server } from '@fixhere/testing';
+import { FakeT3Server } from '@tencil/testing';
 
 /** Fake T3 Code for the browser tests; Playwright starts this as a web server. */
 const port = Number(process.env.FAKE_T3_PORT ?? 47390);

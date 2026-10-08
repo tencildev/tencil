@@ -1,5 +1,5 @@
 {
-    "name": "fixhere-monorepo",
+    "name": "tencil-monorepo",
     "private": true,
     "type": "module",
     "packageManager": "pnpm@10.34.5",
@@ -17,7 +17,7 @@
         "release": "pnpm build && changeset publish",
         "check": "pnpm lint && pnpm typecheck && pnpm test",
         "test:e2e": "turbo run test:e2e",
-        "pack:local": "turbo run build --filter=fixhere && node scripts/pack-local.mjs"
+        "pack:local": "turbo run build --filter=tencil && node scripts/pack-local.mjs"
     },
     "devDependencies": {
         "@biomejs/biome": "2.5.15",
