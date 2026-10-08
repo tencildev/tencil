@@ -41,10 +41,6 @@
       "types": "./dist/vite.d.mts",
       "default": "./dist/vite.mjs"
     },
-    "./next": {
-      "types": "./dist/next.d.mts",
-      "default": "./dist/next.mjs"
-    },
     "./react": {
       "types": "./dist/react.d.mts",
       "default": "./dist/react.mjs"

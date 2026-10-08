@@ -1,19 +1,18 @@
-import { type FixhereInstance, type FixhereOptions, startFixhere } from "./index.ts";
-
 /** Structural subset of Vite's Plugin type, so `vite` stays an optional peer. */
 interface VitePlugin {
   name: string;
   apply: "serve";
-  configureServer(server: {
-    config: { root: string };
-    httpServer: { once(event: "close", cb: () => void): void } | null;
-  }): Promise<void>;
   transformIndexHtml(): Array<{
     tag: string;
     attrs: Record<string, string | boolean>;
     injectTo: "body";
   }>;
   transform(code: string, id: string): string | undefined;
+}
+
+export interface FixhereViteOptions {
+  /** Port of the Fixhere daemon. Defaults to FIXHERE_PORT or 4747. */
+  port?: number;
 }
 
 /** Vite's dev client, which every dev page loads, whether or not it has an index.html. */
@@ -33,37 +32,21 @@ export function overlayLoader(scriptUrl: string): string {
 `;
 }
 
-export type FixhereViteOptions = FixhereOptions;
-
 /**
- * Dev-only: runs the bridge with the Vite dev server (or attaches to the one
- * already running for this project) and injects the overlay script.
+ * Dev-only: loads the overlay from the Fixhere daemon running on this machine
+ * (`npx fixhere start`). Without a running daemon nothing appears.
  */
 export default function fixhere(options: FixhereViteOptions = {}): VitePlugin {
-  let instance: FixhereInstance | undefined;
-
+  const port = options.port ?? Number(process.env.FIXHERE_PORT ?? 4747);
+  const scriptUrl = `http://localhost:${port}/fixhere.js`;
   return {
     name: "fixhere",
     apply: "serve",
-    async configureServer(server) {
-      try {
-        instance = await startFixhere({
-          root: server.config.root,
-          ...options,
-          log: options.log ?? ((message) => console.log(`[fixhere] ${message}`)),
-        });
-      } catch (error) {
-        console.warn(`[fixhere] ${error instanceof Error ? error.message : String(error)}`);
-      }
-      server.httpServer?.once("close", () => void instance?.close());
-    },
     transform(code, id) {
-      if (!instance || !VITE_CLIENT.test(id)) return undefined;
-      return code + overlayLoader(instance.scriptUrl);
+      return VITE_CLIENT.test(id) ? code + overlayLoader(scriptUrl) : undefined;
     },
     transformIndexHtml() {
-      if (!instance) return [];
-      return [{ tag: "script", attrs: { src: instance.scriptUrl, defer: true }, injectTo: "body" }];
+      return [{ tag: "script", attrs: { src: scriptUrl, async: true }, injectTo: "body" }];
     },
   };
 }

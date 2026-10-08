@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export type Framework =
-  | { kind: "next-app"; config?: string; layout: string }
-  | { kind: "next-pages"; config?: string; document?: string }
+  | { kind: "next-app"; layout: string }
+  | { kind: "next-pages"; document?: string }
   | { kind: "vite"; config: string }
   | { kind: "unknown"; reason: string };
 
@@ -18,18 +18,12 @@ export async function detectFramework(root: string): Promise<Framework> {
   const first = (candidates: string[]) => candidates.map((c) => join(root, c)).find(existsSync);
 
   if (deps.next) {
-    const config = first([
-      "next.config.ts",
-      "next.config.mjs",
-      "next.config.js",
-      "next.config.cjs",
-    ]);
     const layout = first(variants(["app/layout", "src/app/layout"], ["tsx", "jsx", "ts", "js"]));
-    if (layout) return { kind: "next-app", config, layout };
+    if (layout) return { kind: "next-app", layout };
     const document = first(
       variants(["pages/_document", "src/pages/_document"], ["tsx", "jsx", "ts", "js"]),
     );
-    return { kind: "next-pages", config, document };
+    return { kind: "next-pages", document };
   }
 
   const viteConfig = first(variants(["vite.config"], ["ts", "mts", "js", "mjs", "cts", "cjs"]));

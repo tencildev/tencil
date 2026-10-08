@@ -9,7 +9,9 @@ import {
   exchangePairingCredential,
 } from "@fixhere/provider-t3code";
 import pc from "picocolors";
-import { addFixhereToBody, addVitePlugin, wrapNextConfig } from "./codemods.ts";
+import { type DaemonCommand, startInBackground } from "../service.ts";
+import { defaultDataDir } from "../store.ts";
+import { addFixhereToBody, addVitePlugin } from "./codemods.ts";
 import { detectFramework, detectPackageManager, type Framework, installCommand } from "./detect.ts";
 import { diffLines, hunks } from "./diff.ts";
 
@@ -20,6 +22,10 @@ export interface InitOptions {
   dryRun?: boolean;
   skipInstall?: boolean;
   skipPair?: boolean;
+  /** Daemon port the overlay loads from. */
+  port?: number;
+  /** How to launch the daemon; when absent, init doesn't start it. */
+  daemon?: DaemonCommand;
   /** Package spec to install, e.g. a local path before Fixhere is published. */
   from?: string;
   t3Url?: string;
@@ -38,7 +44,7 @@ export interface InitPlan {
   manual: string[];
 }
 
-const SCRIPT_TAG = '<script src="http://localhost:4747/fixhere.js" defer></script>';
+const SCRIPT_TAG = '<script src="http://localhost:4747/fixhere.js" async></script>';
 
 /** Work out the edits without touching the disk. */
 export async function planInit(root: string): Promise<InitPlan> {
@@ -74,11 +80,6 @@ export async function planInit(root: string): Promise<InitPlan> {
       break;
     case "next-app":
       await edit(
-        framework.config,
-        wrapNextConfig,
-        "Wrap the export of next.config with `withFixhere()` from `fixhere/next`",
-      );
-      await edit(
         framework.layout,
         addFixhereToBody,
         "Render `<Fixhere />` from `fixhere/react` at the end of `<body>`",
@@ -86,18 +87,13 @@ export async function planInit(root: string): Promise<InitPlan> {
       break;
     case "next-pages":
       await edit(
-        framework.config,
-        wrapNextConfig,
-        "Wrap the export of next.config with `withFixhere()` from `fixhere/next`",
-      );
-      await edit(
         framework.document,
         addFixhereToBody,
         "Create pages/_document and render `<Fixhere />` from `fixhere/react` at the end of `<body>`",
       );
       break;
     case "unknown":
-      manual.push(`${framework.reason} Run \`npx fixhere\` and add: ${SCRIPT_TAG}`);
+      manual.push(`${framework.reason} Load this in development only: ${SCRIPT_TAG}`);
       break;
   }
   return { framework, edits, manual };
@@ -137,10 +133,17 @@ export async function runInit(options: InitOptions): Promise<void> {
   }
   for (const edit of plan.edits) await writeFile(edit.path, edit.after);
 
-  if (!options.skipInstall) install(options, log);
+  if (!options.skipInstall && plan.framework.kind !== "unknown") install(options, log);
+  if (options.daemon) {
+    const result = await startInBackground(options.daemon, defaultDataDir());
+    log(
+      `  ${pc.green("✓")} Fixhere daemon ${result.status === "running" ? "is running" : "started"} on port ${options.daemon.port}.`,
+    );
+  }
   if (!options.skipPair) await pair(options, log);
 
-  log(`  ${pc.green("✓")} Done. Start your dev server and press ${pc.bold("C")} on the page.\n`);
+  log(`  ${pc.green("✓")} Done. Start your dev server and press ${pc.bold("C")} on the page.`);
+  log(pc.dim("    Start the daemon at login: npx fixhere service install\n"));
 }
 
 function install(options: InitOptions, log: (message: string) => void): void {

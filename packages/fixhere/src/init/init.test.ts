@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
-import { addFixhereToBody, addImport, addVitePlugin, wrapNextConfig } from "./codemods.ts";
+import { addFixhereToBody, addImport, addVitePlugin } from "./codemods.ts";
 import { detectPackageManager } from "./detect.ts";
 import { diffLines } from "./diff.ts";
 import { planInit } from "./run.ts";
@@ -104,32 +104,6 @@ export default defineConfig({
   });
 });
 
-describe("wrapNextConfig", () => {
-  it("wraps the default export", () => {
-    const result = wrapNextConfig(CREATE_NEXT_APP_CONFIG)!;
-    expect(result).toContain(
-      'import type { NextConfig } from "next";\nimport { withFixhere } from "fixhere/next";',
-    );
-    expect(result.trimEnd().endsWith("export default withFixhere(nextConfig);")).toBe(true);
-  });
-
-  it("wraps inline objects and CommonJS configs", () => {
-    expect(wrapNextConfig("export default {\n  reactStrictMode: true,\n};\n")).toContain(
-      "export default withFixhere({\n  reactStrictMode: true,\n});",
-    );
-    const cjs = wrapNextConfig(
-      "/** @type {import('next').NextConfig} */\nmodule.exports = { reactStrictMode: true };\n",
-    )!;
-    expect(cjs.startsWith("const { withFixhere } = require(")).toBe(true);
-    expect(cjs).toContain("module.exports = withFixhere({ reactStrictMode: true });");
-  });
-
-  it("is idempotent", () => {
-    const once = wrapNextConfig(CREATE_NEXT_APP_CONFIG)!;
-    expect(wrapNextConfig(once)).toBe(once);
-  });
-});
-
 describe("addFixhereToBody", () => {
   it("adds <Fixhere /> as the last child of body", () => {
     const result = addFixhereToBody(CREATE_NEXT_APP_LAYOUT)!;
@@ -185,8 +159,8 @@ describe("planInit", () => {
     });
     const plan = await planInit(root);
     expect(plan.framework.kind).toBe("next-app");
+    // The overlay loads from the daemon; next.config stays untouched.
     expect(plan.edits.map((e) => relative(root, e.path).split(sep).join("/"))).toEqual([
-      "next.config.ts",
       "src/app/layout.tsx",
     ]);
     expect(plan.manual).toEqual([]);
@@ -216,7 +190,7 @@ describe("planInit", () => {
       }),
     );
     expect(plan.framework.kind).toBe("next-pages");
-    expect(plan.edits).toHaveLength(1);
+    expect(plan.edits).toHaveLength(0);
     expect(plan.manual[0]).toContain("_document");
   });
 

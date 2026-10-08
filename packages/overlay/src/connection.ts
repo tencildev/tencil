@@ -17,6 +17,8 @@ export const threads = signal<ReadonlyMap<string, Thread>>(new Map());
 /** The provider's own threads for this project (null until first fetched). */
 export const providerThreads = signal<ProviderThreadSummary[] | null>(null);
 export const providerProject = signal<ProviderProject | null>(null);
+/** Set when the daemon can't tell which project this page belongs to. */
+export const projectChoices = signal<Array<{ root: string; title: string }> | null>(null);
 export const lastError = signal<{ message: string; threadId?: string; at: number } | null>(null);
 
 let socket: WebSocket | undefined;
@@ -75,9 +77,16 @@ function handle(message: ServerMessage): void {
     case "ready":
       batch(() => {
         bridgeState.value = "open";
+        projectChoices.value = null;
         provider.value = message.provider;
         project.value = message.project;
         threads.value = new Map(message.threads.map((thread) => [thread.id, thread]));
+      });
+      return;
+    case "project.unknown":
+      batch(() => {
+        bridgeState.value = "open";
+        projectChoices.value = message.choices;
       });
       return;
     case "provider.status":

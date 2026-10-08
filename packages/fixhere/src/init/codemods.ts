@@ -73,32 +73,6 @@ export function addVitePlugin(source: string): string | null {
   );
 }
 
-/** `export default config` → `export default withFixhere(config)` (ESM or CJS). */
-export function wrapNextConfig(source: string): string | null {
-  if (/withFixhere/.test(source)) return source;
-  const style = detectStyle(source);
-  const q = style.quote;
-
-  const esm = source.lastIndexOf("export default ");
-  if (esm !== -1) {
-    const start = esm + "export default ".length;
-    const expression = source.slice(start).trimEnd().replace(/;$/, "");
-    if (!expression || /\n(?:export|module\.exports)\b/.test(expression)) return null;
-    const wrapped = `${source.slice(0, start)}withFixhere(${expression})${style.semi}\n`;
-    return addImport(wrapped, `import { withFixhere } from ${q}fixhere/next${q}${style.semi}`);
-  }
-
-  const cjs = source.lastIndexOf("module.exports = ");
-  if (cjs !== -1) {
-    const start = cjs + "module.exports = ".length;
-    const expression = source.slice(start).trimEnd().replace(/;$/, "");
-    if (!expression) return null;
-    const required = `const { withFixhere } = require(${q}fixhere/next${q})${style.semi}\n`;
-    return `${required}${source.slice(0, start)}withFixhere(${expression})${style.semi}\n`;
-  }
-  return null;
-}
-
 /** Render `<Fixhere />` as the last child of `<body>` in a layout or _document. */
 export function addFixhereToBody(source: string): string | null {
   if (/["']fixhere\/react["']/.test(source)) return source;

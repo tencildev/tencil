@@ -1,5 +1,5 @@
 import { useRef } from "preact/hooks";
-import { bridgeState, provider, send } from "../connection.ts";
+import { bridgeState, projectChoices, provider, send } from "../connection.ts";
 import {
   activeCount,
   hidden,
@@ -19,7 +19,8 @@ export function Toolbar() {
   return (
     <div ref={ref} class={`toolbar-wrap dock-${dock.value}`}>
       {picking && <div class="toolbar-hint">Click any element to pin a prompt · Esc to cancel</div>}
-      {!picking && status.hint && (
+      {!picking && projectChoices.value && <ProjectPicker />}
+      {!picking && !projectChoices.value && status.hint && (
         <div class={`toolbar-hint hint-${status.tone}`}>
           {status.hint}
           {status.action && (
@@ -87,17 +88,48 @@ interface ConnectionStatus {
   action?: { label: string; run: () => void };
 }
 
+/** Shown when the daemon couldn't match this page to a project. */
+function ProjectPicker() {
+  const choices = projectChoices.value ?? [];
+  return (
+    <div class="project-picker">
+      <p class="project-picker-title">Which project is this page?</p>
+      {choices.length === 0 ? (
+        <p class="project-picker-empty">
+          No T3 Code projects found. Pair with T3 Code first: npx fixhere connect
+        </p>
+      ) : (
+        <div class="project-picker-list">
+          {choices.map((choice) => (
+            <button
+              key={choice.root}
+              type="button"
+              class="project-picker-option"
+              title={choice.root}
+              onClick={() => send({ type: "project.select", root: choice.root })}
+            >
+              <span class="project-picker-name">{choice.title}</span>
+              <span class="project-picker-root">{choice.root}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function connectionStatus(): ConnectionStatus {
   if (bridgeState.value !== "open") {
     return {
       tone: "error",
-      title: "Fixhere bridge offline",
+      title: "Fixhere daemon offline",
       hint:
         bridgeState.value === "connecting"
           ? undefined
-          : "Fixhere bridge is offline. Run npx fixhere in your project.",
+          : "The Fixhere daemon stopped. Start it again with npx fixhere start.",
     };
   }
+  if (projectChoices.value) return { tone: "warn", title: "Pick this page's project" };
   const info = provider.value;
   if (!info) return { tone: "warn", title: "Connecting…" };
   switch (info.state) {
