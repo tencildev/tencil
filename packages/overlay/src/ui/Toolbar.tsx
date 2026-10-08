@@ -1,5 +1,5 @@
 import { useRef } from "preact/hooks";
-import { bridgeState, provider } from "../connection.ts";
+import { bridgeState, provider, send } from "../connection.ts";
 import {
   activeCount,
   hidden,
@@ -20,7 +20,14 @@ export function Toolbar() {
     <div ref={ref} class={`toolbar-wrap dock-${dock.value}`}>
       {picking && <div class="toolbar-hint">Click any element to pin a prompt · Esc to cancel</div>}
       {!picking && status.hint && (
-        <div class={`toolbar-hint hint-${status.tone}`}>{status.hint}</div>
+        <div class={`toolbar-hint hint-${status.tone}`}>
+          {status.hint}
+          {status.action && (
+            <button type="button" class="hint-action" onClick={status.action.run}>
+              {status.action.label}
+            </button>
+          )}
+        </div>
       )}
       <div class="toolbar">
         <span class={`status-dot status-${status.tone}`} title={status.title}>
@@ -73,7 +80,14 @@ export function Toolbar() {
   );
 }
 
-function connectionStatus(): { tone: "ok" | "warn" | "error"; title: string; hint?: string } {
+interface ConnectionStatus {
+  tone: "ok" | "warn" | "error";
+  title: string;
+  hint?: string;
+  action?: { label: string; run: () => void };
+}
+
+function connectionStatus(): ConnectionStatus {
   if (bridgeState.value !== "open") {
     return {
       tone: "error",
@@ -93,7 +107,8 @@ function connectionStatus(): { tone: "ok" | "warn" | "error"; title: string; hin
       return {
         tone: "warn",
         title: `${info.label}: not paired`,
-        hint: `Pair with ${info.label}: run npx fixhere connect`,
+        hint: `Not paired with ${info.label}`,
+        action: { label: "Pair", run: () => send({ type: "provider.pair" }) },
       };
     case "unavailable":
       return {

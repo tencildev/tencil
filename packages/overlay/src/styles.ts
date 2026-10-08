@@ -411,6 +411,12 @@ kbd {
   @starting-style { opacity: 0; transform: translateY(4px); }
 }
 .hint-warn { color: #f5b84a; }
+.toolbar-hint:has(.hint-action) { display: flex; align-items: center; gap: 8px; pointer-events: auto; padding-right: 4px; }
+.hint-action {
+  padding: 2px 10px; border-radius: 999px; background: var(--accent); color: white; font-weight: 500;
+  transition: transform 160ms var(--ease-out);
+}
+.hint-action:active { transform: var(--press); }
 .hint-error { color: #ff8589; }
 .status-dot { position: relative; width: 8px; height: 8px; margin: 0 8px 0 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.4); }
 .status-ok { background: #3dd68c; }
