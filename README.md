@@ -13,7 +13,7 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
 ```
  your dev site (any origin on localhost)          your machine
 ┌────────────────────────────────────┐   ws    ┌─────────────────────┐   ws/rpc   ┌───────────┐
-│ overlay (Preact, shadow DOM)       │ ──────▶ │ fixhere bridge      │ ─────────▶ │ T3 Code   │
+│ overlay (Preact, shadow DOM)       │ ──────▶ │ fixhere daemon      │ ─────────▶ │ T3 Code   │
 │  • picker, pins, threads, inbox    │ ◀────── │  • holds credentials│ ◀───────── │ (threads) │
 │  • React source via owner stacks   │         │  • provider adapters│            └───────────┘
 └────────────────────────────────────┘         │  • pin store        │
@@ -25,33 +25,39 @@ that matches your dev site's folder, so you can continue any conversation there.
 
 ## Quick start
 
-You need the [T3 Code](https://github.com/pingdotgg/t3code) desktop app running. Then, in your app:
+You need the [T3 Code](https://github.com/pingdotgg/t3code) desktop app running.
 
 ```sh
-npx fixhere init
+npx fixhere start   # once per machine: starts the Fixhere daemon
+npx fixhere init    # once per project: loads the overlay in development
 ```
 
-`init` detects Next.js or Vite, shows the changes it will make and applies them,
-installs `fixhere` as a dev dependency and pairs with T3 Code. Start your dev
-server as usual and press <kbd>C</kbd> on the page. The bridge starts with your dev
-server; there's no second terminal.
+Start your dev server as usual and press <kbd>C</kbd> on the page.
 
 > Fixhere isn't on npm yet. Teammates: follow [docs/setup-prompt.md](docs/setup-prompt.md).
 
-### What `init` sets up
+### How it fits together
 
-**Next.js** (app router; the pages router uses `pages/_document`):
+Fixhere runs as **one daemon per machine** on `localhost:4747`. Projects only load a
+script from it in development; there's no build plugin or config to maintain. For
+someone without the daemon running, the script doesn't load and nothing appears, so
+committing the integration to a shared repo is safe.
 
-```ts
-// next.config.ts
-import { withFixhere } from "fixhere/next";
-export default withFixhere(nextConfig);
-```
+When a page connects, the daemon works out which project it belongs to:
+
+1. **the dev server's folder**, found from the port the page is served on;
+2. if that fails (Docker, remote dev), the overlay asks **"Which project is this
+   page?"** with your T3 Code projects and remembers the answer.
+
+Each project gets its own T3 Code connection and pins, all served by the one daemon.
+
+### What `init` adds
+
+**Next.js** (`app/layout.tsx`, or `pages/_document` for the pages router):
 
 ```tsx
-// app/layout.tsx: renders nothing outside `next dev`
 import { Fixhere } from "fixhere/react";
-<body>{children}<Fixhere /></body>
+<body>{children}<Fixhere /></body> {/* renders nothing outside development */}
 ```
 
 **Vite** (React, Vue, Svelte, TanStack Start, Astro and others):
@@ -61,20 +67,24 @@ import fixhere from "fixhere/vite";
 export default defineConfig({ plugins: [react(), fixhere()] });
 ```
 
-**Anything else:** run `npx fixhere` in the project and add the script tag it prints
-to your dev HTML.
+**Anything else:** load this in development only:
+
+```html
+<script src="http://localhost:4747/fixhere.js" async></script>
+```
+
+### Starting at login
+
+```sh
+npm i -g fixhere
+fixhere service install   # launchd on macOS, systemd on Linux, Task Scheduler on Windows
+```
 
 ### Pairing
 
-The first time it runs, Fixhere pairs with the T3 Code on your machine by itself.
-If that isn't possible (for example T3 Code runs on another machine), use the
-**Pair** button in the overlay or create a pairing link in T3 Code → Settings →
-Connections and run `npx fixhere connect "<link>"`.
-
-### Several projects
-
-Each project gets its own bridge on the first free port from 4747. Dev servers that
-load their config in several processes (Next.js) share one bridge per project.
+Fixhere pairs with the T3 Code on your machine by itself (`init` does it right
+away). Otherwise use the **Pair** button in the overlay, or create a pairing link in
+T3 Code → Settings → Connections and run `npx fixhere connect "<link>"`.
 
 ## Using it
 
@@ -96,19 +106,23 @@ the agent waits for approval, red on errors, grey once resolved.
 ## CLI
 
 ```
-fixhere init [options]         Set up Fixhere in this project (Next.js, Vite)
-fixhere [dev] [options]        Start the bridge for the current project
+fixhere [start]                Start the daemon in the background
+fixhere start --foreground     Run the daemon in this terminal
+fixhere stop                   Stop the daemon
+fixhere status                 Show the daemon and the projects it serves
+fixhere service install        Start the daemon automatically when you log in
+fixhere service uninstall      Remove the login service
+fixhere init [options]         Load the overlay in this project (Next.js, Vite)
 fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
---port <n>              Bridge port (default: first free from 4747)
---root <dir>            Project root (default: cwd)
+--port <n>              Port (default 4747, env FIXHERE_PORT)
 --t3-url <url>          T3 Code server (default: last paired, then http://127.0.0.1:3773)
 --model <inst:model>    e.g. claudeAgent:claude-fable-5-1 (default: project default)
 --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
 --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
---no-create-project     Don't register the folder in T3 Code when missing
+--no-create-project     Don't register unknown folders as T3 Code projects
 
-init: -y/--yes, --dry-run, --skip-install, --skip-pair, --from <package spec>
+init: -y/--yes, --dry-run, --skip-install, --from <package spec>
 ```
 
 ## Security
@@ -116,6 +130,7 @@ init: -y/--yes, --dry-run, --skip-install, --skip-pair, --from <package spec>
 The bridge can make an agent edit your code, so it is locked down by default:
 
 - Pins are stored per project in `~/.config/fixhere/projects/`, never inside your repo.
+  Remembered page → project choices live in `~/.config/fixhere/origins.json`.
 - Credentials live in `~/.config/fixhere/credentials.json` (mode `0600`) and never
   reach the page. The token only carries `orchestration:read` and `orchestration:operate`.
 - The bridge listens on `127.0.0.1` and only accepts WebSocket connections from
@@ -147,7 +162,7 @@ pnpm test:e2e       # browser tests (Playwright) against the playground
 
 | Package | What |
 | --- | --- |
-| `packages/fixhere` | Published CLI, bridge, `init`, Vite plugin, Next.js and React integrations |
+| `packages/fixhere` | Published CLI, daemon, `init`, Vite plugin and React component |
 | `packages/overlay` | Browser overlay (Preact + signals, shadow DOM, bippy) |
 | `packages/protocol` | Wire schemas (zod) and the provider interface |
 | `packages/provider-t3code` | T3 Code provider (orchestration V1 and V2) |
@@ -157,10 +172,13 @@ pnpm test:e2e       # browser tests (Playwright) against the playground
 ### Tests
 
 - **Unit:** prompt rendering, trackers, codemods, path handling, stores.
-- **Integration:** the provider and the bridge against a fake T3 Code that speaks
+- **Integration:** the provider and the daemon against a fake T3 Code that speaks
   the real wire protocol (both versions), including streaming, interrupts, uploads,
-  reconnects, pairing, stalled servers, port sharing and the origin and host checks.
-- **Browser:** Playwright drives the overlay in Chromium: pinning, streamed replies,
+  reconnects, pairing, stalled servers, several projects on one daemon, the project
+  picker, and the origin and host checks; plus the built CLI's start/status/stop.
+- **Browser:** Playwright runs the real daemon and the playground, and drives the
+  overlay in Chromium (the daemon finds the project from the dev server's port):
+  pinning, streamed replies,
   follow-ups, persistence across reloads, the thread list, dragging the toolbar.
 - **Package:** CI packs `fixhere` exactly as npm would publish it and installs it
   into an empty project.

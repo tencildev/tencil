@@ -23,15 +23,16 @@ around it:
 2. **Run the installer in this project** (from the app's folder, i.e. the one
    with `next.config.*` or `vite.config.*`):
    `node ~/Code/fixhere/packages/fixhere/dist/cli.mjs init --from <path to the .tgz>`
-   It shows the changes it will make (Next.js: `withFixhere` in next.config and
-   `<Fixhere />` in the root layout; Vite: the `fixhere()` plugin), installs the
-   package and pairs with T3 Code. Show me the planned changes and ask before
-   applying them (run it with `--dry-run` first, then with `--yes`).
+   It shows the one change it makes (Next.js: `<Fixhere />` at the end of `<body>`
+   in the root layout; Vite: the `fixhere()` plugin), installs the package, starts
+   the Fixhere daemon in the background and pairs with T3 Code. Show me the planned
+   change and ask before applying it (run it with `--dry-run` first, then `--yes`).
    If it says the framework isn't supported, tell me instead of editing files.
 
-3. **Tell me how to try it.** Don't start long-running processes yourself. Tell
-   me to start the project's usual dev server, open the page and press C. The dev
-   server log should show `[fixhere] Connected to T3 Code …`.
+3. **Tell me how to try it.** Don't start the dev server yourself. Tell me to start
+   the project's usual dev server, open the page and press C. `node
+   ~/Code/fixhere/packages/fixhere/dist/cli.mjs status` should list this project
+   once the page is open.
 
 Don't commit any of these changes; they're for local testing.
 
@@ -46,6 +47,7 @@ Don't commit any of these changes; they're for local testing.
 - The agent runs in T3 Code's `full-access` mode and edits your working copy.
 
 To update later: `git -C ~/Code/fixhere pull && pnpm -C ~/Code/fixhere pack:local`,
-then run the `init --from` step again with the new file (it only reinstalls).
+then run the `init --from` step again with the new file (it reinstalls and restarts
+the daemon on the new version).
 
 Feedback and bugs: tell Willem-Jaap or open an issue on the repo.
