@@ -31,15 +31,25 @@ export async function startInBackground(
     });
     child.unref();
 
-    for (let attempt = 0; attempt < 50; attempt++) {
+    const health = await waitForDaemon(command.port, dataDir);
+    return { status: running ? 'restarted' : 'started', pid: health.pid };
+}
+
+/** Wait for a daemon on `port` (optionally one of `version`) to answer. */
+export async function waitForDaemon(
+    port: number,
+    dataDir: string,
+    version?: string,
+): Promise<{ pid: number }> {
+    for (let attempt = 0; attempt < 100; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const health = await probeDaemon(command.port);
-        if (health) return { status: running ? 'restarted' : 'started', pid: health.pid };
+        const health = await probeDaemon(port);
+        if (health && (!version || health.version === version)) return health;
     }
     throw new Error(`The daemon didn't start. See ${join(dataDir, 'daemon.log')}.`);
 }
 
-function sameFlags(a: string[], b: string[]): boolean {
+export function sameFlags(a: string[], b: string[]): boolean {
     return a.length === b.length && a.every((flag, i) => flag === b[i]);
 }
 

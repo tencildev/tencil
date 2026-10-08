@@ -8,10 +8,12 @@ import { DEFAULT_PORT } from '../daemon/server.ts';
 import { runInit } from '../init/run-init.ts';
 import { stopDaemon } from '../service/background.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
+import { isServiceInstalled, stopService } from '../service/login-service.ts';
 import { VERSION } from '../version.ts';
 import { connect } from './commands/connect.ts';
 import { runDaemon } from './commands/daemon.ts';
 import { service } from './commands/service.ts';
+import { setup } from './commands/setup.ts';
 import { start } from './commands/start.ts';
 import { status } from './commands/status.ts';
 import { forwardedFlags, RUNTIME_MODES } from './options.ts';
@@ -20,13 +22,14 @@ const HELP = `
 ${pc.bold('fixhere')}: point at your UI, prompt your agent.
 
 ${pc.dim('Usage')}
+  fixhere setup                  Set up this machine: start Fixhere (at login) and pair
+  fixhere init [options]         Load the overlay in this project (Next.js, Vite)
   fixhere [start]                Start the daemon in the background
   fixhere start --foreground     Run the daemon in this terminal
   fixhere stop                   Stop the daemon
   fixhere status                 Show the daemon and the projects it serves
   fixhere service install        Start the daemon automatically when you log in
   fixhere service uninstall      Remove the login service
-  fixhere init [options]         Load the overlay in this project (Next.js, Vite)
   fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 ${pc.dim('Daemon options')}
@@ -38,8 +41,8 @@ ${pc.dim('Daemon options')}
   --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
   --no-create-project     Don't register unknown folders as T3 Code projects
 
-${pc.dim('Init options')}
-  -y, --yes               Apply changes without asking
+${pc.dim('Setup and init options')}
+  -y, --yes               Accept the defaults / apply changes without asking
   --dry-run               Show the changes without writing them
   --skip-install          Don't install the fixhere package
   --skip-pair             Don't pair with T3 Code
@@ -100,7 +103,16 @@ async function main(): Promise<void> {
                 return runDaemon(values, port, t3Url, runtimeMode as RuntimeMode | undefined);
             }
             return start(daemonCommand);
+        case 'setup':
+            return setup(daemonCommand, { yes: values.yes, from: values.from, t3Url });
         case 'stop':
+            if (isServiceInstalled(port)) {
+                await stopService(port);
+                console.log(
+                    `\n  ${pc.green('✓')} Stopped the Fixhere daemon until you next log in. ${pc.dim('Remove the login service: npx fixhere service uninstall')}\n`,
+                );
+                return;
+            }
             console.log(
                 (await stopDaemon(port))
                     ? `\n  ${pc.green('✓')} Stopped the Fixhere daemon.\n`
@@ -110,7 +122,7 @@ async function main(): Promise<void> {
         case 'status':
             return status(port);
         case 'service':
-            return service(rest[0], daemonCommand);
+            return service(rest[0], daemonCommand, values.from);
         case 'connect':
             return connect(rest[0], t3Url);
         case 'init':

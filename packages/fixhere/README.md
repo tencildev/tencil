@@ -28,7 +28,7 @@ that matches your dev site's folder, so you can continue any conversation there.
 You need the [T3 Code](https://github.com/pingdotgg/t3code) desktop app running.
 
 ```sh
-npx fixhere start   # once per machine: starts the Fixhere daemon
+npx fixhere setup   # once per machine: starts Fixhere (at login, if you like) and pairs
 npx fixhere init    # once per project: loads the overlay in development
 ```
 
@@ -73,10 +73,13 @@ export default defineConfig({ plugins: [react(), fixhere()] });
 
 ### Starting at login
 
-```sh
-npm i -g fixhere
-fixhere service install   # launchd on macOS, systemd on Linux, Task Scheduler on Windows
-```
+`setup` asks whether Fixhere should start when you log in (the default). It then
+keeps its own copy in `~/.config/fixhere/runtime`, since npx's cache can be cleaned
+up, and registers it with launchd on macOS, systemd on Linux or Task Scheduler on
+Windows. Answer no and run `npx fixhere start` after a restart instead.
+
+`npx fixhere stop` stops it until you next log in; `npx fixhere service uninstall`
+removes it. To update, run `npx fixhere@latest setup` again.
 
 ### Pairing
 
@@ -104,13 +107,14 @@ the agent waits for approval, red on errors, grey once resolved.
 ## CLI
 
 ```
+fixhere setup                  Set up this machine: start Fixhere (at login) and pair
+fixhere init [options]         Load the overlay in this project (Next.js, Vite)
 fixhere [start]                Start the daemon in the background
 fixhere start --foreground     Run the daemon in this terminal
-fixhere stop                   Stop the daemon
+fixhere stop                   Stop the daemon (until the next login, with the login service)
 fixhere status                 Show the daemon and the projects it serves
 fixhere service install        Start the daemon automatically when you log in
 fixhere service uninstall      Remove the login service
-fixhere init [options]         Load the overlay in this project (Next.js, Vite)
 fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 --port <n>              Port (default 4747, env FIXHERE_PORT)

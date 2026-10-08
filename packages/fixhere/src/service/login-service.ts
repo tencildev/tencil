@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_PORT } from '../daemon/server.ts';
@@ -52,41 +52,74 @@ export function windowsTaskCommand(command: DaemonCommand): string {
     return [command.node, ...daemonArgs(command)].map(arg => `"${arg}"`).join(' ');
 }
 
-/** npx keeps packages in a cache it may clean; a login service needs a stable install. */
-export function isEphemeralInstall(cliPath: string): boolean {
-    return /[\\/]_npx[\\/]/.test(cliPath);
+const launchAgent = () => join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
+const systemdUnitPath = () => join(homedir(), '.config', 'systemd', 'user', 'fixhere.service');
+const launchdDomain = () => `gui/${process.getuid?.() ?? 501}`;
+
+/** Whether Fixhere is set up to start at login, serving `port`. */
+export function isServiceInstalled(port = DEFAULT_PORT): boolean {
+    return servicePort(serviceDefinition()) === port;
 }
 
+/** The daemon port in a launchd plist, systemd unit or scheduled task definition. */
+export function servicePort(definition: string | undefined): number | undefined {
+    const match = definition?.match(/--port(?:<\/string>\s*<string>|"?\s+"?|&quot;\s*&quot;)(\d+)/);
+    return match?.[1] ? Number(match[1]) : undefined;
+}
+
+function serviceDefinition(): string | undefined {
+    try {
+        switch (process.platform) {
+            case 'darwin':
+                return readFileSync(launchAgent(), 'utf8');
+            case 'linux':
+                return readFileSync(systemdUnitPath(), 'utf8');
+            case 'win32':
+                return execFileSync('schtasks', ['/Query', '/TN', 'Fixhere', '/XML'], {
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'ignore'],
+                });
+            default:
+                return undefined;
+        }
+    } catch {
+        return undefined;
+    }
+}
+
+/** Install (or replace) the login service and start the daemon through it. */
 export async function installService(command: DaemonCommand, dataDir: string): Promise<string> {
     const logPath = join(dataDir, 'daemon.log');
     mkdirSync(dataDir, { recursive: true });
-    // The service takes over; don't leave a second daemon fighting for the port.
-    await stopDaemon(command.port);
 
+    // Stop the old service first (launchd would restart its daemon), then any
+    // daemon started by hand, so the new one gets the port.
     switch (process.platform) {
         case 'darwin': {
-            const plist = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
+            const plist = launchAgent();
+            quietly('launchctl', ['bootout', launchdDomain(), plist]);
+            await stopDaemon(command.port);
             mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true });
             writeFileSync(plist, launchdPlist(command, logPath));
-            const domain = `gui/${process.getuid?.() ?? 501}`;
-            try {
-                execFileSync('launchctl', ['bootout', domain, plist], { stdio: 'ignore' });
-            } catch {
-                // Not loaded yet.
-            }
-            execFileSync('launchctl', ['bootstrap', domain, plist]);
+            execFileSync('launchctl', ['bootstrap', launchdDomain(), plist]);
             return plist;
         }
         case 'linux': {
-            const dir = join(homedir(), '.config', 'systemd', 'user');
-            mkdirSync(dir, { recursive: true });
-            const unit = join(dir, 'fixhere.service');
+            const unit = systemdUnitPath();
+            quietly('systemctl', ['--user', 'stop', 'fixhere.service']);
+            await stopDaemon(command.port);
+            mkdirSync(join(homedir(), '.config', 'systemd', 'user'), { recursive: true });
             writeFileSync(unit, systemdUnit(command));
             execFileSync('systemctl', ['--user', 'daemon-reload']);
-            execFileSync('systemctl', ['--user', 'enable', '--now', 'fixhere.service']);
+            // Keep systemd's "Created symlink…" out of the output; errors still throw.
+            execFileSync('systemctl', ['--user', 'enable', '--now', 'fixhere.service'], {
+                stdio: ['ignore', 'ignore', 'pipe'],
+            });
             return unit;
         }
         case 'win32':
+            quietly('schtasks', ['/End', '/TN', 'Fixhere']);
+            await stopDaemon(command.port);
             execFileSync('schtasks', [
                 '/Create',
                 '/F',
@@ -106,41 +139,48 @@ export async function installService(command: DaemonCommand, dataDir: string): P
     }
 }
 
-export async function uninstallService(port = DEFAULT_PORT): Promise<void> {
+/** Stop the service's daemon until the next login, without uninstalling it. */
+export async function stopService(port = DEFAULT_PORT): Promise<void> {
     switch (process.platform) {
-        case 'darwin': {
-            const plist = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
-            try {
-                execFileSync('launchctl', ['bootout', `gui/${process.getuid?.() ?? 501}`, plist], {
-                    stdio: 'ignore',
-                });
-            } catch {
-                // Already unloaded.
-            }
-            rmSync(plist, { force: true });
+        case 'darwin':
+            quietly('launchctl', ['bootout', launchdDomain(), launchAgent()]);
             break;
-        }
         case 'linux':
-            try {
-                execFileSync('systemctl', ['--user', 'disable', '--now', 'fixhere.service'], {
-                    stdio: 'ignore',
-                });
-            } catch {
-                // Already gone.
-            }
-            rmSync(join(homedir(), '.config', 'systemd', 'user', 'fixhere.service'), {
-                force: true,
-            });
+            quietly('systemctl', ['--user', 'stop', 'fixhere.service']);
             break;
         case 'win32':
-            try {
-                execFileSync('schtasks', ['/Delete', '/F', '/TN', 'Fixhere'], { stdio: 'ignore' });
-            } catch {
-                // Already gone.
-            }
+            quietly('schtasks', ['/End', '/TN', 'Fixhere']);
             break;
     }
     await stopDaemon(port);
+}
+
+export async function uninstallService(port = DEFAULT_PORT): Promise<void> {
+    switch (process.platform) {
+        case 'darwin':
+            quietly('launchctl', ['bootout', launchdDomain(), launchAgent()]);
+            rmSync(launchAgent(), { force: true });
+            break;
+        case 'linux':
+            quietly('systemctl', ['--user', 'disable', '--now', 'fixhere.service']);
+            rmSync(systemdUnitPath(), { force: true });
+            quietly('systemctl', ['--user', 'daemon-reload']);
+            break;
+        case 'win32':
+            quietly('schtasks', ['/End', '/TN', 'Fixhere']);
+            quietly('schtasks', ['/Delete', '/F', '/TN', 'Fixhere']);
+            break;
+    }
+    await stopDaemon(port);
+}
+
+/** Run a command whose failure only means "nothing to do" (not loaded, already gone). */
+function quietly(command: string, args: string[]): void {
+    try {
+        execFileSync(command, args, { stdio: 'ignore' });
+    } catch {
+        // Nothing to stop or remove.
+    }
 }
 
 function escapeXml(value: string): string {

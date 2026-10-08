@@ -2,16 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import {
-    CredentialStore,
-    createLocalPairingCode,
-    DEFAULT_T3_URL,
-    exchangePairingCredential,
-} from '@fixhere/provider-t3code';
 import pc from 'picocolors';
 import { defaultDataDir } from '../daemon/thread-store.ts';
-import { startInBackground } from '../service/background.ts';
+import { ensureDaemon } from '../service/autostart.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
+import { pairWithLocalT3 } from '../service/pairing.ts';
 import { addFixhereToBody, addVitePlugin } from './codemods.ts';
 import {
     detectFramework,
@@ -140,16 +135,19 @@ export async function runInit(options: InitOptions): Promise<void> {
     for (const edit of plan.edits) await writeFile(edit.path, edit.after);
 
     if (!options.skipInstall && plan.framework.kind !== 'unknown') install(options, log);
+    let autostart = false;
     if (options.daemon) {
-        const result = await startInBackground(options.daemon, defaultDataDir());
+        const result = await ensureDaemon(options.daemon, defaultDataDir());
+        autostart = result.autostart;
         log(
-            `  ${pc.green('✓')} Fixhere daemon ${result.status === 'running' ? 'is running' : 'started'} on port ${options.daemon.port}.`,
+            `  ${pc.green('✓')} Fixhere ${result.status === 'running' ? 'is running' : result.status} on port ${options.daemon.port}.`,
         );
     }
-    if (!options.skipPair) await pair(options, log);
+    if (!options.skipPair) await pairWithLocalT3(options.t3Url, log);
 
     log(`  ${pc.green('✓')} Done. Start your dev server and press ${pc.bold('C')} on the page.`);
-    log(pc.dim('    Start the daemon at login: npx fixhere service install\n'));
+    if (!autostart) log(pc.dim('    Start Fixhere at login: npx fixhere setup'));
+    log('');
 }
 
 function install(options: InitOptions, log: (message: string) => void): void {
@@ -163,26 +161,6 @@ function install(options: InitOptions, log: (message: string) => void): void {
     });
     if (result.status !== 0) {
         log(`  ${pc.yellow('!')} Install failed; run it yourself: ${command} ${args.join(' ')}\n`);
-    }
-}
-
-/** Pair with the local T3 Code now so the first page load is ready to go. */
-async function pair(options: InitOptions, log: (message: string) => void): Promise<void> {
-    const store = new CredentialStore();
-    const baseUrl = options.t3Url ?? (await store.lastBaseUrl()) ?? DEFAULT_T3_URL;
-    if (await store.get(baseUrl)) return log(`  ${pc.green('✓')} Already paired with T3 Code.`);
-    const code = await createLocalPairingCode(baseUrl).catch(() => undefined);
-    if (!code) {
-        log(
-            `  ${pc.yellow('!')} T3 Code isn't running, so pairing is skipped. Fixhere pairs on its own once it is.`,
-        );
-        return;
-    }
-    try {
-        await store.set(baseUrl, await exchangePairingCredential({ baseUrl, credential: code }));
-        log(`  ${pc.green('✓')} Paired with T3 Code at ${baseUrl}`);
-    } catch (error) {
-        log(`  ${pc.yellow('!')} ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
