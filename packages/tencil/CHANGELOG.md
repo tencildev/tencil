@@ -2,6 +2,12 @@
 
 Up to 0.2.0 this package was published as `fixhere`.
 
+## 0.3.2
+
+### Patch Changes
+
+- [`5dc5d0d`](https://github.com/pixel-perfect-agency/tencil/commit/5dc5d0d1a3e496618c33ca75c4e181696eb67866) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - An older Tencil (npx reuses what it cached for `npx tencil`) no longer replaces a newer daemon or login service; it says to use `npx tencil@latest`. Setup, start and `npx tencil` mention when a newer version is out, and setup says whether the project you run it in already loads Tencil.
+
 ## 0.3.1
 
 ### Patch Changes
