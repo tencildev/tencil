@@ -1,5 +1,4 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "types": ["node"] },
-  "include": ["src", "tsdown.config.ts"]
+    "extends": "@fixhere/tsconfig/node.json",
+    "include": ["src", "tsdown.config.ts"]
 }

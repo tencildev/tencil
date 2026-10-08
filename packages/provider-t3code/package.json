@@ -1,18 +1,19 @@
 {
-  "name": "@fixhere/provider-t3code",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "scripts": {
-    "typecheck": "tsc -p ."
-  },
-  "dependencies": {
-    "@fixhere/protocol": "workspace:*"
-  },
-  "devDependencies": {
-    "@fixhere/testing": "workspace:*"
-  }
+    "name": "@fixhere/provider-t3code",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "scripts": {
+        "typecheck": "tsc -p ."
+    },
+    "dependencies": {
+        "@fixhere/protocol": "workspace:*"
+    },
+    "devDependencies": {
+        "@fixhere/testing": "workspace:*",
+        "@fixhere/tsconfig": "workspace:*"
+    }
 }

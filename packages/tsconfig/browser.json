@@ -1,0 +1,8 @@
+{
+    "extends": "./base.json",
+    "compilerOptions": {
+        "lib": ["ES2023", "DOM", "DOM.Iterable"],
+        "jsx": "react-jsx",
+        "jsxImportSource": "preact"
+    }
+}
