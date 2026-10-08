@@ -189,5 +189,5 @@ Structure and naming conventions: [AGENTS.md](AGENTS.md).
 ### Releasing
 
 Changes that affect users get a changeset (`pnpm changeset`). With the repository
-variable `RELEASE_ENABLED=true` and an `NPM_TOKEN` secret, merging to `main` opens a
+variable `RELEASE_ENABLED=true` and an `NPM_TOKEN` secret, merging to `master` opens a
 "Version packages" PR, and merging that PR publishes `fixhere` to npm.
