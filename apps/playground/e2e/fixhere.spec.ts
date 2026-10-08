@@ -26,10 +26,9 @@ async function pinElement(page: Page, target: string, prompt: string) {
 
 test('connects to the agent through the bridge', async ({ page }) => {
     await openPlayground(page);
-    await expect(overlay(page).locator('.status-dot')).toHaveAttribute(
-        'title',
-        /T3 Code · playground/,
-    );
+    // The playground lives in this repository, so its T3 Code project is the
+    // checkout's root folder, whatever it is called.
+    await expect(overlay(page).locator('.status-dot')).toHaveAttribute('title', /^T3 Code · \S/);
 });
 
 test('pins a prompt on an element and streams the reply into it', async ({ page }) => {
