@@ -12,10 +12,17 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "lint": "biome check .",
-    "format": "biome check --write ."
+    "format": "biome check --write .",
+    "changeset": "changeset",
+    "release": "pnpm build && changeset publish",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "test:e2e": "pnpm --filter playground test:e2e",
+    "pack:local": "pnpm build && pnpm --filter fixhere pack --pack-destination \"$PWD/.pack\""
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
     "@types/node": "^24.0.0",
     "typescript": "6.0.3",
     "vitest": "^5.0.3"

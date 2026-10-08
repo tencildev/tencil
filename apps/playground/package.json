@@ -5,17 +5,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "fixhere": "workspace:*",
-    "vite": "^8.3.3"
+    "vite": "^8.3.3",
+    "@fixhere/testing": "workspace:*"
   }
 }
