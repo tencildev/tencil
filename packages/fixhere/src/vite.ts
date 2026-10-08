@@ -13,6 +13,24 @@ interface VitePlugin {
     attrs: Record<string, string | boolean>;
     injectTo: "body";
   }>;
+  transform(code: string, id: string): string | undefined;
+}
+
+/** Vite's dev client, which every dev page loads, whether or not it has an index.html. */
+const VITE_CLIENT = /vite\/dist\/client\/(?:client|bundledDevClient)\.mjs$/;
+
+/** Appended to the Vite client so SSR frameworks (TanStack Start, Astro, SvelteKit) get the overlay too. */
+export function overlayLoader(scriptUrl: string): string {
+  const src = JSON.stringify(scriptUrl);
+  return `
+;(() => {
+  if (typeof document === "undefined" || document.querySelector(\`script[src=\${JSON.stringify(${src})}]\`)) return;
+  const script = document.createElement("script");
+  script.src = ${src};
+  script.async = true;
+  document.head.appendChild(script);
+})();
+`;
 }
 
 export type FixhereViteOptions = FixhereOptions;
@@ -38,6 +56,10 @@ export default function fixhere(options: FixhereViteOptions = {}): VitePlugin {
         console.warn(`[fixhere] ${error instanceof Error ? error.message : String(error)}`);
       }
       server.httpServer?.once("close", () => void instance?.close());
+    },
+    transform(code, id) {
+      if (!instance || !VITE_CLIENT.test(id)) return undefined;
+      return code + overlayLoader(instance.scriptUrl);
     },
     transformIndexHtml() {
       if (!instance) return [];

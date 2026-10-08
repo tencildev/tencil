@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import {
@@ -11,12 +12,14 @@ import {
 } from "@fixhere/provider-t3code";
 import pc from "picocolors";
 import { DEFAULT_PORT, startFixhere } from "./index.ts";
+import { runInit } from "./init/run.ts";
 import { VERSION } from "./version.ts";
 
 const HELP = `
 ${pc.bold("fixhere")} — point at your UI, prompt your agent.
 
 ${pc.dim("Usage")}
+  fixhere init [options]         Set up Fixhere in this project (Next.js, Vite)
   fixhere [dev] [options]        Start the bridge for the current project
   fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
@@ -28,6 +31,14 @@ ${pc.dim("Options")}
   --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
   --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
   --no-create-project     Don't register the folder in T3 Code when missing
+
+${pc.dim("Init options")}
+  -y, --yes               Apply changes without asking
+  --dry-run               Show the changes without writing them
+  --skip-install          Don't install the fixhere package
+  --skip-pair             Don't pair with T3 Code
+  --from <spec>           Package to install instead of "fixhere" (e.g. a local path)
+
   -h, --help              Show help
   -v, --version           Show version
 `;
@@ -45,6 +56,11 @@ async function main(): Promise<void> {
       "runtime-mode": { type: "string" },
       "allow-origin": { type: "string", multiple: true },
       "no-create-project": { type: "boolean" },
+      yes: { type: "boolean", short: "y" },
+      "dry-run": { type: "boolean" },
+      "skip-install": { type: "boolean" },
+      "skip-pair": { type: "boolean" },
+      from: { type: "string" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
     },
@@ -58,6 +74,17 @@ async function main(): Promise<void> {
   const t3Url = values["t3-url"] ?? process.env.FIXHERE_T3_URL;
 
   if (command === "connect") return connect(rest[0], t3Url);
+  if (command === "init") {
+    return runInit({
+      root: resolve(values.root ?? process.cwd()),
+      yes: values.yes,
+      dryRun: values["dry-run"],
+      skipInstall: values["skip-install"],
+      skipPair: values["skip-pair"],
+      from: values.from,
+      t3Url,
+    });
+  }
   if (command !== "dev") {
     console.error(`Unknown command "${command}"\n${HELP}`);
     process.exitCode = 1;
