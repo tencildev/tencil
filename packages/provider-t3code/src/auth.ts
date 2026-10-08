@@ -98,6 +98,16 @@ export async function exchangePairingCredential(
  * the server's own version (mismatched CLIs may migrate the database).
  * Returns undefined when the server isn't local or the CLI fails.
  */
+/**
+ * The environment minus the lowercase `npm_*` variables an outer npm or npx
+ * passes down: under `npx --package <spec> tencil`, `npm_config_package` makes
+ * a nested `npx t3` run that package instead. Variables the user set
+ * (`NPM_CONFIG_REGISTRY`) are uppercase and stay.
+ */
+export function withoutNpmEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+    return Object.fromEntries(Object.entries(env).filter(([key]) => !key.startsWith('npm_')));
+}
+
 export async function createLocalPairingCode(
     baseUrl: string,
     baseDir = process.env.T3CODE_HOME ?? join(homedir(), '.t3'),
@@ -115,12 +125,17 @@ export async function createLocalPairingCode(
     // T3 Code installs its runtime here (desktop app, SSH launch); fall back to npm.
     const installed = join(baseDir, 'runtime', 'versions', serverVersion, 't3');
     const result = existsSync(installed)
-        ? spawnSync(installed, args, { encoding: 'utf8', timeout: 30_000 })
+        ? spawnSync(installed, args, { encoding: 'utf8', timeout: 30_000, env: withoutNpmEnv() })
         : spawnSync(
               process.platform === 'win32' ? 'npx.cmd' : 'npx',
               ['-y', `t3@${serverVersion}`, ...args],
               // Windows needs a shell to run .cmd shims.
-              { encoding: 'utf8', timeout: 120_000, shell: process.platform === 'win32' },
+              {
+                  encoding: 'utf8',
+                  timeout: 120_000,
+                  shell: process.platform === 'win32',
+                  env: withoutNpmEnv(),
+              },
           );
     return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.match(/^Token:\s*(\S+)/m)?.[1];
 }
@@ -142,8 +157,10 @@ export async function requestWebSocketTicket(
 }
 
 export class UnauthorizedError extends Error {
-    constructor() {
-        super('T3 Code rejected the stored token. Run `tencil connect` to pair again.');
+    constructor(
+        message = 'T3 Code rejected the stored token. Run `tencil connect` to pair again.',
+    ) {
+        super(message);
         this.name = 'UnauthorizedError';
     }
 }

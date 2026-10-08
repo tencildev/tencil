@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DEFAULT_PORT } from '../daemon/server.ts';
 import { stopDaemon } from './background.ts';
 import { type DaemonCommand, daemonArgs } from './daemon-command.ts';
@@ -25,9 +25,39 @@ export function serviceNames(port = DEFAULT_PORT): ServiceNames {
     };
 }
 
-export function launchdPlist(command: DaemonCommand, logPath: string): string {
+/**
+ * What the daemon needs from the shell that installed it. launchd and systemd
+ * start it with a bare PATH (`/usr/bin:/bin`), where nvm's npm and npx, which
+ * it runs to pair and to install the Claude Agent SDK, can't be found; and a
+ * custom XDG_CONFIG_HOME must reach it, or it reads another data folder than
+ * the CLI. npx's and npm's own folders (anything in node_modules) are left out of PATH.
+ */
+export function serviceEnvironment(
+    command: DaemonCommand,
+    env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+    const separator = process.platform === 'win32' ? ';' : ':';
+    const entries = [dirname(command.node), ...(env.PATH ?? '').split(separator)].filter(
+        entry => entry && !/[\\/](?:_npx|node_modules)[\\/]/.test(entry),
+    );
+    const environment: Record<string, string> = { PATH: [...new Set(entries)].join(separator) };
+    if (env.XDG_CONFIG_HOME) environment.XDG_CONFIG_HOME = env.XDG_CONFIG_HOME;
+    return environment;
+}
+
+export function launchdPlist(
+    command: DaemonCommand,
+    logPath: string,
+    environment: Record<string, string> = {},
+): string {
     const args = [command.node, ...daemonArgs(command)]
         .map(arg => `    <string>${escapeXml(arg)}</string>`)
+        .join('\n');
+    const variables = Object.entries(environment)
+        .map(
+            ([key, value]) =>
+                `    <key>${escapeXml(key)}</key>\n    <string>${escapeXml(value)}</string>`,
+        )
         .join('\n');
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -39,6 +69,10 @@ export function launchdPlist(command: DaemonCommand, logPath: string): string {
   <array>
 ${args}
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+${variables}
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -52,12 +86,18 @@ ${args}
 `;
 }
 
-export function systemdUnit(command: DaemonCommand): string {
+export function systemdUnit(
+    command: DaemonCommand,
+    environment: Record<string, string> = {},
+): string {
+    const variables = Object.entries(environment)
+        .map(([key, value]) => `Environment="${key}=${value}"\n`)
+        .join('');
     return `[Unit]
 Description=Tencil daemon
 
 [Service]
-ExecStart=${[command.node, ...daemonArgs(command)].map(arg => `"${arg}"`).join(' ')}
+${variables}ExecStart=${[command.node, ...daemonArgs(command)].map(arg => `"${arg}"`).join(' ')}
 Restart=on-failure
 
 [Install]
@@ -122,7 +162,7 @@ export async function installService(command: DaemonCommand, dataDir: string): P
             quietly('launchctl', ['bootout', launchdDomain(), plist]);
             await stopDaemon(command.port);
             mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true });
-            writeFileSync(plist, launchdPlist(command, logPath));
+            writeFileSync(plist, launchdPlist(command, logPath, serviceEnvironment(command)));
             execFileSync('launchctl', ['bootstrap', launchdDomain(), plist]);
             return plist;
         }
@@ -131,7 +171,7 @@ export async function installService(command: DaemonCommand, dataDir: string): P
             quietly('systemctl', ['--user', 'stop', unitName]);
             await stopDaemon(command.port);
             mkdirSync(join(homedir(), '.config', 'systemd', 'user'), { recursive: true });
-            writeFileSync(unit, systemdUnit(command));
+            writeFileSync(unit, systemdUnit(command, serviceEnvironment(command)));
             execFileSync('systemctl', ['--user', 'daemon-reload']);
             // Keep systemd's "Created symlink…" out of the output; errors still throw.
             execFileSync('systemctl', ['--user', 'enable', '--now', unitName], {

@@ -30,8 +30,16 @@ async function pairWithLocalT3(
     if (await store.get(baseUrl)) return log(`  ${pc.green('✓')} Paired with T3 Code.`);
     const code = await createLocalPairingCode(baseUrl).catch(() => undefined);
     if (!code) {
+        const running = await fetch(new URL('/.well-known/t3/environment', baseUrl), {
+            signal: AbortSignal.timeout(3_000),
+        }).then(
+            response => response.ok,
+            () => false,
+        );
         log(
-            `  ${pc.yellow('!')} T3 Code isn't running, so pairing is skipped. Tencil pairs on its own once it is.`,
+            running
+                ? `  ${pc.yellow('!')} Couldn't pair with T3 Code automatically. Press Pair in the overlay, or run ${pc.cyan('npx tencil connect')} with a pairing link from T3 Code.`
+                : `  ${pc.yellow('!')} T3 Code isn't running, so pairing is skipped. Tencil pairs on its own once it is.`,
         );
         return;
     }
