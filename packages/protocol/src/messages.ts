@@ -32,6 +32,8 @@ export const ClientMessage = z.discriminatedUnion("type", [
     title: z.string().optional(),
   }),
   z.object({ type: z.literal("provider.threads") }),
+  /** Ask the provider to authorize (e.g. pair with a local T3 Code). */
+  z.object({ type: z.literal("provider.pair") }),
   z.object({
     type: z.literal("thread.reply"),
     threadId: z.string(),

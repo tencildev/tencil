@@ -26,6 +26,14 @@
       "types": "./dist/vite.d.mts",
       "default": "./dist/vite.mjs"
     },
+    "./next": {
+      "types": "./dist/next.d.mts",
+      "default": "./dist/next.mjs"
+    },
+    "./react": {
+      "types": "./dist/react.d.mts",
+      "default": "./dist/react.mjs"
+    },
     "./overlay.js": "./dist/overlay.global.js",
     "./package.json": "./package.json"
   },
@@ -47,9 +55,24 @@
     "@fixhere/protocol": "workspace:*",
     "@fixhere/provider-t3code": "workspace:*",
     "@types/ws": "^8.18.2",
-    "tsdown": "^0.23.0"
+    "tsdown": "^0.23.0",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "@fixhere/testing": "workspace:*"
   },
   "engines": {
     "node": ">=22"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "vite": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
   }
 }

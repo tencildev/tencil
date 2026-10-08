@@ -21,7 +21,7 @@ ${pc.dim("Usage")}
   fixhere connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 ${pc.dim("Options")}
-  --port <n>              Bridge port (default ${DEFAULT_PORT})
+  --port <n>              Bridge port (default: first free from ${DEFAULT_PORT})
   --root <dir>            Project root (default: cwd)
   --t3-url <url>          T3 Code server (default ${DEFAULT_T3_URL}, env FIXHERE_T3_URL)
   --model <inst:model>    Model, e.g. claudeAgent:claude-fable-5-1 (default: project default)
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   if (runtimeMode && !RUNTIME_MODES.includes(runtimeMode)) {
     throw new Error(`--runtime-mode must be one of ${RUNTIME_MODES.join(", ")}`);
   }
-  const port = values.port ? Number.parseInt(values.port, 10) : DEFAULT_PORT;
+  const port = values.port ? Number.parseInt(values.port, 10) : undefined;
 
   const instance = await startFixhere({
     root: values.root,
@@ -83,6 +83,13 @@ async function main(): Promise<void> {
     log: (message) => console.log(`${pc.dim(time())} ${message}`),
   });
 
+  if (instance.attached) {
+    console.log(
+      `\n  ${pc.green("✓")} Fixhere is already running for this project at ${instance.url}\n`,
+    );
+    return;
+  }
+
   console.log(`
   ${pc.bold(pc.red("●"))} ${pc.bold("Fixhere")} ${pc.dim(`v${VERSION}`)}
 
@@ -93,14 +100,14 @@ async function main(): Promise<void> {
 `);
 
   let lastState = "";
-  instance.provider.onInfoChange((info) => {
+  instance.provider?.onInfoChange((info) => {
     if (info.state === lastState) return;
     lastState = info.state;
     const line = `${info.label}: ${info.state}${info.detail ? ` — ${info.detail}` : ""}`;
     if (info.state === "unauthorized") {
       console.log(`${pc.dim(time())} ${pc.yellow(line)}`);
       console.log(
-        `${pc.dim(time())} Pair once with ${pc.cyan("npx fixhere connect")} (link from T3 Code → Settings → Connections).`,
+        `${pc.dim(time())} Use ${pc.bold("Pair")} in the overlay, or ${pc.cyan("npx fixhere connect")} with a link from T3 Code → Settings → Connections.`,
       );
     } else if (info.state === "unavailable") {
       console.log(`${pc.dim(time())} ${pc.yellow(line)}`);

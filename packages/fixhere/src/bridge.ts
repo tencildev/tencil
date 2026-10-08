@@ -83,6 +83,9 @@ export class Bridge {
         case "thread.open":
           this.#open(message);
           return;
+        case "provider.pair":
+          await this.#options.provider.pair?.();
+          return;
         case "provider.threads":
           client.send({
             type: "provider.threads",

@@ -7,6 +7,8 @@ export interface ServerOptions {
   bridge: Bridge;
   port: number;
   host: string;
+  /** Project root, reported on /health so other processes can attach. */
+  root: string;
   /** Absolute path of the built overlay IIFE. */
   overlayPath: string;
   /** Extra origins allowed to connect, besides loopback ones. */
@@ -19,6 +21,11 @@ const MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
 export function startServer(options: ServerOptions): Promise<Server> {
   const server = createServer(async (request, response) => {
+    if (!isAllowedHost(request, options.host)) {
+      response.writeHead(403, { "content-type": "text/plain" });
+      response.end("Forbidden host");
+      return;
+    }
     const url = new URL(request.url ?? "/", "http://localhost");
     if (url.pathname === "/fixhere.js") {
       try {
@@ -37,7 +44,9 @@ export function startServer(options: ServerOptions): Promise<Server> {
     }
     if (url.pathname === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ name: "fixhere", version: options.version }));
+      response.end(
+        JSON.stringify({ name: "fixhere", version: options.version, root: options.root }),
+      );
       return;
     }
     response.writeHead(404, { "content-type": "text/plain" });
@@ -48,7 +57,11 @@ export function startServer(options: ServerOptions): Promise<Server> {
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://localhost");
-    if (url.pathname !== "/ws" || !isAllowedOrigin(request, options.allowedOrigins)) {
+    if (
+      url.pathname !== "/ws" ||
+      !isAllowedHost(request, options.host) ||
+      !isAllowedOrigin(request, options.allowedOrigins)
+    ) {
       socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();
       return;
@@ -104,4 +117,25 @@ export function isAllowedOrigin(request: IncomingMessage, allowedOrigins: string
     hostname === "[::1]" ||
     /^127(?:\.\d{1,3}){3}$/.test(hostname)
   );
+}
+
+/**
+ * DNS rebinding guard: a hostile domain re-pointed at 127.0.0.1 still sends
+ * its own name as Host. When bound to loopback only loopback names may talk to us.
+ */
+export function isAllowedHost(request: IncomingMessage, boundHost: string): boolean {
+  if (!isLoopback(boundHost)) return true;
+  const header = request.headers.host;
+  if (!header) return false;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${header}`).hostname;
+  } catch {
+    return false;
+  }
+  return isLoopback(hostname) || hostname === "localhost" || hostname.endsWith(".localhost");
+}
+
+function isLoopback(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(hostname);
 }
