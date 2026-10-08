@@ -9,7 +9,7 @@ desktop app running and access to `pixel-perfect-agency` on GitHub.
 Set up Fixhere for this project so I can test it. Fixhere is an internal tool
 (private repo `pixel-perfect-agency/fixhere`): I press C on my running dev site,
 click an element, type what should change, and it starts a T3 Code thread for
-this project with the element's component, source file and a screenshot.
+this project with the element's component and source file (and a screenshot on request).
 
 Do the following, and stop and tell me if a step fails instead of working
 around it:

@@ -31,7 +31,7 @@ export function Composer() {
     const pending = draft.value;
     const ref = useRef<HTMLDivElement>(null);
     const [height, setHeight] = useState(140);
-    const [withScreenshot, setWithScreenshot] = useState(true);
+    const [withScreenshot, setWithScreenshot] = useState(false);
     const [busy, setBusy] = useState(false);
     const [picking, setPicking] = useState(false);
 

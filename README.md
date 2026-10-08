@@ -5,7 +5,7 @@
 Fixhere is a browser review tool for coding agents. Press <kbd>C</kbd> on your
 running dev site, click any element, and type what should change. Fixhere pins
 the comment to that element, starts an agent thread with the element's component,
-source file, markup and a screenshot, and streams the agent's progress back onto
+source file and markup (plus a screenshot if you add one), and streams the agent's progress back onto
 the pin while your dev server hot-reloads the result.
 
 Think Vercel Comments, except the reviewer on the other side is an agent.
