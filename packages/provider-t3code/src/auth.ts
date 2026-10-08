@@ -197,3 +197,35 @@ function credentialKey(baseUrl: string): string {
   }
   return url.origin;
 }
+
+export interface T3ProjectSummary {
+  id: string;
+  title: string;
+  workspaceRoot: string;
+}
+
+/**
+ * The T3 Code projects on this machine, for the "which project is this
+ * page?" picker. Uses the paired token; returns [] when not paired or offline.
+ */
+export async function listT3Projects(
+  options: { baseUrl?: string; credentials?: CredentialStore; token?: string } = {},
+): Promise<T3ProjectSummary[]> {
+  const credentials = options.credentials ?? new CredentialStore();
+  const baseUrl = normalizeBaseUrl(
+    options.baseUrl ?? (await credentials.lastBaseUrl()) ?? DEFAULT_T3_URL,
+  );
+  const token = options.token ?? (await credentials.get(baseUrl))?.token;
+  if (!token) return [];
+  try {
+    const response = await fetch(`${baseUrl}/api/orchestration/shell`, {
+      signal: AbortSignal.timeout(8_000),
+      headers: { authorization: `Bearer ${token}`, "x-t3-orchestration-protocol": "2" },
+    });
+    if (!response.ok) return [];
+    const shell = (await response.json()) as { projects: T3ProjectSummary[] };
+    return shell.projects.map(({ id, title, workspaceRoot }) => ({ id, title, workspaceRoot }));
+  } catch {
+    return [];
+  }
+}

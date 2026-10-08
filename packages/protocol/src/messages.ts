@@ -32,6 +32,8 @@ export const ClientMessage = z.discriminatedUnion("type", [
     title: z.string().optional(),
   }),
   z.object({ type: z.literal("provider.threads") }),
+  /** Attach this page to a project folder (answer to `project.unknown`, or a switch). */
+  z.object({ type: z.literal("project.select"), root: z.string().min(1) }),
   /** Ask the provider to authorize (e.g. pair with a local T3 Code). */
   z.object({ type: z.literal("provider.pair") }),
   z.object({
@@ -69,6 +71,12 @@ export type ServerMessage =
       threads: Thread[];
     }
   | { type: "provider.status"; provider: ProviderInfo }
+  /** The daemon couldn't tell which project this page belongs to; the overlay asks. */
+  | {
+      type: "project.unknown";
+      pageUrl: string;
+      choices: Array<{ root: string; title: string }>;
+    }
   | { type: "thread.upsert"; thread: Thread }
   | { type: "thread.removed"; threadId: string }
   | { type: "provider.threads"; project: ProviderProject; threads: ProviderThreadSummary[] }
