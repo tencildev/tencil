@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { projectStorePath, ThreadStore } from "./store.ts";
 
@@ -20,7 +20,8 @@ describe("ThreadStore", () => {
   it("keeps one file per project outside the repo", () => {
     const a = projectStorePath("/Users/me/Code/eyes", "/data");
     const b = projectStorePath("/Users/me/Work/eyes", "/data");
-    expect(a).toMatch(/^\/data\/projects\/eyes-[0-9a-f]{10}\.json$/);
+    expect(a.startsWith(join("/data", "projects", "eyes-"))).toBe(true);
+    expect(a.split(sep).at(-1)).toMatch(/^eyes-[0-9a-f]{10}\.json$/);
     expect(a).not.toBe(b);
   });
 
@@ -32,7 +33,7 @@ describe("ThreadStore", () => {
     await store.flush();
 
     const saved = JSON.parse(await readFile(store.path, "utf8"));
-    expect(saved).toMatchObject({ root: "/projects/acme", threads: [{ id: "t1" }] });
+    expect(saved).toMatchObject({ root: resolve("/projects/acme"), threads: [{ id: "t1" }] });
 
     const reloaded = new ThreadStore("/projects/acme", dataDir);
     await reloaded.load();

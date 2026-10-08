@@ -33,7 +33,7 @@ const basePort = () => {
   return nextBase;
 };
 
-const tmp = (prefix: string) => realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+const tmp = (prefix: string) => realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
 
 async function setup(
   options: { protocol?: 1 | 2; paired?: boolean; autoPair?: boolean; slow?: boolean } = {},

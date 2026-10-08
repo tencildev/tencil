@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { addFixhereToBody, addImport, addVitePlugin, wrapNextConfig } from "./codemods.ts";
 import { detectPackageManager } from "./detect.ts";
@@ -185,9 +185,9 @@ describe("planInit", () => {
     });
     const plan = await planInit(root);
     expect(plan.framework.kind).toBe("next-app");
-    expect(plan.edits.map((e) => e.path.replace(root, ""))).toEqual([
-      "/next.config.ts",
-      "/src/app/layout.tsx",
+    expect(plan.edits.map((e) => relative(root, e.path).split(sep).join("/"))).toEqual([
+      "next.config.ts",
+      "src/app/layout.tsx",
     ]);
     expect(plan.manual).toEqual([]);
   });

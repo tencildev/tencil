@@ -17,7 +17,8 @@ afterEach(async () => {
 });
 
 function projectDir(): string {
-  return realpathSync(mkdtempSync(join(tmpdir(), "fixhere-project-")));
+  // Native realpath like the provider: on Windows it expands 8.3 short names.
+  return realpathSync.native(mkdtempSync(join(tmpdir(), "fixhere-project-")));
 }
 
 async function setup(
