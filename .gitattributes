@@ -1,0 +1,4 @@
+# Keep LF everywhere so Windows checkouts match the formatter.
+* text=auto eol=lf
+*.png binary
+*.tgz binary
