@@ -11,5 +11,8 @@
   },
   "dependencies": {
     "@fixhere/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@fixhere/testing": "workspace:*"
   }
 }

@@ -24,6 +24,8 @@ export interface Provider {
   info(): ProviderInfo;
   onInfoChange(listener: (info: ProviderInfo) => void): () => void;
 
+  /** Authorize against the provider (e.g. pair with T3 Code). Optional. */
+  pair?(): Promise<void>;
   /** Threads that already exist for this project, newest first. */
   listThreads(): Promise<{ project: ProviderProject; threads: ProviderThreadSummary[] }>;
   /** Deep link into the provider UI for a thread, when it has one. */

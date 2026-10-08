@@ -118,9 +118,13 @@ export async function createLocalPairingCode(
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`.match(/^Token:\s*(\S+)/m)?.[1];
 }
 
-export async function requestWebSocketTicket(baseUrl: string, token: string): Promise<string> {
+export async function requestWebSocketTicket(
+  baseUrl: string,
+  token: string,
+  timeoutMs = 8_000,
+): Promise<string> {
   const response = await fetch(`${baseUrl}/api/auth/websocket-ticket`, {
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(timeoutMs),
     method: "POST",
     headers: { authorization: `Bearer ${token}` },
   });

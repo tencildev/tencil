@@ -14,7 +14,9 @@ import type {
 import type { ModelSelection, ProtocolAdapter, RuntimeMode, ThreadTracker } from "./adapter.ts";
 import {
   CredentialStore,
+  createLocalPairingCode,
   DEFAULT_T3_URL,
+  exchangePairingCredential,
   normalizeBaseUrl,
   requestWebSocketTicket,
   UnauthorizedError,
@@ -36,6 +38,11 @@ export interface T3CodeProviderOptions {
   interactionMode?: "default" | "plan";
   /** Register `projectRoot` as a T3 Code project when no project matches. */
   createProjectIfMissing?: boolean;
+  /** Pair with a local T3 Code on its own when no token is stored. Defaults to true. */
+  autoPair?: boolean;
+  /** Mints a pairing code. Defaults to running the `t3` CLI matching the server version. */
+  createPairingCode?: (baseUrl: string) => Promise<string | undefined>;
+  timeouts?: { httpMs?: number; rpcMs?: number; retryMinMs?: number; retryMaxMs?: number };
   log?: (message: string) => void;
 }
 
@@ -94,9 +101,7 @@ interface Connection {
   modelSelection: ModelSelection;
 }
 
-const RETRY_MIN_MS = 1_000;
-const HTTP_TIMEOUT_MS = 8_000;
-const RETRY_MAX_MS = 15_000;
+const DEFAULT_TIMEOUTS = { httpMs: 8_000, rpcMs: 30_000, retryMinMs: 1_000, retryMaxMs: 15_000 };
 
 export class T3CodeProvider implements Provider {
   readonly id = "t3code";
@@ -109,17 +114,59 @@ export class T3CodeProvider implements Provider {
   #infoListeners = new Set<(info: ProviderInfo) => void>();
   #connection: Connection | undefined;
   #watchers = new Map<string, Watcher>();
-  #retryDelay = RETRY_MIN_MS;
+  readonly #timeouts: typeof DEFAULT_TIMEOUTS;
+  #retryDelay: number;
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
   #disposed = false;
+  #connecting = false;
+  /** Auto-pairing runs once per server; after that the user pairs explicitly. */
+  #autoPaired = new Set<string>();
 
   constructor(options: T3CodeProviderOptions) {
     this.#options = options;
+    this.#timeouts = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
+    this.#retryDelay = this.#timeouts.retryMinMs;
     this.#baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_T3_URL);
     this.#credentials = options.credentials ?? new CredentialStore();
   }
 
   async start(): Promise<void> {
+    await this.#connect();
+  }
+
+  /**
+   * Pair with the local T3 Code: mint a pairing code, exchange it for a token
+   * and reconnect. Used automatically on first run and by the overlay's Pair button.
+   */
+  async pair(): Promise<void> {
+    if (!this.#options.baseUrl) {
+      const paired = await this.#credentials.lastBaseUrl();
+      if (paired) this.#baseUrl = normalizeBaseUrl(paired);
+    }
+    this.#setInfo({ state: "connecting", detail: "Pairing with T3 Code…" });
+    const mint = this.#options.createPairingCode ?? createLocalPairingCode;
+    const code = await mint(this.#baseUrl).catch(() => undefined);
+    if (!code) {
+      this.#setInfo({
+        state: "unauthorized",
+        detail:
+          "Couldn't pair automatically. Run `npx fixhere connect` with a pairing link from T3 Code.",
+      });
+      return;
+    }
+    try {
+      const credential = await exchangePairingCredential({
+        baseUrl: this.#baseUrl,
+        credential: code,
+      });
+      await this.#credentials.set(this.#baseUrl, credential);
+      this.#log(`Paired with T3 Code at ${this.#baseUrl}`);
+    } catch (error) {
+      this.#setInfo({ state: "unauthorized", detail: errorMessage(error) });
+      return;
+    }
+    clearTimeout(this.#retryTimer);
+    this.#retryDelay = this.#timeouts.retryMinMs;
     await this.#connect();
   }
 
@@ -269,11 +316,13 @@ export class T3CodeProvider implements Provider {
   /* -------------------------------- connection ------------------------------- */
 
   async #connect(): Promise<void> {
-    if (this.#disposed) return;
+    if (this.#disposed || this.#connecting) return;
+    this.#connecting = true;
+    let unauthorized = false;
     try {
       const connection = await this.#establish();
       this.#connection = connection;
-      this.#retryDelay = RETRY_MIN_MS;
+      this.#retryDelay = this.#timeouts.retryMinMs;
       this.#setInfo({ state: "ready", target: connection.project.title });
       this.#log(
         `Connected to T3 Code at ${this.#baseUrl} · project "${connection.project.title}" · ${connection.modelSelection.instanceId}/${connection.modelSelection.model} · protocol v${connection.protocol.version}`,
@@ -282,13 +331,22 @@ export class T3CodeProvider implements Provider {
         this.#subscribe(connection, threadId, watcher);
       }
     } catch (error) {
-      if (error instanceof UnauthorizedError) {
-        this.#setInfo({ state: "unauthorized", detail: error.message });
+      unauthorized = error instanceof UnauthorizedError;
+      if (unauthorized) {
+        this.#setInfo({ state: "unauthorized", detail: (error as Error).message });
       } else {
         this.#setInfo({ state: "unavailable", detail: errorMessage(error) });
       }
-      this.#scheduleReconnect();
+    } finally {
+      this.#connecting = false;
     }
+    if (this.#connection || this.#disposed) return;
+    if (unauthorized && (this.#options.autoPair ?? true) && !this.#autoPaired.has(this.#baseUrl)) {
+      this.#autoPaired.add(this.#baseUrl);
+      await this.pair();
+      return;
+    }
+    this.#scheduleReconnect();
   }
 
   async #establish(): Promise<Connection> {
@@ -302,19 +360,20 @@ export class T3CodeProvider implements Provider {
     }>(
       "/.well-known/t3/environment",
       undefined,
-      `T3 Code is not reachable at ${this.#baseUrl}. Is it running?`,
+      `T3 Code isn't running at ${this.#baseUrl}. Open T3 Code and Fixhere connects on its own.`,
     );
     const protocol = environment.orchestrationProtocolVersion === 2 ? v2 : v1;
 
     const token = this.#options.token ?? (await this.#credentials.get(this.#baseUrl))?.token;
     if (!token) throw new UnauthorizedError();
 
-    const ticket = await requestWebSocketTicket(this.#baseUrl, token);
+    const ticket = await requestWebSocketTicket(this.#baseUrl, token, this.#timeouts.httpMs);
     const wsUrl = new URL("/ws", this.#baseUrl);
     wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
     if (protocol.version === 2) wsUrl.searchParams.set("orchestrationProtocol", "2");
     wsUrl.searchParams.set("wsTicket", ticket);
     const socket = await RpcSocket.open(wsUrl.toString());
+    socket.requestTimeoutMs = this.#timeouts.rpcMs;
 
     try {
       const project = await this.#resolveProject(socket, protocol, token);
@@ -348,7 +407,7 @@ export class T3CodeProvider implements Provider {
     if (this.#disposed) return;
     clearTimeout(this.#retryTimer);
     this.#retryTimer = setTimeout(() => void this.#connect(), this.#retryDelay);
-    this.#retryDelay = Math.min(this.#retryDelay * 2, RETRY_MAX_MS);
+    this.#retryDelay = Math.min(this.#retryDelay * 2, this.#timeouts.retryMaxMs);
   }
 
   async #resolveProject(
@@ -455,7 +514,7 @@ export class T3CodeProvider implements Provider {
     try {
       response = await fetch(new URL(path, this.#baseUrl), {
         // A server mid-restart can accept the connection and never answer.
-        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.#timeouts.httpMs),
         headers: {
           "x-t3-orchestration-protocol": "2",
           ...(token ? { authorization: `Bearer ${token}` } : {}),

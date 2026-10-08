@@ -59,6 +59,9 @@ export class RpcSocket {
     this.#ping = setInterval(() => this.#send({ _tag: "Ping" }), PING_INTERVAL_MS);
   }
 
+  /** Default for `request` when no timeout is passed. */
+  requestTimeoutMs = 30_000;
+
   static open(url: string, timeoutMs = 10_000): Promise<RpcSocket> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url);
@@ -87,7 +90,7 @@ export class RpcSocket {
   }
 
   /** Unary request; rejects after `timeoutMs` so a stalled server can't hang callers. */
-  request<T>(tag: string, payload: unknown, timeoutMs = 30_000): Promise<T> {
+  request<T>(tag: string, payload: unknown, timeoutMs = this.requestTimeoutMs): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const id = this.#start(tag, payload, {
