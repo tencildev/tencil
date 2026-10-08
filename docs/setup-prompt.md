@@ -14,16 +14,19 @@ source file (and a screenshot on request).
 Do the following, and stop and tell me if a step fails instead of working
 around it:
 
-1. **Run the installer in this project** (from the app's folder, i.e. the one
-   with `next.config.*` or `vite.config.*`). Needs Node 22+. First
+1. **Set up this machine.** Needs Node 22+. Ask me whether Fixhere should start
+   automatically when I log in (recommended). If yes, run
+   `npx --yes fixhere@latest setup --yes`; if not, `npx --yes fixhere@latest start`.
+
+2. **Run the installer in this project** (from the app's folder, i.e. the one
+   with `next.config.*` or `vite.config.*`). First
    `npx fixhere@latest init --dry-run`, show me the planned change and ask before
    applying it with `npx fixhere@latest init --yes`.
    It makes one change (Next.js: `<Fixhere />` at the end of `<body>` in the root
-   layout; Vite: the `fixhere()` plugin), installs `fixhere` as a dev dependency,
-   starts the Fixhere daemon in the background and pairs with T3 Code.
+   layout; Vite: the `fixhere()` plugin) and installs `fixhere` as a dev dependency.
    If it says the framework isn't supported, tell me instead of editing files.
 
-2. **Tell me how to try it.** Don't start the dev server yourself. Tell me to start
+3. **Tell me how to try it.** Don't start the dev server yourself. Tell me to start
    the project's usual dev server, open the page and press C. `npx fixhere status`
    should list this project once the page is open.
 
@@ -39,7 +42,7 @@ Don't commit any of these changes; they're for local testing.
 - Drag the toolbar by its separator line to move it to any corner.
 - The agent runs in T3 Code's `full-access` mode and edits your working copy.
 
-To update later: install `fixhere@latest` in the project and run `npx fixhere start`
-(it restarts the daemon on the new version).
+To update later: run `npx fixhere@latest setup` (or `start`, without the login
+service) and install `fixhere@latest` in the project.
 
 Feedback and bugs: tell Willem-Jaap or open an issue on the repo.

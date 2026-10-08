@@ -12,7 +12,8 @@ packages/
 │   └── src/
 │       ├── cli/        # index.ts (entry, arg parsing) + commands/{name}.ts
 │       ├── daemon/     # server, bridge, project-resolver, thread-store, prompt, security
-│       ├── service/    # background start/stop, login service (launchd/systemd/schtasks)
+│       ├── service/    # machine setup: background start/stop, login service
+│       │               # (launchd/systemd/schtasks) and its runtime copy, pairing
 │       ├── init/       # `fixhere init`: detect-framework, codemods, diff, run-init
 │       └── integrations/  # vite.ts (plugin), react.ts (<Fixhere />)
 ├── overlay/            # Browser overlay (Preact + signals, shadow DOM), built to one IIFE
@@ -29,8 +30,8 @@ apps/
 
 ## Mental Model
 
-- **Daemon per machine.** `fixhere start` runs one daemon on `localhost:4747`. Projects
-  only load `/fixhere.js` in development. The daemon maps each page to its project
+- **Daemon per machine.** `fixhere setup` (or `start`) runs one daemon on
+  `localhost:4747`. Projects only load `/fixhere.js` in development. The daemon maps each page to its project
   (dev server port → process → working directory; otherwise the overlay asks) and
   keeps a bridge, provider connection and pin store per project.
 - **Providers are swappable.** The bridge owns pins and renders element context into
