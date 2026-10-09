@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Anchor, ElementContext, ImageAttachment } from './context.ts';
-import type { ProviderProject, ProviderThreadSummary, Thread } from './thread.ts';
+import type { ProviderModel, ProviderProject, ProviderThreadSummary, Thread } from './thread.ts';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -23,6 +23,22 @@ export const ClientMessage = z.discriminatedUnion('type', [
         attachments: z.array(ImageAttachment).max(4).default([]),
         /** Continue this existing provider thread instead of starting a new one. */
         providerThreadId: z.string().optional(),
+        /** Queue it for a batch (`drafts.send`) instead of sending it now. */
+        draft: z.boolean().optional(),
+    }),
+    /** Rewrite a queued comment. */
+    z.object({
+        type: z.literal('thread.edit'),
+        threadId: z.string(),
+        prompt: z.string().min(1),
+    }),
+    /** Send queued comments to the agent together, as one new thread. */
+    z.object({
+        type: z.literal('drafts.send'),
+        /** In pin order; `number` is the pin's number, which the agent refers to. */
+        drafts: z
+            .array(z.object({ threadId: z.string(), number: z.number().int().positive() }))
+            .min(1),
     }),
     /** Track an existing provider thread without pinning it to an element. */
     z.object({
@@ -32,6 +48,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
         title: z.string().optional(),
     }),
     z.object({ type: z.literal('provider.threads') }),
+    /** The models new threads of the default provider can run on. */
+    z.object({ type: z.literal('provider.models') }),
     /** Attach this page to a project folder (answer to `project.unknown`, or a switch). */
     z.object({ type: z.literal('project.select'), root: z.string().min(1) }),
     /** Ask the provider to authorize (e.g. pair with a local T3 Code). */
@@ -48,7 +66,13 @@ export const ClientMessage = z.discriminatedUnion('type', [
     /** Re-anchor a pin that was dragged somewhere else. */
     z.object({ type: z.literal('thread.move'), threadId: z.string(), anchor: Anchor }),
     /** Change the project's settings, e.g. the provider new pins go to. */
-    z.object({ type: z.literal('settings.update'), provider: z.string().min(1) }),
+    z.object({
+        type: z.literal('settings.update'),
+        provider: z.string().min(1).optional(),
+        batch: z.boolean().optional(),
+    }),
+    /** Run new threads of the default provider on this model; null goes back to its default. */
+    z.object({ type: z.literal('model.select'), model: z.string().min(1).nullable() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 export type ClientMessageInput = z.input<typeof ClientMessage>;
@@ -76,6 +100,10 @@ export const ProjectSettings = z.object({
     /** Provider new pins go to; existing pins keep their own. */
     provider: z.string(),
     providers: z.array(ProviderOption),
+    /** Model picked for the provider's new threads; unset means the provider's default. */
+    model: z.string().optional(),
+    /** New comments are queued and sent together. */
+    batch: z.boolean(),
 });
 export type ProjectSettings = z.infer<typeof ProjectSettings>;
 
@@ -103,4 +131,11 @@ export type ServerMessage =
     | { type: 'thread.upsert'; thread: Thread }
     | { type: 'thread.removed'; threadId: string }
     | { type: 'provider.threads'; project: ProviderProject; threads: ProviderThreadSummary[] }
+    | {
+          type: 'provider.models';
+          provider: string;
+          models: ProviderModel[];
+          /** What new threads run on when no model is picked. */
+          defaultModel?: string;
+      }
     | { type: 'error'; message: string; threadId?: string };

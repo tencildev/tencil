@@ -10,7 +10,9 @@ import { chooseProvider } from '../../service/choose-provider.ts';
 import type { DaemonCommand } from '../../service/daemon-command.ts';
 import { isServiceInstalled } from '../../service/login-service.ts';
 import { prepareProvider } from '../../service/pairing.ts';
+import { updateNotice } from '../../service/versions.ts';
 import { VERSION } from '../../version.ts';
+import { newerDaemonLine, printUpdateNotice } from '../format.ts';
 import { type SetupOptions, setUpMachine } from './setup.ts';
 
 export interface QuickstartOptions extends SetupOptions {
@@ -27,8 +29,11 @@ export async function quickstart(
 ): Promise<void> {
     const log = (message: string) => console.log(message);
     log(`\n  ${pc.bold('Tencil')} ${pc.dim(`v${VERSION}`)}\n`);
+    const notice = updateNotice();
 
     const provider = await chooseProvider({ ...options, log });
+    // Pair (or install Claude Code support) first, so the daemon starts ready.
+    await prepareProvider(provider, options.t3Url, log);
     const running = await probeDaemon(command.port);
     if (!running && !isServiceInstalled(command.port)) {
         await setUpMachine(command, options, log);
@@ -36,10 +41,12 @@ export async function quickstart(
         const result = await ensureDaemon(command, defaultDataDir());
         const verb = result.status === 'running' ? 'is running' : result.status;
         log(
-            `  ${pc.green('✓')} Tencil ${verb} on port ${command.port}${result.autostart ? pc.dim(' (starts at login)') : ''}`,
+            result.newer
+                ? newerDaemonLine(result.newer, command.port)
+                : `  ${pc.green('✓')} Tencil ${verb} on port ${command.port}${result.autostart ? pc.dim(' (starts at login)') : ''}`,
         );
     }
-    await prepareProvider(provider, options.t3Url, log);
+    await printUpdateNotice(notice, log);
 
     const framework = await detectFramework(options.root);
     if (framework.kind !== 'unknown' || existsSync(join(options.root, 'package.json'))) {

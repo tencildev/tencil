@@ -69,10 +69,20 @@ export const styles = /* css */ `
 
 /* Thin, theme-aware scrollbars everywhere inside the overlay. */
 * { scrollbar-width: thin; scrollbar-color: var(--n-200) transparent; }
-@supports not (scrollbar-color: auto) {
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+/*
+ * Chromium and Safari: drawn by hand. Their standard thin scrollbar centers the
+ * thumb in a wide track; here it keeps a gap from the content and hugs the edge.
+ */
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--n-200); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--n-200) padding-box; border-radius: 999px;
+    border: solid transparent; border-width: 2px 2px 2px 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--n-400); }
+  .project-picker-list::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.2); }
 }
 .root.picking { cursor: crosshair; }
 ::selection { background: var(--accent); color: white; }
@@ -134,6 +144,8 @@ kbd {
 .pin-resolved { --pin: #7b7d7a; }
 .pin-resolved .pin-body { opacity: 0.8; }
 .pin-draft .pin-body { background: white; border-color: var(--accent); color: var(--accent); }
+/* Queued for a batch: not sent yet, so outlined rather than filled. */
+.pin-queued .pin-body { background: white; color: var(--accent); border: 2px dashed var(--accent); }
 .pin-working .pin-body::after {
   content: ""; position: absolute; inset: -6px;
   border-radius: 18px 18px 18px 6px;
@@ -179,6 +191,16 @@ kbd {
 .target-option-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .target-option-meta { color: var(--n-500); flex: none; }
 .target-empty { margin: 0; padding: 7px 8px; color: var(--n-500); font-size: 12px; }
+.menu-group {
+  display: flex; align-items: center; gap: 6px; margin: 0;
+  padding: 8px 8px 3px; color: var(--n-500); font-size: 11px; font-weight: 500;
+}
+.model-toggle { min-width: 0; max-width: 150px; font-size: 12px; }
+.composer-batch { color: var(--accent-text); }
+.model-toggle-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-toggle svg:last-child { flex: none; transition: transform 150ms var(--ease-out); }
+.model-toggle.open { color: var(--n-950); background: var(--n-100); }
+.model-toggle.open svg:last-child { transform: rotate(180deg); }
 .thread-dot { width: 7px; height: 7px; border-radius: 999px; flex: none; background: var(--n-400); }
 .inbox-item .thread-dot { margin: 7px 4px 0 2px; }
 .thread-dot-working, .thread-dot-starting { background: var(--live); animation: live 1.6s ease-in-out infinite; }
@@ -326,6 +348,9 @@ kbd {
   @starting-style { opacity: 0; }
 }
 .status-waiting { color: var(--warn); }
+.status-queued { height: auto; min-height: 1.25rem; margin-top: 12px; }
+.status-queued .stop { margin-left: auto; flex: none; }
+.status-queued .status-error { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-error { color: var(--error); }
 .status-line a { margin-left: auto; color: var(--n-950); font-weight: 500; }
 .live-dot {
@@ -365,7 +390,20 @@ kbd {
 .segmented button { padding: 3px 10px; border-radius: 7px; color: var(--n-600); font-size: 12px; }
 .segmented .active { background: var(--surface); color: var(--n-950); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 .inbox-filter { display: flex; align-items: center; gap: 6px; padding: 10px 16px 6px; color: var(--n-600); font-size: 12px; cursor: pointer; }
-.inbox-filter input { accent-color: var(--accent); margin: 0; }
+/* Custom checkbox: the input stays the hit target, the check is an icon on top. */
+.checkbox { position: relative; display: inline-grid; place-items: center; flex: none; width: 14px; height: 14px; }
+.checkbox-input {
+  appearance: none; margin: 0; width: 14px; height: 14px; border-radius: 4px; cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px var(--n-400);
+  transition: background-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+.checkbox-input:checked { background: var(--accent); box-shadow: none; }
+.checkbox-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.checkbox svg {
+  position: absolute; width: 10px; height: 10px; color: white; stroke-width: 3; pointer-events: none;
+  opacity: 0; transform: scale(0.6); transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+}
+.checkbox-input:checked + svg { opacity: 1; transform: scale(1); }
 .inbox-list { overflow-y: auto; padding: 0 6px 6px; }
 .inbox-item { display: flex; gap: 10px; width: 100%; text-align: left; padding: 10px; border-radius: 12px; align-items: flex-start; }
 .inbox-item.active { background: var(--n-100); }
@@ -377,11 +415,46 @@ kbd {
 .empty kbd { background: var(--n-100); color: var(--n-700); }
 
 /* -------------------------------- settings -------------------------------- */
-.inbox.settings-panel, .root:has(.dock-top-right) .inbox.settings-panel { bottom: auto; }
-.settings-title { margin-right: auto; }
+/* Opens from the toolbar, on its open side (above it, or below when docked at the top). */
+.settings-panel {
+  width: 300px; pointer-events: auto;
+  background: var(--n-50); border-radius: var(--radius); box-shadow: var(--shadow);
+  transform-origin: bottom center;
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+  @starting-style { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+[class*="dock-top"] .settings-panel {
+  transform-origin: top center;
+  @starting-style { opacity: 0; transform: translateY(-6px) scale(0.98); }
+}
+.settings-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--n-200);
+}
+.settings-heading { display: grid; min-width: 0; }
+.settings-heading strong { font-size: 14px; font-weight: 500; }
+.settings-project { color: var(--n-600); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .settings-section { display: grid; gap: 6px; padding: 14px 16px 16px; }
+.settings-section + .settings-section { border-top: 1px solid var(--n-200); }
 .settings-label { margin: 0; font-weight: 500; }
-.settings-help { margin: 0 0 4px; color: var(--n-600); font-size: 12px; }
+.settings-help { margin: 0; color: var(--n-600); font-size: 12px; line-height: 1.4; }
+.settings-switch-row { grid-template-columns: 1fr auto; align-items: center; gap: 16px; cursor: pointer; }
+.settings-switch-text { display: grid; gap: 2px; }
+.settings-help svg { display: inline; width: 12px; height: 12px; vertical-align: -2px; }
+.settings-switch {
+  appearance: none; position: relative; flex: none; margin: 0;
+  width: 30px; height: 18px; border-radius: 999px; cursor: pointer;
+  background: var(--n-400); transition: background-color 150ms ease;
+}
+.settings-switch::before {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 999px;
+  background: white; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 160ms var(--ease-out);
+}
+.settings-switch:checked { background: var(--accent); }
+.settings-switch:checked::before { transform: translateX(12px); }
+.settings-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .settings-options {
   display: grid; gap: 2px; margin: 0; padding: 4px; border: 0; min-width: 0;
   background: var(--surface); border-radius: 12px; box-shadow: 0 0 0 1px var(--n-200);
@@ -450,7 +523,10 @@ kbd {
 }
 .project-picker-search::placeholder { color: rgba(255, 255, 255, 0.4); }
 .project-picker-search:focus { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24); }
-.project-picker-list { display: grid; gap: 2px; overflow-y: auto; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
+.project-picker-list { display: grid; gap: 2px; overflow-y: auto; }
+@supports not selector(::-webkit-scrollbar) {
+  .project-picker-list { scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
+}
 .project-picker-option {
   display: grid; gap: 1px; text-align: left; padding: 7px 8px; border-radius: 8px;
   transition: background-color 150ms ease, transform 160ms var(--ease-out);
@@ -465,10 +541,43 @@ kbd {
 }
 .hint-action:active { transform: var(--press); }
 .hint-error { color: #ff8589; }
-.status-dot { position: relative; width: 8px; height: 8px; margin: 0 8px 0 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.4); }
+.status { position: relative; display: grid; }
+.status-button { display: grid; place-items: center; height: 32px; padding: 0 8px 0 10px; border-radius: 999px; outline: none; cursor: default; }
+.status-button:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.status-dot { position: relative; width: 8px; height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.4); }
 .status-ok { background: #3dd68c; }
 .status-warn { background: #f5b84a; }
 .status-error { background: #ff6369; }
+/* The connection card, on the toolbar's open side, starting at the dot. */
+.status-card {
+  position: absolute; left: -4px; bottom: calc(100% + 14px); z-index: 1;
+  width: 250px; padding: 10px 12px 12px; border-radius: 14px;
+  /* Solid: a backdrop blur doesn't work inside the toolbar's own. */
+  background: #161618;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 40px -10px rgba(0, 0, 0, 0.6);
+  color: rgba(255, 255, 255, 0.9); font-size: 12px; text-align: left; cursor: default;
+  transform-origin: bottom left;
+  transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+  @starting-style { opacity: 0; transform: translateY(4px) scale(0.97); }
+}
+[class*="dock-top"] .status-card {
+  bottom: auto; top: calc(100% + 14px); transform-origin: top left;
+  @starting-style { opacity: 0; transform: translateY(-4px) scale(0.97); }
+}
+[data-dragging] .status-card { display: none; }
+.status-card-head { display: flex; align-items: center; gap: 7px; padding-bottom: 9px; margin-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.status-card-head strong { font-size: 13px; font-weight: 600; color: white; }
+.status-card-head .status-card-muted { margin-left: auto; }
+.status-card-muted { color: rgba(255, 255, 255, 0.45); }
+.status-card-rows { display: grid; gap: 6px; margin: 0; }
+.status-card-row { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: baseline; }
+.status-card-row dt { color: rgba(255, 255, 255, 0.45); }
+.status-card-row dd { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-card-tone { width: 6px; height: 6px; border-radius: 999px; flex: none; background: rgba(255, 255, 255, 0.4); }
+.status-card-tone.tone-ok { background: #3dd68c; }
+.status-card-tone.tone-warn { background: #f5b84a; }
+.status-card-tone.tone-error { background: #ff6369; }
+.status-card-detail { margin: 10px 0 0; color: rgba(255, 255, 255, 0.6); line-height: 1.4; white-space: normal; }
 .status-ping { position: absolute; inset: -3px; border-radius: 999px; border: 2px solid var(--accent); animation: ping 1.2s var(--ease-out) infinite; }
 @keyframes ping { to { transform: scale(1.9); opacity: 0; } }
 /* The separator line is also the drag handle; the hit area is wider than the line. */
@@ -493,6 +602,8 @@ kbd {
 .tool-active { background: var(--accent); color: white; }
 .tool-active kbd { background: rgba(255, 255, 255, 0.22); color: white; }
 .tool-label { font-weight: 500; color: inherit; }
+.tool-send { background: var(--accent); color: white; }
+.tool-send:disabled { opacity: 0.5; cursor: default; }
 .badge {
   position: absolute; top: 2px; right: 0;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;

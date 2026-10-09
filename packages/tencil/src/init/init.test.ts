@@ -275,3 +275,27 @@ export default defineConfig({ plugins: [react(), fixhere()] });
         expect(usesFixhere(CREATE_VITE_CONFIG)).toBe(false);
     });
 });
+
+describe('what setup suggests next', () => {
+    it('knows whether the folder it runs in already loads Tencil', async () => {
+        const { nextSteps } = await import('../cli/commands/setup.ts');
+        const project = (layout: string) => {
+            const root = mkdtempSync(join(tmpdir(), 'tencil-next-'));
+            mkdirSync(join(root, 'app'));
+            writeFileSync(
+                join(root, 'package.json'),
+                JSON.stringify({ dependencies: { next: '16.0.0' } }),
+            );
+            writeFileSync(join(root, 'app', 'layout.tsx'), layout);
+            return root;
+        };
+        const wired = renameFromFixhere(
+            `import { Fixhere } from 'fixhere/react';\n\nexport default function RootLayout({ children }) {\n    return (\n        <html>\n            <body>\n                {children}\n                <Fixhere />\n            </body>\n        </html>\n    );\n}\n`,
+        );
+        expect(await nextSteps(project(wired))).toMatch(
+            /already loads Tencil[\s\S]*another project/,
+        );
+        expect(await nextSteps(project(CREATE_NEXT_APP_LAYOUT))).toMatch(/Next, add Tencil to/);
+        expect(await nextSteps(tmpdir())).toMatch(/Next, in each project/);
+    });
+});

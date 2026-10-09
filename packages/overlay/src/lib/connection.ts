@@ -3,6 +3,7 @@ import type {
     ClientMessageInput,
     ProjectSettings,
     ProviderInfo,
+    ProviderModel,
     ProviderProject,
     ProviderThreadSummary,
     ServerMessage,
@@ -17,10 +18,18 @@ export const bridgeState = signal<BridgeState>('connecting');
 export const provider = signal<ProviderInfo | null>(null);
 export const settings = signal<ProjectSettings | null>(null);
 export const project = signal<{ name: string; root: string } | null>(null);
+/** The daemon's Tencil version, from its `ready`. */
+export const daemonVersion = signal<string | null>(null);
 export const threads = signal<ReadonlyMap<string, Thread>>(new Map());
 /** The provider's own threads for this project (null until first fetched). */
 export const providerThreads = signal<ProviderThreadSummary[] | null>(null);
 export const providerProject = signal<ProviderProject | null>(null);
+/** Models the default provider can start threads on (null until fetched or unsupported). */
+export const providerModels = signal<{
+    provider: string;
+    models: ProviderModel[];
+    defaultModel?: string;
+} | null>(null);
 /** Set when the daemon can't tell which project this page belongs to. */
 export const projectChoices = signal<Array<{ root: string; title: string }> | null>(null);
 /** What to do when there are no project choices. */
@@ -34,6 +43,15 @@ let bridgeUrl = '';
 export function connect(url: string): void {
     bridgeUrl = url;
     open();
+}
+
+/** Where the daemon runs, e.g. `localhost:4747`. */
+export function daemonHost(): string {
+    try {
+        return new URL(bridgeUrl).host;
+    } catch {
+        return bridgeUrl;
+    }
 }
 
 export function send(message: ClientMessageInput): boolean {
@@ -87,6 +105,7 @@ function handle(message: ServerMessage): void {
                 provider.value = message.provider;
                 settings.value = message.settings;
                 project.value = message.project;
+                daemonVersion.value = message.version;
                 threads.value = new Map(message.threads.map(thread => [thread.id, thread]));
             });
             return;
@@ -102,10 +121,13 @@ function handle(message: ServerMessage): void {
             return;
         case 'settings':
             batch(() => {
+                const switched = settings.value?.provider !== message.settings.provider;
                 settings.value = message.settings;
-                // The thread list was the previous provider's.
+                if (!switched) return;
+                // The lists were the previous provider's.
                 providerThreads.value = null;
                 providerProject.value = null;
+                providerModels.value = null;
             });
             return;
         case 'thread.upsert':
@@ -117,6 +139,13 @@ function handle(message: ServerMessage): void {
             threads.value = next;
             return;
         }
+        case 'provider.models':
+            providerModels.value = {
+                provider: message.provider,
+                models: message.models,
+                defaultModel: message.defaultModel,
+            };
+            return;
         case 'provider.threads':
             batch(() => {
                 providerThreads.value = message.threads;
@@ -141,6 +170,12 @@ export function providerLabel(id: string): string {
 export function refreshProviderThreads(): void {
     if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'provider.threads' }));
+    }
+}
+
+export function refreshProviderModels(): void {
+    if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'provider.models' }));
     }
 }
 

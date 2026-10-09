@@ -11,6 +11,7 @@ import {
     openThreadId,
     pageThreads,
     pinDrag,
+    queuedThreads,
     sortedThreads,
 } from '../lib/state.ts';
 
@@ -21,6 +22,18 @@ export const pinNumbers = computed(() => {
     for (const [index, thread] of ordered.entries()) numbers.set(thread.id, index + 1);
     return numbers;
 });
+
+/** Send every queued comment to the agent as one thread, numbered like their pins. */
+export function sendQueued(): void {
+    const drafts = queuedThreads.value.flatMap(thread => {
+        const number = pinNumbers.value.get(thread.id);
+        return number ? [{ threadId: thread.id, number }] : [];
+    });
+    if (drafts.length === 0) return;
+    if (!send({ type: 'drafts.send', drafts })) return;
+    // The shared conversation opens on the first comment's pin.
+    openThreadId.value = drafts[0]?.threadId ?? null;
+}
 
 export function Pins() {
     if (hidden.value) return null;
@@ -158,6 +171,8 @@ function DraftPin() {
 export function pinVariant(thread: Thread): string {
     if (thread.resolved) return 'resolved';
     switch (thread.status) {
+        case 'draft':
+            return 'queued';
         case 'starting':
         case 'working':
             return 'working';

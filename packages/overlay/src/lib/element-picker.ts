@@ -11,6 +11,7 @@ import {
     mode,
     openThreadId,
     pageKey,
+    settingsOpen,
     startPicking,
     stopPicking,
 } from './state.ts';
@@ -50,6 +51,7 @@ export function installPicker(host: HTMLElement): () => void {
     const block = (event: Event) => {
         // Clicking the page dismisses an open pin (the page still gets the click).
         if (mode.value === 'idle' && event.type === 'pointerdown' && !isOurs(event)) {
+            settingsOpen.value = false;
             // Docked (unpinned) threads stay open while you use the page.
             const open = openThreadId.value ? threads.value.get(openThreadId.value) : undefined;
             if (open?.anchor) openThreadId.value = null;

@@ -1,5 +1,6 @@
 import {
     ClientMessage,
+    type ImageAttachment,
     PROTOCOL_VERSION,
     type ProjectSettings,
     type Provider,
@@ -9,7 +10,7 @@ import {
     type ThreadMessage,
 } from '@tencil/protocol';
 import type { ProjectProviders } from './project-providers.ts';
-import { renderPrompt, stripContext, titleFor } from './prompt.ts';
+import { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
 import type { ThreadStore } from './thread-store.ts';
 
 export interface BridgeClient {
@@ -38,8 +39,11 @@ export class Bridge {
     /** One provider subscription per provider thread, shared by every pin bound to it. */
     readonly #watches = new Map<string, () => void>();
     readonly #pendingBroadcast = new Map<string, ReturnType<typeof setTimeout>>();
+    /** Screenshots of queued comments, kept in memory until the batch is sent. */
+    readonly #draftAttachments = new Map<string, ImageAttachment[]>();
     #offInfo: () => void = () => {};
     readonly #offDefault: () => void;
+    readonly #offSettings: () => void;
 
     constructor(options: BridgeOptions) {
         this.#options = options;
@@ -49,6 +53,9 @@ export class Bridge {
             this.#broadcast({ type: 'settings', settings: this.#settings() });
             this.#broadcast({ type: 'provider.status', provider: this.#provider().info() });
         });
+        this.#offSettings = options.providers.onSettingsChange(() =>
+            this.#broadcast({ type: 'settings', settings: this.#settings() }),
+        );
         for (const thread of options.store.list()) {
             if (thread.provider.threadId && options.providers.has(thread.provider.id)) {
                 this.#watch(thread.provider.id, thread.provider.threadId);
@@ -85,9 +92,26 @@ export class Bridge {
                     });
                     return;
                 case 'thread.create':
-                    await (message.providerThreadId
-                        ? this.#continue(message)
-                        : this.#create(message));
+                    if (message.draft) this.#queue(message);
+                    else if (message.providerThreadId) await this.#continue(message);
+                    else await this.#create(message);
+                    return;
+                case 'thread.edit': {
+                    const draft = this.#require(message.threadId);
+                    if (draft.status !== 'draft')
+                        throw new Error('Only queued comments can be edited');
+                    const [first] = draft.messages;
+                    this.#update(draft.id, thread => ({
+                        ...thread,
+                        title: thread.context
+                            ? titleFor(message.prompt, thread.context)
+                            : message.prompt,
+                        messages: first ? [{ ...first, text: message.prompt }] : [],
+                    }));
+                    return;
+                }
+                case 'drafts.send':
+                    await this.#sendDrafts(message.drafts);
                     return;
                 case 'thread.open':
                     this.#open(message);
@@ -101,9 +125,26 @@ export class Bridge {
                         ...(await this.#provider().listThreads()),
                     });
                     return;
-                case 'settings.update':
-                    await this.#options.providers.setDefault(message.provider);
+                case 'settings.update': {
+                    const { providers } = this.#options;
+                    if (message.provider) await providers.setDefault(message.provider);
+                    if (message.batch !== undefined) await providers.setBatch(message.batch);
                     return;
+                }
+                case 'provider.models': {
+                    const provider = this.#provider();
+                    client.send({
+                        type: 'provider.models',
+                        provider: provider.id,
+                        ...((await provider.listModels?.()) ?? { models: [] }),
+                    });
+                    return;
+                }
+                case 'model.select': {
+                    const { providers } = this.#options;
+                    await providers.setModel(providers.defaultId, message.model);
+                    return;
+                }
                 case 'thread.reply':
                     await this.#reply(message);
                     return;
@@ -128,6 +169,7 @@ export class Bridge {
                     return;
                 case 'thread.delete': {
                     const provider = this.#options.store.get(message.threadId)?.provider;
+                    this.#draftAttachments.delete(message.threadId);
                     if (this.#options.store.delete(message.threadId)) {
                         this.#broadcast({ type: 'thread.removed', threadId: message.threadId });
                     }
@@ -148,6 +190,7 @@ export class Bridge {
     async dispose(): Promise<void> {
         this.#offInfo();
         this.#offDefault();
+        this.#offSettings();
         for (const unwatch of this.#watches.values()) unwatch();
         for (const timer of this.#pendingBroadcast.values()) clearTimeout(timer);
         await this.#options.store.flush();
@@ -186,6 +229,7 @@ export class Bridge {
                     hasScreenshot: message.attachments.length > 0,
                 }),
                 attachments: message.attachments,
+                model: this.#options.providers.modelFor(provider.id),
             });
             this.#update(thread.id, current => ({
                 ...current,
@@ -200,6 +244,109 @@ export class Bridge {
                 status: 'error',
                 statusDetail: error instanceof Error ? error.message : String(error),
             }));
+        }
+    }
+
+    /** Pin a comment without sending it: it waits for `drafts.send`. */
+    #queue(message: Extract<ClientMessage, { type: 'thread.create' }>): void {
+        const { store } = this.#options;
+        if (store.get(message.id)) throw new Error(`Thread ${message.id} already exists`);
+        const now = new Date().toISOString();
+        store.upsert({
+            id: message.id,
+            title: titleFor(message.prompt, message.context),
+            pageUrl: message.pageUrl,
+            anchor: message.anchor,
+            context: message.context,
+            status: 'draft',
+            resolved: false,
+            messages: [localMessage(message.prompt, now)],
+            provider: { id: this.#provider().id },
+            createdAt: now,
+            updatedAt: now,
+        });
+        if (message.attachments.length > 0) {
+            this.#draftAttachments.set(message.id, message.attachments);
+        }
+        this.#broadcastThread(store.get(message.id)!, true);
+    }
+
+    /** Queued comments go out together: one message, one new provider thread, shared by their pins. */
+    async #sendDrafts(
+        entries: Extract<ClientMessage, { type: 'drafts.send' }>['drafts'],
+    ): Promise<void> {
+        const drafts = entries.flatMap(({ threadId, number }) => {
+            const thread = this.#options.store.get(threadId);
+            return thread?.status === 'draft' && thread.context && thread.pageUrl
+                ? [{ thread, number, context: thread.context, pageUrl: thread.pageUrl }]
+                : [];
+        });
+        if (drafts.length === 0) return;
+        const provider = this.#provider();
+        const attachments: ImageAttachment[] = [];
+        const comments = drafts.map(({ thread, number, context, pageUrl }) => {
+            const own = this.#draftAttachments.get(thread.id) ?? [];
+            const screenshots = own.map((_, index) => attachments.length + index + 1);
+            attachments.push(...own);
+            return {
+                number,
+                prompt: thread.messages[0]?.text ?? thread.title,
+                pageUrl,
+                context,
+                screenshots,
+            };
+        });
+        const text =
+            drafts.length === 1
+                ? renderPrompt({ ...comments[0]!, hasScreenshot: attachments.length > 0 })
+                : renderBatchPrompt(comments);
+        const now = new Date().toISOString();
+        // Every pin shows the shared conversation; the provider's snapshot replaces this echo.
+        const echo = localMessage(stripContext(text), now);
+        for (const { thread } of drafts) {
+            this.#update(thread.id, current => ({
+                ...current,
+                status: 'starting',
+                messages: [echo],
+                provider: { id: provider.id },
+            }));
+        }
+
+        try {
+            const created = await provider.createThread({
+                title:
+                    drafts.length === 1
+                        ? drafts[0]!.thread.title
+                        : batchTitle(drafts.map(({ thread }) => thread.title)),
+                text,
+                attachments,
+                model: this.#options.providers.modelFor(provider.id),
+            });
+            for (const { thread } of drafts) {
+                this.#draftAttachments.delete(thread.id);
+                this.#update(thread.id, current => ({
+                    ...current,
+                    status: 'working',
+                    provider: {
+                        id: provider.id,
+                        threadId: created.providerThreadId,
+                        url: created.url,
+                    },
+                }));
+            }
+            this.#watch(provider.id, created.providerThreadId);
+            this.#options.log?.(`${drafts.length} queued pins → ${provider.label}`);
+        } catch (error) {
+            // Back in the queue, so nothing is lost and the batch can be sent again.
+            for (const { thread } of drafts) {
+                this.#update(thread.id, current => ({
+                    ...current,
+                    status: 'draft',
+                    statusDetail: error instanceof Error ? error.message : String(error),
+                    messages: thread.messages,
+                }));
+            }
+            throw error;
         }
     }
 
@@ -375,7 +522,13 @@ export class Bridge {
 
     #settings(): ProjectSettings {
         const { providers } = this.#options;
-        return { provider: providers.defaultId, providers: providers.choices };
+        const model = providers.modelFor(providers.defaultId);
+        return {
+            provider: providers.defaultId,
+            providers: providers.choices,
+            ...(model ? { model } : {}),
+            batch: providers.batch,
+        };
     }
 
     /* --------------------------------- helpers --------------------------------- */

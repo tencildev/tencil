@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { isPackageInstall, runtimeCli, runtimeDir, runtimeInstallArgs } from './autostart.ts';
 import {
     launchdPlist,
+    serviceEnvironment,
     serviceNames,
     servicePort,
     systemdUnit,
@@ -48,6 +49,38 @@ describe('login service definitions', () => {
         );
         expect(runtimeDir('/data')).toBe(join('/data', 'runtime'));
         expect(runtimeDir('/data', 4790)).toBe(join('/data', 'runtime-4790'));
+    });
+
+    it("gives the service the shell's node and npm, without npx's temporary folders", () => {
+        const separator = process.platform === 'win32' ? ';' : ':';
+        const env = serviceEnvironment(
+            { ...command, node: join('/nvm', 'v22', 'bin', 'node') },
+            {
+                PATH: [
+                    '/Users/me/.npm/_npx/abc/node_modules/.bin',
+                    '/app/node_modules/.bin',
+                    '/opt/homebrew/bin',
+                    '/usr/bin',
+                ].join(separator),
+                XDG_CONFIG_HOME: '/custom/config',
+            },
+        );
+        expect(env.PATH?.split(separator)).toEqual([
+            join('/nvm', 'v22', 'bin'),
+            '/opt/homebrew/bin',
+            '/usr/bin',
+        ]);
+        expect(env.XDG_CONFIG_HOME).toBe('/custom/config');
+        expect(serviceEnvironment(command, { PATH: '/usr/bin' })).not.toHaveProperty(
+            'XDG_CONFIG_HOME',
+        );
+
+        const plist = launchdPlist(command, '/tmp/d.log', { PATH: '/nvm/bin:/usr/bin' });
+        expect(plist).toContain('<key>EnvironmentVariables</key>');
+        expect(plist).toContain('<key>PATH</key>\n    <string>/nvm/bin:/usr/bin</string>');
+        expect(systemdUnit(command, { PATH: '/nvm/bin:/usr/bin' })).toContain(
+            'Environment="PATH=/nvm/bin:/usr/bin"\nExecStart=',
+        );
     });
 
     it('reads the daemon port back from each definition', () => {

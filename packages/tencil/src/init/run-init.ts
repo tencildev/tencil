@@ -2,7 +2,9 @@ import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { withoutNpmEnv } from '@tencil/provider-t3code';
 import pc from 'picocolors';
+import { newerDaemonLine } from '../cli/format.ts';
 import { defaultDataDir } from '../daemon/thread-store.ts';
 import { ensureDaemon } from '../service/autostart.ts';
 import { chooseProvider } from '../service/choose-provider.ts';
@@ -150,7 +152,9 @@ export async function runInit(options: InitOptions): Promise<void> {
         const result = await ensureDaemon(options.daemon, defaultDataDir());
         autostart = result.autostart;
         log(
-            `  ${pc.green('✓')} Tencil ${result.status === 'running' ? 'is running' : result.status} on port ${options.daemon.port}.`,
+            result.newer
+                ? newerDaemonLine(result.newer, options.daemon.port)
+                : `  ${pc.green('✓')} Tencil ${result.status === 'running' ? 'is running' : result.status} on port ${options.daemon.port}.`,
         );
     }
     if (!options.skipPair) {
@@ -180,6 +184,7 @@ function uninstall(options: InitOptions, name: string, log: (message: string) =>
         cwd: options.root,
         stdio: 'inherit',
         shell: process.platform === 'win32',
+        env: withoutNpmEnv(),
     });
 }
 
@@ -191,6 +196,7 @@ function install(options: InitOptions, log: (message: string) => void): void {
         cwd: options.root,
         stdio: 'inherit',
         shell: process.platform === 'win32',
+        env: withoutNpmEnv(),
     });
     if (result.status !== 0) {
         log(`  ${pc.yellow('!')} Install failed; run it yourself: ${command} ${args.join(' ')}\n`);

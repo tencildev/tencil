@@ -6,6 +6,7 @@ import type {
     CreateThreadInput,
     Provider,
     ProviderInfo,
+    ProviderModels,
     ProviderProject,
     ProviderThreadSummary,
     SendMessageInput,
@@ -20,6 +21,15 @@ import {
     requestWebSocketTicket,
     UnauthorizedError,
 } from './auth.ts';
+import {
+    type ModelSources,
+    modelId,
+    modelOptions,
+    pickedSelection,
+    resolveModelSelection,
+    type WireModelSettings,
+    type WireServerProvider,
+} from './model-selection.ts';
 import type {
     ModelSelection,
     ProtocolAdapter,
@@ -60,15 +70,6 @@ interface WireProject {
     projectIcon?: { kind: 'emoji'; emoji: string } | { kind: string } | null;
 }
 
-interface WireServerProvider {
-    instanceId: string;
-    driver?: string;
-    enabled: boolean;
-    installed: boolean;
-    status: string;
-    models: Array<{ slug: string; isDefault?: boolean }>;
-}
-
 interface Watcher {
     sink: ThreadSink;
     tracker: ThreadTracker;
@@ -91,7 +92,12 @@ interface WireShellThread {
     linkedPullRequest?: { number: number; url: string } | null;
     branchPullRequest?: { number: number; url: string } | null;
     backgroundLiveness?: 'working' | 'monitoring' | null;
-    modelSelection?: { instanceId?: string; provider?: string } | null;
+    modelSelection?: {
+        instanceId?: string;
+        provider?: string;
+        model?: string;
+        options?: unknown;
+    } | null;
 }
 
 interface Connection {
@@ -103,7 +109,6 @@ interface Connection {
     protocol: ProtocolAdapter;
     environmentId: string;
     project: WireProject;
-    modelSelection: ModelSelection;
 }
 
 const DEFAULT_TIMEOUTS = { httpMs: 8_000, rpcMs: 30_000, retryMinMs: 1_000, retryMaxMs: 15_000 };
@@ -158,6 +163,8 @@ export class T3CodeProvider implements Provider {
                 state: 'unauthorized',
                 detail: "Couldn't pair automatically. Run `npx tencil connect` with a pairing link from T3 Code.",
             });
+            // Pairing may still happen elsewhere (setup, connect): keep looking for a token.
+            this.#scheduleReconnect();
             return;
         }
         try {
@@ -169,6 +176,7 @@ export class T3CodeProvider implements Provider {
             this.#log(`Paired with T3 Code at ${this.#baseUrl}`);
         } catch (error) {
             this.#setInfo({ state: 'unauthorized', detail: errorMessage(error) });
+            this.#scheduleReconnect();
             return;
         }
         clearTimeout(this.#retryTimer);
@@ -233,6 +241,39 @@ export class T3CodeProvider implements Provider {
         return connection.drivers;
     }
 
+    /** Everything that decides a new thread's model, read fresh: settings change while we run. */
+    async #modelSources(connection: Connection): Promise<ModelSources> {
+        const [config, shell] = await Promise.all([
+            connection.socket.request<{
+                providers: WireServerProvider[];
+                settings?: WireModelSettings;
+            }>('server.getConfig', {}),
+            this.#fetchJson<{ projects: WireProject[]; threads: WireShellThread[] }>(
+                '/api/orchestration/shell',
+                connection.token,
+            ),
+        ]);
+        const { id } = connection.project;
+        const project = shell.projects.find(candidate => candidate.id === id);
+        // Pinned threads are watched; they'd only echo the model Tencil picked itself.
+        const recent = shell.threads
+            .filter(thread => thread.projectId === id && !this.#watchers.has(thread.id))
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+            .flatMap(({ modelSelection: selection }) => {
+                const instanceId = selection?.instanceId ?? selection?.provider;
+                if (!instanceId || !selection?.model) return [];
+                const { model, options } = selection;
+                return [{ instanceId, model, ...(options ? { options } : {}) }];
+            });
+        return {
+            providers: config.providers,
+            settings: config.settings,
+            projectId: id,
+            projectDefault: (project ?? connection.project).defaultModelSelection,
+            recent,
+        };
+    }
+
     /** Name like `owner/repo` and the project icon, matching T3 Code's sidebar. */
     async #projectPresentation(connection: Connection): Promise<ProviderProject> {
         const { project } = connection;
@@ -268,16 +309,37 @@ export class T3CodeProvider implements Provider {
         return this.#connection ? this.#threadUrl(this.#connection, providerThreadId) : undefined;
     }
 
+    async listModels(): Promise<ProviderModels> {
+        const connection = this.#requireConnection();
+        const sources = await this.#modelSources(connection);
+        const fallback = this.#options.modelSelection ?? resolveModelSelection(sources);
+        return {
+            models: modelOptions(sources.providers),
+            ...(fallback ? { defaultModel: modelId(fallback) } : {}),
+        };
+    }
+
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {
         const connection = this.#requireConnection();
+        const sources = await this.#modelSources(connection);
+        const modelSelection =
+            pickedSelection(sources.providers, input.model) ??
+            this.#options.modelSelection ??
+            resolveModelSelection(sources);
+        if (!modelSelection) {
+            throw new Error(
+                'T3 Code has no usable provider. Set one up in T3 Code → Settings → Providers.',
+            );
+        }
         const threadId = randomUUID();
+        this.#log(`New thread on ${modelId(modelSelection)}`);
         await connection.protocol.startThread(connection.socket, {
             threadId,
             projectId: connection.project.id,
             title: input.title,
             text: input.text,
             attachments: input.attachments,
-            modelSelection: connection.modelSelection,
+            modelSelection,
             runtimeMode: this.#runtimeMode(),
             interactionMode: this.#options.interactionMode ?? 'default',
         });
@@ -340,7 +402,7 @@ export class T3CodeProvider implements Provider {
             this.#retryDelay = this.#timeouts.retryMinMs;
             this.#setInfo({ state: 'ready', target: connection.project.title });
             this.#log(
-                `Connected to T3 Code at ${this.#baseUrl} · project "${connection.project.title}" · ${connection.modelSelection.instanceId}/${connection.modelSelection.model} · protocol v${connection.protocol.version}`,
+                `Connected to T3 Code at ${this.#baseUrl} · project "${connection.project.title}" · protocol v${connection.protocol.version}`,
             );
             for (const [threadId, watcher] of this.#watchers) {
                 this.#subscribe(connection, threadId, watcher);
@@ -384,7 +446,11 @@ export class T3CodeProvider implements Provider {
         const protocol = environment.orchestrationProtocolVersion === 2 ? v2 : v1;
 
         const token = this.#options.token ?? (await this.#credentials.get(this.#baseUrl))?.token;
-        if (!token) throw new UnauthorizedError();
+        if (!token) {
+            throw new UnauthorizedError(
+                'Not paired with T3 Code yet. Press Pair, or run `npx tencil connect`.',
+            );
+        }
 
         const ticket = await requestWebSocketTicket(this.#baseUrl, token, this.#timeouts.httpMs);
         const wsUrl = new URL('/ws', this.#baseUrl);
@@ -396,10 +462,6 @@ export class T3CodeProvider implements Provider {
 
         try {
             const project = await this.#resolveProject(socket, protocol, token);
-            const modelSelection =
-                this.#options.modelSelection ??
-                project.defaultModelSelection ??
-                (await this.#defaultModelSelection(socket));
 
             socket.onClose(reason => {
                 if (this.#connection?.socket !== socket) return;
@@ -414,7 +476,6 @@ export class T3CodeProvider implements Provider {
                 protocol,
                 environmentId: environment.environmentId,
                 project,
-                modelSelection,
             };
         } catch (error) {
             socket.close();
@@ -479,24 +540,6 @@ export class T3CodeProvider implements Provider {
         this.#log(`Added ${workspaceRoot} to T3 Code as project "${project.title}"`);
         this.#hadProject = true;
         return project;
-    }
-
-    async #defaultModelSelection(socket: RpcSocket): Promise<ModelSelection> {
-        const config = await socket.request<{ providers: WireServerProvider[] }>(
-            'server.getConfig',
-            {},
-        );
-        const usable = config.providers.filter(
-            provider => provider.enabled && provider.installed && provider.status !== 'error',
-        );
-        const provider = usable.find(p => p.status === 'ready') ?? usable[0];
-        const model = provider?.models.find(m => m.isDefault) ?? provider?.models[0];
-        if (!provider || !model) {
-            throw new Error(
-                'T3 Code has no usable provider. Set one up in T3 Code → Settings → Providers.',
-            );
-        }
-        return { instanceId: provider.instanceId, model: model.slug };
     }
 
     /* --------------------------------- threads --------------------------------- */

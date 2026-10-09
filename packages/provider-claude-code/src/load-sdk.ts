@@ -47,7 +47,15 @@ export async function installAgentSdk(installDir: string): Promise<void> {
             'npm',
             ['install', `${PACKAGE}@${SDK_RANGE}`, '--no-audit', '--no-fund', '--loglevel=error'],
             // npm is a .cmd shim on Windows.
-            { cwd: installDir, shell: process.platform === 'win32', timeout: 10 * 60_000 },
+            {
+                cwd: installDir,
+                shell: process.platform === 'win32',
+                timeout: 10 * 60_000,
+                // An outer npx's npm_config_* (package, yes, …) must not leak into this install.
+                env: Object.fromEntries(
+                    Object.entries(process.env).filter(([key]) => !key.startsWith('npm_')),
+                ),
+            },
         );
     } catch (error) {
         const stderr = (error as { stderr?: string }).stderr?.trim();

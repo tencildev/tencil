@@ -3,13 +3,14 @@ import { Anchor, ElementContext } from './context.ts';
 
 /**
  * Provider-agnostic run state.
+ * - `draft`: a comment queued in a batch, not sent to the agent yet
  * - `starting`: thread is being created on the provider
  * - `working`: the agent is producing a turn
  * - `waiting`: the agent needs approval/input inside the provider UI
  * - `idle`: last turn finished, ready for a follow-up
  * - `error`: last turn or the thread itself failed
  */
-export const ThreadStatus = z.enum(['starting', 'working', 'waiting', 'idle', 'error']);
+export const ThreadStatus = z.enum(['draft', 'starting', 'working', 'waiting', 'idle', 'error']);
 export type ThreadStatus = z.infer<typeof ThreadStatus>;
 
 export const MessageRole = z.enum(['user', 'assistant', 'system']);
@@ -67,6 +68,18 @@ export const ProviderThreadSummary = z.object({
     agent: z.string().optional(),
 });
 export type ProviderThreadSummary = z.infer<typeof ProviderThreadSummary>;
+
+/** A model a provider can start threads on, e.g. T3 Code's Claude Opus. */
+export const ProviderModel = z.object({
+    /** Opaque to the overlay; the provider parses it back. */
+    id: z.string(),
+    label: z.string(),
+    /** The agent it belongs to, e.g. "Claude" or "Codex". */
+    group: z.string(),
+    /** Agent kind for its icon (`codex`, `claudeAgent`). */
+    agent: z.string().optional(),
+});
+export type ProviderModel = z.infer<typeof ProviderModel>;
 
 /** How the provider presents the project the threads belong to. */
 export const ProviderProject = z.object({

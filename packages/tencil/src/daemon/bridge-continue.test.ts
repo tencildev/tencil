@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
+    CreateThreadInput,
     Provider,
     ProviderInfo,
     SendMessageInput,
@@ -11,12 +12,15 @@ import type {
 import { describe, expect, it } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';
+import { stripContext } from './prompt.ts';
 import { ThreadStore } from './thread-store.ts';
 
 class FakeProvider implements Provider {
     readonly id = 'fake';
     readonly label = 'Fake';
     sent: SendMessageInput[] = [];
+    created: CreateThreadInput[] = [];
+    failCreate = false;
     sinks = new Map<string, ThreadSink>();
     watchCount = 0;
 
@@ -43,7 +47,9 @@ class FakeProvider implements Provider {
     threadUrl(id: string) {
         return `fake://${id}`;
     }
-    async createThread() {
+    async createThread(input: CreateThreadInput) {
+        if (this.failCreate) throw new Error('Agent offline');
+        this.created.push(input);
         return { providerThreadId: 'new' };
     }
     async sendMessage(input: SendMessageInput) {
@@ -143,6 +149,84 @@ describe('existing provider threads', () => {
         await bridge.handle(client, { type: 'thread.open', id: 'a', providerThreadId: 'p1' });
         await bridge.handle(client, { type: 'thread.open', id: 'b', providerThreadId: 'p1' });
         expect(store.get('b')).toBeUndefined();
+    });
+
+    it('queues comments and sends them together as one thread', async () => {
+        const { bridge, client, store, provider } = setup();
+        const PNG = 'data:image/png;base64,AAAA';
+        const queue = (id: string, prompt: string, withShot = false) =>
+            bridge.handle(client, {
+                type: 'thread.create',
+                id,
+                pageUrl: 'http://localhost:3000/',
+                prompt,
+                anchor: { selector: 'h1', offsetX: 0.5, offsetY: 0.5 },
+                context,
+                attachments: withShot
+                    ? [{ name: 'a.png', mimeType: 'image/png', dataUrl: PNG }]
+                    : [],
+                draft: true,
+            });
+        await queue('a', 'Make it red');
+        await queue('b', 'Make it bigger', true);
+        expect(store.get('a')?.status).toBe('draft');
+        expect(provider.created).toEqual([]);
+
+        await bridge.handle(client, { type: 'thread.edit', threadId: 'a', prompt: 'Make it blue' });
+        expect(store.get('a')?.messages[0]?.text).toBe('Make it blue');
+
+        await bridge.handle(client, {
+            type: 'drafts.send',
+            drafts: [
+                { threadId: 'a', number: 3 },
+                { threadId: 'b', number: 4 },
+            ],
+        });
+        expect(provider.created).toHaveLength(1);
+        const [batch] = provider.created;
+        expect(stripContext(batch!.text)).toBe('#3 Make it blue\n\n#4 Make it bigger');
+        expect(batch!.attachments).toHaveLength(1);
+        expect(batch!.text).toContain('- Screenshot: attached image 1');
+        for (const id of ['a', 'b']) {
+            expect(store.get(id)).toMatchObject({
+                status: 'working',
+                provider: { id: 'fake', threadId: 'new' },
+            });
+        }
+        // One subscription, shared: the agent's reply lands on both pins.
+        provider.sinks.get('new')?.message({
+            id: 'm1',
+            role: 'assistant',
+            text: 'Fixed #3 and #4',
+            streaming: false,
+            createdAt: '2026-10-09T10:00:00.000Z',
+        });
+        for (const id of ['a', 'b']) {
+            expect(store.get(id)?.messages.map(m => m.text)).toContain('Fixed #3 and #4');
+        }
+    });
+
+    it('keeps queued comments when the batch fails to send', async () => {
+        const { bridge, client, store, provider } = setup();
+        await bridge.handle(client, {
+            type: 'thread.create',
+            id: 'a',
+            pageUrl: 'http://localhost:3000/',
+            prompt: 'Make it red',
+            anchor: { selector: 'h1', offsetX: 0.5, offsetY: 0.5 },
+            context,
+            draft: true,
+        });
+        provider.failCreate = true;
+        await bridge.handle(client, {
+            type: 'drafts.send',
+            drafts: [{ threadId: 'a', number: 1 }],
+        });
+        expect(store.get('a')).toMatchObject({
+            status: 'draft',
+            statusDetail: 'Agent offline',
+            messages: [expect.objectContaining({ text: 'Make it red' })],
+        });
     });
 
     it('re-anchors a pin that was dragged', async () => {

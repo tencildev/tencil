@@ -7,6 +7,10 @@ const SettingsFile = z.object({
     version: z.literal(1),
     /** The provider new pins go to; unset means the daemon's `--provider`. */
     provider: z.string().optional(),
+    /** Model picked per provider for new threads; unset means the provider's default. */
+    models: z.record(z.string(), z.string()).optional(),
+    /** Queue new comments and send them together. */
+    batch: z.boolean().optional(),
 });
 
 export interface ProjectProvidersOptions {
@@ -29,7 +33,11 @@ export class ProjectProviders {
     readonly #options: ProjectProvidersOptions;
     readonly #providers = new Map<string, Provider>();
     readonly #listeners = new Set<() => void>();
+    readonly #settingsListeners = new Set<() => void>();
     #chosen: string | undefined;
+    #models: Record<string, string> = {};
+    /** On unless the project turns it off. */
+    #batch = true;
 
     constructor(options: ProjectProvidersOptions) {
         this.#options = options;
@@ -51,7 +59,11 @@ export class ProjectProviders {
         if (!this.#options.settingsPath) return;
         const raw = await readFile(this.#options.settingsPath, 'utf8').catch(() => undefined);
         const parsed = raw === undefined ? undefined : SettingsFile.safeParse(JSON.parse(raw));
-        if (parsed?.success) this.#chosen = parsed.data.provider;
+        if (parsed?.success) {
+            this.#chosen = parsed.data.provider;
+            this.#models = parsed.data.models ?? {};
+            this.#batch = parsed.data.batch ?? true;
+        }
     }
 
     get defaultId(): string {
@@ -92,6 +104,36 @@ export class ProjectProviders {
         for (const listener of this.#listeners) listener();
     }
 
+    /** The model picked for a provider's new threads, if any. */
+    modelFor(id: string): string | undefined {
+        return this.#models[id];
+    }
+
+    async setModel(id: string, model: string | null): Promise<void> {
+        if ((this.#models[id] ?? null) === model) return;
+        const { [id]: _previous, ...rest } = this.#models;
+        this.#models = model ? { ...rest, [id]: model } : rest;
+        await this.#save();
+        for (const listener of this.#settingsListeners) listener();
+    }
+
+    get batch(): boolean {
+        return this.#batch;
+    }
+
+    async setBatch(on: boolean): Promise<void> {
+        if (on === this.#batch) return;
+        this.#batch = on;
+        await this.#save();
+        for (const listener of this.#settingsListeners) listener();
+    }
+
+    /** Fires when a picked model or batching changes. */
+    onSettingsChange(listener: () => void): () => void {
+        this.#settingsListeners.add(listener);
+        return () => this.#settingsListeners.delete(listener);
+    }
+
     onDefaultChange(listener: () => void): () => void {
         this.#listeners.add(listener);
         return () => this.#listeners.delete(listener);
@@ -109,7 +151,11 @@ export class ProjectProviders {
         const temp = `${path}.tmp`;
         await writeFile(
             temp,
-            `${JSON.stringify({ version: 1, provider: this.#chosen }, null, 2)}\n`,
+            `${JSON.stringify(
+                { version: 1, provider: this.#chosen, models: this.#models, batch: this.#batch },
+                null,
+                2,
+            )}\n`,
         );
         await rename(temp, path);
     }

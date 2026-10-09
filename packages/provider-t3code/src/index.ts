@@ -7,6 +7,7 @@ export {
     parsePairingInput,
     type StoredCredential,
     type T3ProjectSummary,
+    withoutNpmEnv,
 } from './auth.ts';
 export type { ModelSelection, RuntimeMode } from './protocols/adapter.ts';
 export { T3CodeProvider, type T3CodeProviderOptions } from './t3code-provider.ts';
