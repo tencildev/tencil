@@ -2,6 +2,7 @@ import { h, render } from 'preact';
 import { App } from './components/app.tsx';
 import { connect } from './lib/connection.ts';
 import { installPicker } from './lib/element-picker.ts';
+import { watchNextIndicator } from './lib/next-devtools.ts';
 import { setHost } from './lib/overlay-host.ts';
 import { styles } from './styles.ts';
 
@@ -45,6 +46,7 @@ function mount(bridgeUrl: string): void {
     keepAlive.observe(document.body, { childList: true });
 
     const uninstall = installPicker(host);
+    const unwatchNext = watchNextIndicator();
     render(h(App, {}), container);
     connect(bridgeUrl);
 
@@ -54,6 +56,7 @@ function mount(bridgeUrl: string): void {
         destroy() {
             keepAlive.disconnect();
             uninstall();
+            unwatchNext();
             render(null, container);
             host.remove();
             window.__TENCIL__ = undefined;

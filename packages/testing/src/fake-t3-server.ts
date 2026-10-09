@@ -19,6 +19,10 @@ export interface FakeT3Options {
     reply?: (text: string) => string;
     /** Delay between streamed reply chunks. */
     chunkDelayMs?: number;
+    /** Agents in `server.getConfig`; one Codex instance by default. */
+    providers?: FakeProvider[];
+    /** Server settings in `server.getConfig`, e.g. `defaultModelSelection`. */
+    settings?: Record<string, unknown>;
     /** Accept connections but never answer (a server mid-restart). */
     stall?: boolean;
     port?: number;
@@ -32,6 +36,26 @@ export interface FakeProject {
     repositoryIdentity?: { owner?: string; name?: string } | null;
     projectIcon?: { kind: 'emoji'; emoji: string } | null;
 }
+
+export interface FakeProvider {
+    instanceId: string;
+    driver: string;
+    displayName?: string;
+    enabled: boolean;
+    installed: boolean;
+    status: 'ready' | 'warning' | 'error' | 'disabled';
+    models: Array<{ slug: string; name?: string; isDefault?: boolean }>;
+}
+
+export const CODEX_PROVIDER: FakeProvider = {
+    instanceId: 'codex',
+    driver: 'codex',
+    displayName: 'Codex',
+    enabled: true,
+    installed: true,
+    status: 'ready',
+    models: [{ slug: 'gpt-test', name: 'GPT Test', isDefault: true }],
+};
 
 export interface FakeMessage {
     id: string;
@@ -76,6 +100,8 @@ export class FakeT3Server {
     readonly calls: RecordedCall[] = [];
     readonly projects: FakeProject[];
     readonly threads = new Map<string, FakeThread>();
+    providers: FakeProvider[];
+    settings: Record<string, unknown>;
     stall: boolean;
 
     readonly #options: Required<
@@ -102,6 +128,8 @@ export class FakeT3Server {
         };
         this.stall = options.stall ?? false;
         this.projects = options.projects ?? [];
+        this.providers = options.providers ?? [CODEX_PROVIDER];
+        this.settings = options.settings ?? { defaultModelSelection: null };
         this.#http = createServer((request, response) => void this.#route(request, response));
         this.#http.on('connection', socket => {
             this.#sockets.add(socket);
@@ -294,18 +322,7 @@ export class FakeT3Server {
 
         switch (tag) {
             case 'server.getConfig':
-                return value({
-                    providers: [
-                        {
-                            instanceId: 'codex',
-                            driver: 'codex',
-                            enabled: true,
-                            installed: true,
-                            status: 'ready',
-                            models: [{ slug: 'gpt-test', isDefault: true }],
-                        },
-                    ],
-                });
+                return value({ providers: this.providers, settings: this.settings });
             case 'assets.createUrl':
                 return value({
                     relativeUrl: '/api/assets/icon.png',

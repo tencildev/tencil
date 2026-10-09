@@ -81,4 +81,20 @@ describe('ProjectProviders', () => {
         expect(providers.has('nope')).toBe(false);
         expect(providers.has('claude-code')).toBe(true);
     });
+
+    it('saves a model per provider and keeps it across loads', async () => {
+        const { providers, settingsPath } = setup();
+        let changes = 0;
+        providers.onSettingsChange(() => changes++);
+        await providers.setModel('t3code', 'claudeAgent/claude-opus-5-5');
+        expect(changes).toBe(1);
+
+        const reloaded = setup(settingsPath).providers;
+        await reloaded.load();
+        expect(reloaded.modelFor('t3code')).toBe('claudeAgent/claude-opus-5-5');
+        expect(reloaded.modelFor('claude-code')).toBeUndefined();
+
+        await reloaded.setModel('t3code', null);
+        expect(reloaded.modelFor('t3code')).toBeUndefined();
+    });
 });

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProviderMessage, ThreadSink, ThreadStatus } from '@tencil/protocol';
-import { FakeT3Server, waitFor } from '@tencil/testing';
+import { CODEX_PROVIDER, FakeT3Server, waitFor } from '@tencil/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CredentialStore } from './auth.ts';
 import { T3CodeProvider, type T3CodeProviderOptions } from './t3code-provider.ts';
@@ -69,6 +69,17 @@ function recordingSink() {
     };
     return { sink, messages, statuses, isGone: () => gone };
 }
+
+const CLAUDE_PROVIDER = {
+    ...CODEX_PROVIDER,
+    instanceId: 'claudeAgent',
+    driver: 'claudeAgent',
+    displayName: 'Claude',
+    models: [
+        { slug: 'claude-test', name: 'Claude Test', isDefault: true },
+        { slug: 'claude-test-mini', name: 'Claude Test Mini' },
+    ],
+};
 
 const ready = (provider: T3CodeProvider) =>
     waitFor(() => provider.info().state === 'ready', { message: 'provider ready' });
@@ -162,6 +173,82 @@ describe.each([1, 2] as const)('T3 Code provider, protocol v%i', protocol => {
                 agent: 'codex',
             }),
         ]);
+    });
+
+    it("starts threads on T3 Code's default model, read when the thread starts", async () => {
+        const { provider, server } = await setup(protocol);
+        server.providers = [CODEX_PROVIDER, CLAUDE_PROVIDER];
+        await provider.start();
+        await ready(provider);
+        // Changed after connecting: the next thread still picks it up.
+        server.settings = {
+            projectSettingsFolded: true,
+            defaultModelSelection: { instanceId: 'claudeAgent', model: 'claude-test-mini' },
+        };
+        const { providerThreadId } = await provider.createThread({
+            title: 't',
+            text: 'hi',
+            attachments: [],
+        });
+        expect(server.threads.get(providerThreadId)?.modelSelection).toEqual({
+            instanceId: 'claudeAgent',
+            model: 'claude-test-mini',
+        });
+    });
+
+    it("reuses the model of the user's latest thread, not of pinned ones", async () => {
+        const { provider, server } = await setup(protocol);
+        server.providers = [CODEX_PROVIDER, CLAUDE_PROVIDER];
+        server.addThread({
+            projectId: 'proj-1',
+            title: 'Mine',
+            updatedAt: '2026-10-01T10:00:00.000Z',
+            modelSelection: { instanceId: 'claudeAgent', model: 'claude-test' },
+        });
+        const pinned = server.addThread({
+            projectId: 'proj-1',
+            title: 'Pinned',
+            updatedAt: '2026-10-02T10:00:00.000Z',
+            modelSelection: { instanceId: 'codex', model: 'gpt-test' },
+        });
+        await provider.start();
+        await ready(provider);
+        provider.watch(pinned.id, recordingSink().sink);
+
+        const { providerThreadId } = await provider.createThread({
+            title: 't',
+            text: 'hi',
+            attachments: [],
+        });
+        expect(server.threads.get(providerThreadId)?.modelSelection).toEqual({
+            instanceId: 'claudeAgent',
+            model: 'claude-test',
+        });
+    });
+
+    it('lists models and starts threads on the one picked', async () => {
+        const { provider, server } = await setup(protocol);
+        server.providers = [CODEX_PROVIDER, CLAUDE_PROVIDER];
+        await provider.start();
+        await ready(provider);
+        const { models, defaultModel } = await provider.listModels();
+        expect(models.map(model => model.id)).toEqual([
+            'codex/gpt-test',
+            'claudeAgent/claude-test',
+            'claudeAgent/claude-test-mini',
+        ]);
+        expect(defaultModel).toBe('codex/gpt-test');
+
+        const { providerThreadId } = await provider.createThread({
+            title: 't',
+            text: 'hi',
+            attachments: [],
+            model: 'claudeAgent/claude-test-mini',
+        });
+        expect(server.threads.get(providerThreadId)?.modelSelection).toEqual({
+            instanceId: 'claudeAgent',
+            model: 'claude-test-mini',
+        });
     });
 
     it('resubscribes watched threads after T3 Code drops the connection', async () => {

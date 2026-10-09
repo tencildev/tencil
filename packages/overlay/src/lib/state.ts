@@ -1,6 +1,6 @@
 import { computed, signal } from '@preact/signals';
 import type { Anchor, ElementContext } from '@tencil/protocol';
-import { threads } from './connection.ts';
+import { send, settings, threads } from './connection.ts';
 
 export type Mode = 'idle' | 'picking';
 
@@ -21,6 +21,19 @@ export const inboxOpen = signal(false);
 export const settingsOpen = signal(false);
 export const showResolved = signal(false);
 export const hidden = signal(false);
+/** The project allows batching: the comment box then offers a batch toggle. */
+export const batchAvailable = computed(() => settings.value?.batch ?? false);
+/** The comment box's batch toggle. Sticky across comments. */
+export const batchToggle = signal(false);
+/** New comments are queued as drafts and sent together (`sendQueued`). */
+export const batchMode = computed(() => batchAvailable.value && batchToggle.value);
+
+export function setBatchAvailable(on: boolean): void {
+    const current = settings.value;
+    if (!current || !send({ type: 'settings.update', batch: on })) return;
+    // Flip right away; the daemon's settings broadcast confirms it.
+    settings.value = { ...current, batch: on };
+}
 
 /** Bumped on scroll/resize/mutations so anchored UI re-measures. */
 export const layoutTick = signal(0);
@@ -53,6 +66,11 @@ export const pageThreads = computed(() =>
 
 export const unresolvedCount = computed(
     () => sortedThreads.value.filter(thread => !thread.resolved).length,
+);
+
+/** Queued comments, oldest first: the order they're numbered and sent in. */
+export const queuedThreads = computed(() =>
+    [...sortedThreads.value].reverse().filter(thread => thread.status === 'draft'),
 );
 
 export const activeCount = computed(

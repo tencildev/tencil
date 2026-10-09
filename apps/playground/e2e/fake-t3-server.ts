@@ -1,10 +1,25 @@
-import { FakeT3Server } from '@tencil/testing';
+import { CODEX_PROVIDER, FakeT3Server } from '@tencil/testing';
 
 /** Fake T3 Code for the browser tests; Playwright starts this as a web server. */
 const port = Number(process.env.FAKE_T3_PORT ?? 47390);
 const server = await FakeT3Server.start({
     port,
     chunkDelayMs: 25,
+    providers: [
+        CODEX_PROVIDER,
+        {
+            instanceId: 'claudeAgent',
+            driver: 'claudeAgent',
+            displayName: 'Claude',
+            enabled: true,
+            installed: true,
+            status: 'ready',
+            models: [
+                { slug: 'claude-test', name: 'Claude Test', isDefault: true },
+                { slug: 'claude-test-mini', name: 'Claude Test Mini' },
+            ],
+        },
+    ],
     reply: text =>
         `Updated it.\n\n- Changed **${text.split('\n')[0]?.slice(0, 40)}**\n- Kept the rest as is`,
 });

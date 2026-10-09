@@ -4,6 +4,8 @@ import { ArrowUpIcon } from './icons.tsx';
 
 interface Props {
     placeholder: string;
+    /** Text to start from, e.g. a queued comment being rewritten. */
+    initialText?: string;
     autoFocus?: boolean;
     disabled?: boolean;
     busy?: boolean;
@@ -16,6 +18,7 @@ interface Props {
 /** Enter sends, Shift+Enter adds a line, Escape cancels. */
 export function PromptInput({
     placeholder,
+    initialText = '',
     autoFocus,
     disabled,
     busy,
@@ -23,7 +26,7 @@ export function PromptInput({
     onCancel,
     children,
 }: Props) {
-    const [text, setText] = useState('');
+    const [text, setText] = useState(initialText);
     const ref = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {

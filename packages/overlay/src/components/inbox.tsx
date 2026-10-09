@@ -18,7 +18,7 @@ import {
     sortedThreads,
 } from '../lib/state.ts';
 import { AgentIcon } from './agent-icons.tsx';
-import { CloseIcon } from './icons.tsx';
+import { CheckIcon, CloseIcon } from './icons.tsx';
 import { pinNumbers, pinVariant } from './pins.tsx';
 
 /** Survives the full reload when jumping to a pin on another page. */
@@ -92,13 +92,17 @@ function PinList({ scope }: { scope: 'page' | 'all' }) {
     return (
         <>
             <label class="inbox-filter">
-                <input
-                    type="checkbox"
-                    checked={showResolved.value}
-                    onChange={event => {
-                        showResolved.value = (event.target as HTMLInputElement).checked;
-                    }}
-                />
+                <span class="checkbox">
+                    <input
+                        type="checkbox"
+                        class="checkbox-input"
+                        checked={showResolved.value}
+                        onChange={event => {
+                            showResolved.value = (event.target as HTMLInputElement).checked;
+                        }}
+                    />
+                    <CheckIcon />
+                </span>
                 Show resolved
             </label>
             <div class="inbox-list">
@@ -235,6 +239,8 @@ export function revealAnchor(thread: Thread): void {
 function statusLabel(thread: Thread): string {
     if (thread.resolved) return 'Resolved';
     switch (thread.status) {
+        case 'draft':
+            return 'Queued';
         case 'starting':
             return 'Starting';
         case 'working':
