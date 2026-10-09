@@ -1,8 +1,8 @@
 import type { Thread, ThreadMessage } from '@tencil/protocol';
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
-import { inboxOpen, layoutTick, openThreadId, queuedThreads } from '../lib/state.ts';
+import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
 import {
     CheckIcon,
     CloseIcon,
@@ -30,8 +30,14 @@ export function ThreadPanel() {
     });
 
     if (!thread) return null;
-    // Pinned threads float beside their pin; unpinned ones dock to the right edge.
-    const point = thread.anchor ? resolveAnchor(thread.anchor) : null;
+    // Pinned threads float beside their pin (also mid-drag); unpinned ones dock to the right edge.
+    const drag = pinDrag.value;
+    const point =
+        drag?.threadId === thread.id
+            ? drag.point
+            : thread.anchor
+              ? resolveAnchor(thread.anchor)
+              : null;
     const placement = point
         ? popoverPosition(point, { width: WIDTH, height })
         : {
@@ -57,7 +63,7 @@ export function ThreadPanel() {
                 <QueuedComment thread={thread} />
             ) : (
                 <>
-                    <Messages thread={thread} />
+                    <Messages key={thread.id} thread={thread} />
                     <StatusLine thread={thread} />
                     <PromptInput
                         placeholder={thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…'}
@@ -193,33 +199,55 @@ function Header({ thread }: { thread: Thread }) {
 
 function Messages({ thread }: { thread: Thread }) {
     const ref = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+    /** Follow new output until the user scrolls up to read. */
+    const following = useRef(true);
     const [scrolled, setScrolled] = useState(false);
     const last = thread.messages[thread.messages.length - 1];
 
-    // Follow streaming output unless the user scrolled up to read.
-    useEffect(() => {
+    // Sending a reply brings the conversation back to the bottom.
+    useLayoutEffect(() => {
+        if (last?.role === 'user') following.current = true;
+    }, [last?.id]);
+
+    // Open at the latest message and stay there while answers stream, render and animate in.
+    useLayoutEffect(() => {
         const element = ref.current;
-        if (!element) return;
-        const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
-        if (nearBottom) element.scrollTop = element.scrollHeight;
-    }, [last?.id, last?.text.length]);
+        const list = listRef.current;
+        if (!element || !list) return;
+        const follow = () => {
+            if (following.current) element.scrollTop = element.scrollHeight;
+        };
+        follow();
+        const observer = new ResizeObserver(follow);
+        observer.observe(element);
+        observer.observe(list);
+        return () => observer.disconnect();
+    }, []);
 
     return (
         <div
             ref={ref}
             class="messages"
             data-scrolled={scrolled || undefined}
-            onScroll={event => setScrolled((event.target as HTMLDivElement).scrollTop > 4)}
+            onScroll={event => {
+                const element = event.currentTarget;
+                following.current =
+                    element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+                setScrolled(element.scrollTop > 4);
+            }}
         >
-            {thread.messages.map(message =>
-                message.role === 'user' ? (
-                    <div key={message.id} class="message message-user">
-                        {message.text}
-                    </div>
-                ) : (
-                    <AssistantMessage key={message.id} message={message} />
-                ),
-            )}
+            <div ref={listRef} class="messages-list">
+                {thread.messages.map(message =>
+                    message.role === 'user' ? (
+                        <div key={message.id} class="message message-user">
+                            {message.text}
+                        </div>
+                    ) : (
+                        <AssistantMessage key={message.id} message={message} />
+                    ),
+                )}
+            </div>
         </div>
     );
 }

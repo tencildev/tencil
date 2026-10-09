@@ -229,6 +229,21 @@ describe('existing provider threads', () => {
         });
     });
 
+    it('re-anchors a pin that was dragged', async () => {
+        const { bridge, client, store } = setup();
+        await bridge.handle(client, {
+            type: 'thread.create',
+            id: 'a',
+            pageUrl: 'http://localhost:3000/',
+            prompt: 'Make it red',
+            anchor: { selector: 'h1', offsetX: 0.5, offsetY: 0.5 },
+            context,
+        });
+        const anchor = { selector: 'main > p', offsetX: 0, offsetY: 1 };
+        await bridge.handle(client, { type: 'thread.move', threadId: 'a', anchor });
+        expect(store.get('a')?.anchor).toEqual(anchor);
+    });
+
     it('stops watching once the last pin for a thread is deleted', async () => {
         const { bridge, client, provider } = setup();
         await bridge.handle(client, { type: 'thread.open', id: 'a', providerThreadId: 'p1' });

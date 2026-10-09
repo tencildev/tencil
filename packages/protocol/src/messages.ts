@@ -63,6 +63,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     z.object({ type: z.literal('thread.interrupt'), threadId: z.string() }),
     z.object({ type: z.literal('thread.resolve'), threadId: z.string(), resolved: z.boolean() }),
     z.object({ type: z.literal('thread.delete'), threadId: z.string() }),
+    /** Re-anchor a pin that was dragged somewhere else. */
+    z.object({ type: z.literal('thread.move'), threadId: z.string(), anchor: Anchor }),
     /** Change the project's settings, e.g. the provider new pins go to. */
     z.object({
         type: z.literal('settings.update'),

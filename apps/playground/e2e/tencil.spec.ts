@@ -75,6 +75,48 @@ test('continues the conversation and keeps pins across reloads', async ({ page }
     await expect(overlay(page).locator('.pin')).toHaveCount(1, { timeout: 15_000 });
 });
 
+test('opens a thread at its latest message', async ({ page }) => {
+    // A short window so the conversation overflows the thread panel.
+    await page.setViewportSize({ width: 1280, height: 360 });
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Choose Pro' }).scrollIntoViewIfNeeded();
+    await overlay(page).locator('.pin .pin-body').first().click();
+    const messages = overlay(page).locator('.thread .messages');
+    await expect(messages.locator('.message-assistant')).toHaveCount(2);
+    await expect
+        .poll(() =>
+            messages.evaluate(element => ({
+                overflows: element.scrollHeight > element.clientHeight,
+                atBottom: element.scrollHeight - element.scrollTop - element.clientHeight < 2,
+            })),
+        )
+        .toEqual({ overflows: true, atBottom: true });
+});
+
+test('drags a pin onto another element and keeps it there', async ({ page }) => {
+    await openPlayground(page);
+    const pin = overlay(page).locator('.pin .pin-body').first();
+    const from = (await pin.boundingBox())!;
+    const heading = (await page.getByRole('heading', { level: 1 }).boundingBox())!;
+    // The pin's tip is its bottom-left corner; grab the body and land the tip on the heading.
+    const grab = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
+    const tip = { x: heading.x + 20, y: heading.y + heading.height / 2 };
+    await page.mouse.move(grab.x, grab.y);
+    await page.mouse.down();
+    await page.mouse.move(tip.x + (grab.x - from.x), tip.y - (from.y + from.height - grab.y), {
+        steps: 12,
+    });
+    await page.mouse.up();
+    // A drag isn't a click: the thread stays closed.
+    await expect(overlay(page).locator('.thread')).toHaveCount(0);
+
+    await page.reload();
+    await expect(overlay(page).locator('.pin')).toHaveCount(1, { timeout: 15_000 });
+    const to = (await overlay(page).locator('.pin .pin-body').first().boundingBox())!;
+    expect(Math.abs(to.x - tip.x)).toBeLessThan(4);
+    expect(Math.abs(to.y + to.height - tip.y)).toBeLessThan(4);
+});
+
 test("lists the agent's threads and opens one in the dock", async ({ page }) => {
     await openPlayground(page);
     await overlay(page).locator('.tool[title="Pins"]').click();
