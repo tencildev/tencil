@@ -119,12 +119,15 @@ kbd {
   font-size: 12px; font-weight: 600;
   border: 2px solid white;
   box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.35);
-  transform-origin: bottom left;
+  transform-origin: bottom left; touch-action: none;
   transition: transform 160ms var(--ease-out), opacity 160ms var(--ease-out), background-color 200ms ease;
   @starting-style { opacity: 0; transform: scale(0.85); }
 }
 .pin-open .pin-body { transform: scale(1.1); }
 .pin:active .pin-body { transform: scale(0.94); }
+/* Lifted while dragged; outranks :active, which holds for the whole drag. */
+.pin.pin-dragging { cursor: grabbing; }
+.pin.pin-dragging .pin-body { transform: scale(1.15); box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.4); }
 .pin-done { --pin: var(--done); }
 .pin-waiting { --pin: #e69a10; }
 .pin-error { --pin: #e5484d; }
@@ -275,10 +278,8 @@ kbd {
   text-decoration: none;
 }
 
-.messages {
-  overflow-y: auto; padding: 16px 2px; min-height: 40px;
-  display: flex; flex-direction: column; gap: 1.25rem;
-}
+.messages { overflow-y: auto; padding: 16px 2px; min-height: 40px; }
+.messages-list { display: flex; flex-direction: column; gap: 1.25rem; }
 /* Fade the top edge once content scrolls under the header. */
 .messages[data-scrolled] { mask-image: linear-gradient(to bottom, transparent 0, #000 2.5rem); }
 .message { max-width: 100%; word-break: break-word; }

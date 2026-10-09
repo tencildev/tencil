@@ -19,6 +19,16 @@ export function resolveAnchor(anchor: Anchor, element?: Element): Point | null {
     };
 }
 
+/** Where a viewport point sits inside an element, as an anchor's 0..1 offsets. */
+export function offsetsIn(element: Element, point: Point): Pick<Anchor, 'offsetX' | 'offsetY'> {
+    const rect = element.getBoundingClientRect();
+    const offset = (value: number, size: number) => (size > 0 ? clamp(value / size, 0, 1) : 0.5);
+    return {
+        offsetX: offset(point.x - rect.left, rect.width),
+        offsetY: offset(point.y - rect.top, rect.height),
+    };
+}
+
 function findElement(selector: string): Element | null {
     if (!selector) return null;
     const cached = cache.get(selector)?.deref();

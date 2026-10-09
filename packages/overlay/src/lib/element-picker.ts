@@ -1,5 +1,6 @@
 import { threads } from './connection.ts';
 import { captureContext, quickLabel } from './element-context.ts';
+import { offsetsIn } from './position.ts';
 import {
     currentPage,
     draft,
@@ -65,9 +66,6 @@ export function installPicker(host: HTMLElement): () => void {
         event.stopImmediatePropagation();
         const element = elementAt(event.clientX, event.clientY);
         if (!element) return;
-        const rect = element.getBoundingClientRect();
-        const offset = (value: number, size: number) =>
-            size > 0 ? Math.min(1, Math.max(0, value / size)) : 0.5;
         stopPicking();
         const context = captureContext(element);
         draft.value = {
@@ -76,8 +74,7 @@ export function installPicker(host: HTMLElement): () => void {
             anchor: {
                 // Filled in once context resolves; the live element reference drives layout until then.
                 selector: '',
-                offsetX: offset(event.clientX - rect.left, rect.width),
-                offsetY: offset(event.clientY - rect.top, rect.height),
+                ...offsetsIn(element, { x: event.clientX, y: event.clientY }),
             },
             context,
         };

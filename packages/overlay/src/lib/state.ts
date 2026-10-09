@@ -1,6 +1,7 @@
 import { computed, signal } from '@preact/signals';
 import type { Anchor, ElementContext } from '@tencil/protocol';
 import { threads } from './connection.ts';
+import type { Point } from './position.ts';
 
 export type Mode = 'idle' | 'picking';
 
@@ -21,6 +22,8 @@ export const inboxOpen = signal(false);
 export const settingsOpen = signal(false);
 export const showResolved = signal(false);
 export const hidden = signal(false);
+/** A pin being dragged: where its tip is now, so its open thread can follow. */
+export const pinDrag = signal<{ threadId: string; point: Point } | null>(null);
 
 /** Bumped on scroll/resize/mutations so anchored UI re-measures. */
 export const layoutTick = signal(0);

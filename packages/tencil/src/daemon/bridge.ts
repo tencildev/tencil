@@ -120,6 +120,12 @@ export class Bridge {
                         resolved: message.resolved,
                     }));
                     return;
+                case 'thread.move':
+                    this.#update(message.threadId, thread => ({
+                        ...thread,
+                        anchor: message.anchor,
+                    }));
+                    return;
                 case 'thread.delete': {
                     const provider = this.#options.store.get(message.threadId)?.provider;
                     if (this.#options.store.delete(message.threadId)) {
