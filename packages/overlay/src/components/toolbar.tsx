@@ -1,28 +1,46 @@
 import { useRef } from 'preact/hooks';
 import { bridgeState, project, projectChoices, provider, send } from '../lib/connection.ts';
 import { dock, moveDockBy, startDrag } from '../lib/dock.ts';
+import { besideIndicator, nextIndicator } from '../lib/next-devtools.ts';
 import {
-    activeCount,
     hidden,
     inboxOpen,
     mode,
+    queuedThreads,
     settingsOpen,
     startPicking,
     stopPicking,
     unresolvedCount,
 } from '../lib/state.ts';
-import { CommentIcon, EyeIcon, EyeOffIcon, InboxIcon, SettingsIcon } from './icons.tsx';
+import {
+    ArrowUpIcon,
+    CommentIcon,
+    EyeIcon,
+    EyeOffIcon,
+    InboxIcon,
+    SettingsIcon,
+} from './icons.tsx';
+import { sendQueued } from './pins.tsx';
 import { ProjectPicker } from './project-picker.tsx';
+import { SettingsPanel } from './settings-panel.tsx';
+import { StatusDot, type Tone } from './status-card.tsx';
 
 export function Toolbar() {
     const status = connectionStatus();
     const picking = mode.value === 'picking';
     const ref = useRef<HTMLDivElement>(null);
     return (
-        <div ref={ref} class={`toolbar-wrap dock-${dock.value}`}>
+        <div
+            ref={ref}
+            class={`toolbar-wrap dock-${dock.value}`}
+            // Next.js's dev tools button sits in a corner too; stand beside it, not on it.
+            style={besideIndicator(dock.value, nextIndicator.value)}
+        >
             {picking && (
                 <div class="toolbar-hint">Click any element to pin a prompt · Esc to cancel</div>
             )}
+            {/* Sits on the toolbar's open side, so it follows the toolbar to any corner. */}
+            {!picking && <SettingsPanel />}
             {!picking && projectChoices.value && <ProjectPicker />}
             {!picking && !projectChoices.value && status.hint && (
                 <div class={`toolbar-hint hint-${status.tone}`}>
@@ -35,9 +53,7 @@ export function Toolbar() {
                 </div>
             )}
             <div class="toolbar">
-                <span class={`status-dot status-${status.tone}`} title={status.title}>
-                    {activeCount.value > 0 && <span class="status-ping" />}
-                </span>
+                <StatusDot tone={status.tone} label={status.title} />
                 <button
                     type="button"
                     class="divider"
@@ -59,6 +75,18 @@ export function Toolbar() {
                     <span class="tool-label">Comment</span>
                     <kbd>C</kbd>
                 </button>
+                {queuedThreads.value.length > 0 && (
+                    <button
+                        type="button"
+                        class="tool tool-send"
+                        title="Send the queued comments to the agent as one thread"
+                        disabled={provider.value?.state !== 'ready'}
+                        onClick={sendQueued}
+                    >
+                        <ArrowUpIcon />
+                        <span class="tool-label">Send {queuedThreads.value.length}</span>
+                    </button>
+                )}
                 <button
                     type="button"
                     class={`tool${inboxOpen.value ? ' tool-active' : ''}`}
@@ -102,7 +130,7 @@ export function Toolbar() {
 }
 
 interface ConnectionStatus {
-    tone: 'ok' | 'warn' | 'error';
+    tone: Tone;
     title: string;
     hint?: string;
     action?: { label: string; run: () => void };

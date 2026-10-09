@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
+    CreateThreadInput,
     Provider,
     ProviderInfo,
     SendMessageInput,
@@ -16,6 +17,7 @@ import { ThreadStore } from './thread-store.ts';
 class FakeProvider implements Provider {
     readonly label: string;
     created = 0;
+    createdWith: CreateThreadInput[] = [];
     sent: SendMessageInput[] = [];
     sinks = new Map<string, ThreadSink>();
 
@@ -35,7 +37,14 @@ class FakeProvider implements Provider {
     threadUrl() {
         return undefined;
     }
-    async createThread() {
+    async listModels() {
+        return {
+            models: [{ id: `${this.id}/fast`, label: 'Fast', group: this.label }],
+            defaultModel: `${this.id}/fast`,
+        };
+    }
+    async createThread(input: CreateThreadInput) {
+        this.createdWith.push(input);
         this.created++;
         return { providerThreadId: `${this.id}-${this.created}` };
     }
@@ -146,6 +155,53 @@ describe('project settings', () => {
             type: 'provider.threads',
             project: { name: 'Claude Code' },
         });
+    });
+
+    it("starts new threads on the model picked for the project's provider", async () => {
+        const { bridge, client, received, fakes } = setup();
+        await bridge.handle(client, { type: 'provider.models' });
+        expect(received.at(-1)).toEqual({
+            type: 'provider.models',
+            provider: 't3code',
+            models: [{ id: 't3code/fast', label: 'Fast', group: 'T3 Code' }],
+            defaultModel: 't3code/fast',
+        });
+
+        await bridge.handle(client, { type: 'model.select', model: 't3code/fast' });
+        expect(received.at(-1)).toEqual({
+            type: 'settings',
+            settings: expect.objectContaining({ provider: 't3code', model: 't3code/fast' }),
+        });
+        await bridge.handle(client, pin('a'));
+        expect(fakes.get('t3code')?.createdWith.at(-1)?.model).toBe('t3code/fast');
+
+        // The pick belongs to T3 Code; Claude Code starts on its own default.
+        await bridge.handle(client, { type: 'settings.update', provider: 'claude-code' });
+        expect(received.findLast(m => m.type === 'settings')).toEqual({
+            type: 'settings',
+            settings: expect.not.objectContaining({ model: expect.anything() }),
+        });
+        await bridge.handle(client, pin('b'));
+        expect(fakes.get('claude-code')?.createdWith.at(-1)?.model).toBeUndefined();
+
+        await bridge.handle(client, { type: 'settings.update', provider: 't3code' });
+        await bridge.handle(client, { type: 'model.select', model: null });
+        await bridge.handle(client, pin('c'));
+        expect(fakes.get('t3code')?.createdWith.at(-1)?.model).toBeUndefined();
+    });
+
+    it('turns batching on and off for the project', async () => {
+        const { bridge, client, received } = setup();
+        await bridge.handle(client, { type: 'hello', protocol: 1, pageUrl: 'http://x/' });
+        // On by default.
+        expect(received.at(-1)).toMatchObject({ settings: { batch: true } });
+        await bridge.handle(client, { type: 'settings.update', batch: false });
+        expect(received.at(-1)).toEqual({
+            type: 'settings',
+            settings: expect.objectContaining({ provider: 't3code', batch: false }),
+        });
+        await bridge.handle(client, { type: 'settings.update', batch: true });
+        expect(received.at(-1)).toMatchObject({ settings: { batch: true } });
     });
 
     it('refuses an unknown provider', async () => {

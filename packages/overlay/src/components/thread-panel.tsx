@@ -2,7 +2,7 @@ import type { Thread, ThreadMessage } from '@tencil/protocol';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
-import { inboxOpen, layoutTick, openThreadId } from '../lib/state.ts';
+import { inboxOpen, layoutTick, openThreadId, queuedThreads } from '../lib/state.ts';
 import {
     CheckIcon,
     CloseIcon,
@@ -13,7 +13,7 @@ import {
     UndoIcon,
 } from './icons.tsx';
 import { Markdown } from './markdown.tsx';
-import { pinNumbers } from './pins.tsx';
+import { pinNumbers, sendQueued } from './pins.tsx';
 import { PromptInput } from './prompt-input.tsx';
 
 const WIDTH = 380;
@@ -53,19 +53,58 @@ export function ThreadPanel() {
             }}
         >
             <Header thread={thread} />
-            <Messages thread={thread} />
-            <StatusLine thread={thread} />
+            {thread.status === 'draft' ? (
+                <QueuedComment thread={thread} />
+            ) : (
+                <>
+                    <Messages thread={thread} />
+                    <StatusLine thread={thread} />
+                    <PromptInput
+                        placeholder={thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…'}
+                        disabled={!thread.provider.threadId}
+                        onSubmit={text => {
+                            send({ type: 'thread.reply', threadId: thread.id, text });
+                        }}
+                        onCancel={() => {
+                            openThreadId.value = null;
+                        }}
+                    />
+                </>
+            )}
+        </div>
+    );
+}
+
+/** A comment waiting for its batch: rewrite it here, or send the batch. */
+function QueuedComment({ thread }: { thread: Thread }) {
+    const comment = thread.messages[0]?.text ?? '';
+    const count = queuedThreads.value.length;
+    return (
+        <>
+            <div class="status-line status-queued">
+                {thread.statusDetail ? (
+                    <span class="status-error">Couldn't send: {thread.statusDetail}</span>
+                ) : (
+                    `Queued with ${count === 1 ? 'no other comments' : `${count - 1} other ${count === 2 ? 'comment' : 'comments'}`}`
+                )}
+                <button type="button" class="stop" onClick={sendQueued}>
+                    Send {count === 1 ? 'it' : `all ${count}`} now
+                </button>
+            </div>
             <PromptInput
-                placeholder={thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…'}
-                disabled={!thread.provider.threadId}
+                key={`${thread.id}:${comment}`}
+                initialText={comment}
+                placeholder="What should change here?"
                 onSubmit={text => {
-                    send({ type: 'thread.reply', threadId: thread.id, text });
+                    if (text !== comment)
+                        send({ type: 'thread.edit', threadId: thread.id, prompt: text });
+                    openThreadId.value = null;
                 }}
                 onCancel={() => {
                     openThreadId.value = null;
                 }}
             />
-        </div>
+        </>
     );
 }
 
@@ -108,22 +147,24 @@ function Header({ thread }: { thread: Thread }) {
                         <ExternalIcon />
                     </a>
                 )}
-                <button
-                    type="button"
-                    class="icon-button"
-                    title={thread.resolved ? 'Reopen' : 'Resolve'}
-                    onClick={() => {
-                        send({
-                            type: 'thread.resolve',
-                            threadId: thread.id,
-                            resolved: !thread.resolved,
-                        });
-                        // Resolving is the last step; reopening means more to do here.
-                        if (!thread.resolved) openThreadId.value = null;
-                    }}
-                >
-                    {thread.resolved ? <UndoIcon /> : <CheckIcon />}
-                </button>
+                {thread.status !== 'draft' && (
+                    <button
+                        type="button"
+                        class="icon-button"
+                        title={thread.resolved ? 'Reopen' : 'Resolve'}
+                        onClick={() => {
+                            send({
+                                type: 'thread.resolve',
+                                threadId: thread.id,
+                                resolved: !thread.resolved,
+                            });
+                            // Resolving is the last step; reopening means more to do here.
+                            if (!thread.resolved) openThreadId.value = null;
+                        }}
+                    >
+                        {thread.resolved ? <UndoIcon /> : <CheckIcon />}
+                    </button>
+                )}
                 <button
                     type="button"
                     class="icon-button"

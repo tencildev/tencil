@@ -2,6 +2,7 @@ import type { ImageAttachment } from './context.ts';
 import type { ProviderInfo } from './messages.ts';
 import type {
     MessageRole,
+    ProviderModel,
     ProviderProject,
     ProviderThreadSummary,
     ThreadStatus,
@@ -28,6 +29,8 @@ export interface Provider {
     pair?(): Promise<void>;
     /** Threads that already exist for this project, newest first. */
     listThreads(): Promise<{ project: ProviderProject; threads: ProviderThreadSummary[] }>;
+    /** Models new threads can run on, and the one they use by default. Optional. */
+    listModels?(): Promise<ProviderModels>;
     /** Deep link into the provider UI for a thread, when it has one. */
     threadUrl(providerThreadId: string): string | undefined;
     createThread(input: CreateThreadInput): Promise<CreatedThread>;
@@ -48,6 +51,14 @@ export interface CreateThreadInput {
     title: string;
     text: string;
     attachments: ImageAttachment[];
+    /** A `ProviderModel.id` the user picked; the provider's default when absent or unknown. */
+    model?: string;
+}
+
+export interface ProviderModels {
+    models: ProviderModel[];
+    /** `ProviderModel.id` new threads use when none is picked. */
+    defaultModel?: string;
 }
 
 export interface CreatedThread {
@@ -72,7 +83,7 @@ export interface ProviderMessage {
 export interface ThreadSink {
     /** Upsert by `id`; `text` is cumulative. */
     message(message: ProviderMessage): void;
-    status(status: Exclude<ThreadStatus, 'starting'>, detail?: string): void;
+    status(status: Exclude<ThreadStatus, 'starting' | 'draft'>, detail?: string): void;
     /** Provider no longer has this thread (deleted/archived on its side). */
     gone(): void;
 }

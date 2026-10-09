@@ -6,18 +6,20 @@ export type RuntimeMode = 'approval-required' | 'auto-accept-edits' | 'auto' | '
 export interface ModelSelection {
     instanceId: string;
     model: string;
+    /** Per-model options such as reasoning effort, passed through as T3 Code stored them. */
+    options?: unknown;
 }
 
 export interface TrackerUpdate {
     messages: ProviderMessage[];
-    status?: { status: Exclude<ThreadStatus, 'starting'>; detail?: string };
+    status?: { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
     gone?: boolean;
 }
 
 /** Folds one protocol's thread stream into Tencil messages + status. */
 export interface ThreadTracker {
     apply(item: unknown): TrackerUpdate;
-    status(): { status: Exclude<ThreadStatus, 'starting'>; detail?: string };
+    status(): { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
     /** What an interrupt should target (run id in V2, turn id in V1). */
     activeTurnId(): string | undefined;
 }

@@ -1,7 +1,7 @@
 import type { Thread } from '@tencil/protocol';
 import { describe, expect, it } from 'vitest';
 import { mergeMessage } from './bridge.ts';
-import { renderPrompt, stripContext } from './prompt.ts';
+import { renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';
 
 const context = {
     tagName: 'button',
@@ -32,6 +32,32 @@ describe('prompt', () => {
             'PricingCard (src/components/PricingCard.tsx:21:6) ← App (src/App.tsx:18)',
         );
         expect(stripContext(text)).toBe('Make it red');
+    });
+});
+
+describe('batch prompt', () => {
+    it('numbers the comments like their pins, with a context section each', () => {
+        const text = renderBatchPrompt([
+            {
+                number: 2,
+                prompt: 'Make it red',
+                pageUrl: 'http://localhost:3000/',
+                context,
+                screenshots: [1],
+            },
+            {
+                number: 5,
+                prompt: 'Bigger\nand bolder',
+                pageUrl: 'http://localhost:3000/pricing',
+                context: { ...context, selector: 'h1' },
+                screenshots: [],
+            },
+        ]);
+        expect(stripContext(text)).toBe('#2 Make it red\n\n#5 Bigger\nand bolder');
+        expect(text).toContain('pinned 2 comments');
+        expect(text).toContain('#2\n- Page: http://localhost:3000/\n');
+        expect(text).toContain('- Screenshot: attached image 1');
+        expect(text).toContain('#5\n- Page: http://localhost:3000/pricing\n');
     });
 });
 

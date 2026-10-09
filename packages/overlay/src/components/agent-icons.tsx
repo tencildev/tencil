@@ -11,7 +11,17 @@ const CLAUDE =
 const CURSOR =
     'M457.43,125.94L244.42,2.96c-6.84-3.95-15.28-3.95-22.12,0L9.3,125.94c-5.75,3.32-9.3,9.46-9.3,16.11v247.99c0,6.65,3.55,12.79,9.3,16.11l213.01,122.98c6.84,3.95,15.28,3.95,22.12,0l213.01-122.98c5.75-3.32,9.3-9.46,9.3-16.11v-247.99c0-6.65-3.55-12.79-9.3-16.11h-.01ZM444.05,151.99l-205.63,356.16c-1.39,2.4-5.06,1.42-5.06-1.36v-233.21c0-4.66-2.49-8.97-6.53-11.31L24.87,145.67c-2.4-1.39-1.42-5.06,1.36-5.06h411.26c5.84,0,9.49,6.33,6.57,11.39h-.01Z';
 
+/** T3 Code's own mark (apps/web/src/components/T3Wordmark.tsx). */
+const T3 =
+    'M33.4509 93V47.56H15.5309V37H64.3309V47.56H46.4109V93H33.4509ZM86.7253 93.96C82.832 93.96 78.9653 93.4533 75.1253 92.44C71.2853 91.3733 68.032 89.88 65.3653 87.96L70.4053 78.04C72.5386 79.5867 75.0186 80.8133 77.8453 81.72C80.672 82.6267 83.5253 83.08 86.4053 83.08C89.6586 83.08 92.2186 82.44 94.0853 81.16C95.952 79.88 96.8853 78.12 96.8853 75.88C96.8853 73.7467 96.0586 72.0667 94.4053 70.84C92.752 69.6133 90.0853 69 86.4053 69H80.4853V60.44L96.0853 42.76L97.5253 47.4H68.1653V37H107.365V45.4L91.8453 63.08L85.2853 59.32H89.0453C95.9253 59.32 101.125 60.8667 104.645 63.96C108.165 67.0533 109.925 71.0267 109.925 75.88C109.925 79.0267 109.099 81.9867 107.445 84.76C105.792 87.48 103.259 89.6933 99.8453 91.4C96.432 93.1067 92.0586 93.96 86.7253 93.96Z';
+
 const MARKS: Record<string, { viewBox: string; path: string; className: string; label: string }> = {
+    t3code: {
+        viewBox: '15.5309 37 94.3941 56.96',
+        path: T3,
+        className: 'agent-mono',
+        label: 'T3 Code',
+    },
     codex: { viewBox: '0 0 256 260', path: OPENAI, className: 'agent-mono', label: 'Codex' },
     claudeAgent: {
         viewBox: '0 0 256 257',
@@ -37,7 +47,16 @@ function markFor(agent: string) {
     return undefined;
 }
 
-export function AgentIcon({ agent, size = 13 }: { agent?: string; size?: number }) {
+export function AgentIcon({
+    agent,
+    size = 13,
+    decorative = false,
+}: {
+    agent?: string;
+    size?: number;
+    /** Next to the agent's name already: hide it from screen readers. */
+    decorative?: boolean;
+}) {
     if (!agent) return null;
     const mark = markFor(agent);
     if (!mark) return null;
@@ -47,8 +66,9 @@ export function AgentIcon({ agent, size = 13 }: { agent?: string; size?: number 
             width={size}
             height={size}
             viewBox={mark.viewBox}
-            role="img"
-            aria-label={mark.label}
+            role={decorative ? undefined : 'img'}
+            aria-label={decorative ? undefined : mark.label}
+            aria-hidden={decorative ? 'true' : undefined}
         >
             <path d={mark.path} />
         </svg>

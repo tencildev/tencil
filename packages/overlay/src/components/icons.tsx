@@ -111,6 +111,26 @@ export const SettingsIcon = () => (
     </Icon>
 );
 
+/** Tencil's mark: the overlay's pin with a cursor in it (as on tencil.dev). */
+export const TencilLogo = ({ size = 16 }: { size?: number }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" class="tencil-logo">
+        <path d="M3 21V9a6 6 0 0 1 6-6h6a6 6 0 0 1 6 6v6a6 6 0 0 1-6 6Z" fill="#3b8dff" />
+        <path
+            d="M9.25 7.5 16.5 12.6l-3.55.75-1.75 3.4Z"
+            fill="#fff"
+            stroke="#fff"
+            stroke-linejoin="round"
+        />
+    </svg>
+);
+
+export const LayersIcon = () => (
+    <Icon size={14}>
+        <path d="m12 2 10 5-10 5L2 7Z" />
+        <path d="m2 17 10 5 10-5M2 12l10 5 10-5" />
+    </Icon>
+);
+
 export const ChevronIcon = () => (
     <Icon size={12}>
         <path d="m6 9 6 6 6-6" />

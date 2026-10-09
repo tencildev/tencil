@@ -1,20 +1,38 @@
 import { signal } from '@preact/signals';
-import type { ImageAttachment, ProviderThreadSummary, Thread } from '@tencil/protocol';
+import type {
+    ImageAttachment,
+    ProviderModel,
+    ProviderThreadSummary,
+    Thread,
+} from '@tencil/protocol';
+import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
     provider,
+    providerModels,
     providerThreads,
+    refreshProviderModels,
     refreshProviderThreads,
     send,
+    settings,
     upsertLocal,
 } from '../lib/connection.ts';
 import { newId } from '../lib/id.ts';
 import { getHost } from '../lib/overlay-host.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { captureElement } from '../lib/screenshot.ts';
-import { draft, layoutTick, openThreadId } from '../lib/state.ts';
+import {
+    batchAvailable,
+    batchMode,
+    batchToggle,
+    draft,
+    layoutTick,
+    openThreadId,
+    queuedThreads,
+    startPicking,
+} from '../lib/state.ts';
 import { AgentIcon } from './agent-icons.tsx';
-import { CameraIcon, ChevronIcon, CodeIcon } from './icons.tsx';
+import { CameraIcon, ChevronIcon, CodeIcon, LayersIcon } from './icons.tsx';
 import { timeAgo } from './inbox.tsx';
 import { PromptInput } from './prompt-input.tsx';
 
@@ -33,12 +51,14 @@ export function Composer() {
     const [height, setHeight] = useState(140);
     const [withScreenshot, setWithScreenshot] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [picking, setPicking] = useState(false);
+    const [menu, setMenu] = useState<'target' | 'model' | null>(null);
 
     const providerReady = provider.value?.state === 'ready';
     const providerId = provider.value?.id;
     useEffect(() => {
-        if (pending && providerReady) refreshProviderThreads();
+        if (!pending || !providerReady) return;
+        refreshProviderThreads();
+        refreshProviderModels();
     }, [pending, providerReady, providerId]);
     // A thread picked from the previous provider's list can't take the pin.
     useEffect(() => {
@@ -55,7 +75,11 @@ export function Composer() {
     const { left, top, origin } = popoverPosition(point, { width: WIDTH, height });
     const target = provider.value;
     const ready = target?.state === 'ready';
-    const existing = composerTarget.value;
+    const batching = batchMode.value;
+    // A batch always starts its own thread.
+    const existing = batching ? null : composerTarget.value;
+    // A continued thread keeps its own model; only new threads can pick one.
+    const models = existing ? undefined : modelChoices(target?.id);
 
     const submit = async (prompt: string) => {
         setBusy(true);
@@ -77,6 +101,7 @@ export function Composer() {
                 context,
                 attachments,
                 ...(existing ? { providerThreadId: existing.id } : {}),
+                ...(batching ? { draft: true } : {}),
             });
             if (!ok) return;
             const now = new Date().toISOString();
@@ -86,7 +111,7 @@ export function Composer() {
                 pageUrl: location.href,
                 anchor,
                 context,
-                status: existing ? 'working' : 'starting',
+                status: batching ? 'draft' : existing ? 'working' : 'starting',
                 resolved: false,
                 messages: [
                     {
@@ -106,7 +131,9 @@ export function Composer() {
             };
             upsertLocal(optimistic);
             draft.value = null;
-            openThreadId.value = id;
+            // Queued: straight on to the next element.
+            if (batching) startPicking();
+            else openThreadId.value = id;
         } finally {
             setBusy(false);
         }
@@ -128,11 +155,16 @@ export function Composer() {
                     <CodeIcon />
                     {pending.label}
                 </span>
-                {target && (
+                {target && batching && (
+                    <span class="composer-provider composer-batch">
+                        → Batch · {queuedThreads.value.length} queued
+                    </span>
+                )}
+                {target && !batching && (
                     <button
                         type="button"
-                        class={`composer-provider${picking ? ' open' : ''}`}
-                        onClick={() => setPicking(!picking)}
+                        class={`composer-provider${menu === 'target' ? ' open' : ''}`}
+                        onClick={() => setMenu(menu === 'target' ? null : 'target')}
                         title="Send to a new thread or continue an existing one"
                     >
                         <span class="composer-provider-label">
@@ -142,25 +174,37 @@ export function Composer() {
                     </button>
                 )}
             </div>
-            {picking && (
+            {menu === 'target' && !batching && (
                 <TargetMenu
                     onPick={summary => {
                         composerTarget.value = summary;
-                        setPicking(false);
+                        setMenu(null);
+                    }}
+                />
+            )}
+            {menu === 'model' && models && (
+                <ModelMenu
+                    choices={models}
+                    onPick={model => {
+                        send({ type: 'model.select', model });
+                        setMenu(null);
                     }}
                 />
             )}
             <PromptInput
                 placeholder={
-                    !ready
-                        ? 'Waiting for the agent connection…'
-                        : existing
-                          ? 'Continue the thread with this element…'
-                          : 'What should change here?'
+                    batching
+                        ? 'Add a comment to the batch…'
+                        : !ready
+                          ? 'Waiting for the agent connection…'
+                          : existing
+                            ? 'Continue the thread with this element…'
+                            : 'What should change here?'
                 }
                 autoFocus
                 busy={busy}
-                disabled={!ready}
+                // Queued comments don't need the agent until the batch is sent.
+                disabled={!ready && !batching}
                 onSubmit={submit}
                 onCancel={() => {
                     draft.value = null;
@@ -175,8 +219,113 @@ export function Composer() {
                 >
                     <CameraIcon />
                 </button>
+                {batchAvailable.value && (
+                    <button
+                        type="button"
+                        class={`toggle${batching ? ' toggle-on' : ''}`}
+                        onClick={() => {
+                            batchToggle.value = !batching;
+                            setMenu(null);
+                        }}
+                        title={
+                            batching
+                                ? 'Batch on: comments are queued and sent together'
+                                : 'Queue comments and send them together'
+                        }
+                        aria-label="Batch"
+                        aria-pressed={batching}
+                    >
+                        <LayersIcon />
+                    </button>
+                )}
+                {models && (
+                    <button
+                        type="button"
+                        class={`toggle model-toggle${menu === 'model' ? ' open' : ''}`}
+                        onClick={() => setMenu(menu === 'model' ? null : 'model')}
+                        title="Agent and model for the new thread"
+                    >
+                        <AgentIcon agent={models.current?.agent} size={12} />
+                        <span class="model-toggle-label">
+                            {models.current?.label ?? 'Default model'}
+                        </span>
+                        <ChevronIcon />
+                    </button>
+                )}
             </PromptInput>
             {!ready && target?.detail && <p class="hint">{target.detail}</p>}
+        </div>
+    );
+}
+
+interface ModelChoices {
+    models: ProviderModel[];
+    /** The model new threads run on: the picked one, else the provider's default. */
+    current?: ProviderModel;
+    picked: string | null;
+    fallback?: ProviderModel;
+}
+
+function modelChoices(providerId: string | undefined): ModelChoices | undefined {
+    const list = providerModels.value;
+    if (!list || list.provider !== providerId || list.models.length === 0) return undefined;
+    const find = (id: string | undefined) => list.models.find(model => model.id === id);
+    // A pick whose agent went away falls back to the default, here and in the provider.
+    const picked = find(settings.value?.model);
+    const fallback = find(list.defaultModel);
+    return {
+        models: list.models,
+        current: picked ?? fallback,
+        picked: picked?.id ?? null,
+        fallback,
+    };
+}
+
+function ModelMenu({
+    choices,
+    onPick,
+}: {
+    choices: ModelChoices;
+    onPick: (model: string | null) => void;
+}) {
+    const groups = new Map<string, ProviderModel[]>();
+    for (const model of choices.models) {
+        groups.set(model.group, [...(groups.get(model.group) ?? []), model]);
+    }
+    return (
+        <div class="target-menu" role="listbox">
+            <button
+                type="button"
+                role="option"
+                aria-selected={choices.picked === null}
+                class={`target-option${choices.picked === null ? ' selected' : ''}`}
+                onClick={() => onPick(null)}
+            >
+                <span class="target-option-title">Default</span>
+                {choices.fallback && (
+                    <span class="target-option-meta">{choices.fallback.label}</span>
+                )}
+            </button>
+            {[...groups].map(([group, models]) => (
+                <Fragment key={group}>
+                    <p class="menu-group">
+                        <AgentIcon agent={models[0]?.agent} size={11} />
+                        {group}
+                    </p>
+                    {models.map(model => (
+                        <button
+                            key={model.id}
+                            type="button"
+                            role="option"
+                            aria-selected={choices.picked === model.id}
+                            class={`target-option${choices.picked === model.id ? ' selected' : ''}`}
+                            onClick={() => onPick(model.id)}
+                        >
+                            <span class="target-option-title">{model.label}</span>
+                        </button>
+                    ))}
+                </Fragment>
+            ))}
         </div>
     );
 }
