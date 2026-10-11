@@ -177,3 +177,8 @@ The bridge can make an agent edit your code, so it is locked down by default:
   held to `--allow-origin`, but a non-browser client can claim any Origin, so only
   listen on a network you trust (such as your tailnet).
 - Agent replies are rendered as text nodes (no `innerHTML`).
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE) and, for bundled third-party code,
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
