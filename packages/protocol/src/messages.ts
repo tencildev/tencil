@@ -18,6 +18,26 @@ export const BuildInfo = z.object({
 });
 export type BuildInfo = z.infer<typeof BuildInfo>;
 
+/** How the overlay signs in to Tencil Cloud: OAuth 2.1 authorization code with PKCE. */
+export interface CloudSignIn {
+    authorizeUrl: string;
+    tokenUrl: string;
+    clientId: string;
+    /** A Tencil Cloud page that posts the code back to the overlay (`tencil:oauth`). */
+    redirectUri: string;
+    scope?: string;
+}
+
+/** Who is signed in to Tencil Cloud, and what they may do on this project. */
+export interface Viewer {
+    name: string;
+    /** GitHub login. */
+    login?: string;
+    avatarUrl?: string;
+    /** `read`: can see pins, not make or answer them (no write access to the repository). */
+    access: 'write' | 'read';
+}
+
 /* ----------------------------- overlay → bridge ----------------------------- */
 
 export const ClientMessage = z.discriminatedUnion('type', [
@@ -26,6 +46,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
         protocol: z.literal(PROTOCOL_VERSION),
         pageUrl: z.string(),
         build: BuildInfo.optional(),
+        /** Tencil Cloud access token; the local daemon has no sign-in. */
+        token: z.string().min(1).max(4096).optional(),
     }),
     z.object({
         type: z.literal('thread.create'),
@@ -132,7 +154,11 @@ export type ServerMessage =
           provider: ProviderInfo;
           settings: ProjectSettings;
           threads: Thread[];
+          /** Tencil Cloud only: who is signed in. */
+          viewer?: Viewer;
       }
+    /** Tencil Cloud: sign in first (no token, or one it no longer accepts). */
+    | { type: 'auth.required'; signIn: CloudSignIn; reason?: string }
     | { type: 'provider.status'; provider: ProviderInfo }
     | { type: 'settings'; settings: ProjectSettings }
     /** The daemon couldn't tell which project this page belongs to; the overlay asks. */
