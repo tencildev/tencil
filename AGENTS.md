@@ -54,8 +54,11 @@ apps/
 - **Tencil was called Fixhere** up to 0.2.0 (npm `fixhere`).
   `service/migrate-from-fixhere.ts` moves such an install over and `init` rewrites
   `fixhere/react` and `fixhere/vite` imports; keep those `fixhere` strings.
-- **Only `tencil` is published.** Workspace packages are private and bundled into it
-  by tsdown.
+- **Published: `tencil`, `@tencil/protocol`, `@tencil/bridge` and `@tencil/testing`.** The
+  three libraries resolve to `src` in the workspace (`exports`) and to `dist` when packed
+  (`publishConfig.exports`); verify with `pnpm --filter <name> pack`. `tencil` still bundles
+  every `@tencil/*` package with tsdown, so it has no `@tencil/*` dependencies. The rest stay
+  private.
 
 ## Conventions
 

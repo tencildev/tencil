@@ -82,3 +82,28 @@ jobs:
           npx tencil status
           curl -sf http://127.0.0.1:48777/tencil.js > /dev/null
           npx tencil stop
+      # The @tencil/* libraries publish from dist (publishConfig.exports) with real version ranges.
+      - run: |
+          pnpm --filter @tencil/protocol pack --pack-destination "$RUNNER_TEMP/libraries"
+          pnpm --filter @tencil/bridge pack --pack-destination "$RUNNER_TEMP/libraries"
+          pnpm --filter @tencil/testing pack --pack-destination "$RUNNER_TEMP/libraries"
+      - name: Smoke-test the packed libraries
+        run: |
+          mkdir "$RUNNER_TEMP/library-consumer" && cd "$RUNNER_TEMP/library-consumer"
+          npm init -y >/dev/null
+          npm install "$RUNNER_TEMP"/libraries/*.tgz
+          node --input-type=module -e "$SMOKE"
+        env:
+          SMOKE: |
+            import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencil/bridge';
+            import { FakeAgentProvider } from '@tencil/testing';
+            const bridge = new Bridge({
+              providers: ProjectProviders.of(new FakeAgentProvider()),
+              store: new MemoryThreadStore(),
+              project: { name: 'x', root: '/x' },
+              version: '0',
+            });
+            const sent = [];
+            await bridge.handle({ send: m => sent.push(m) }, { type: 'hello', protocol: 1, pageUrl: 'http://x/' });
+            if (sent[0]?.type !== 'ready') throw new Error(JSON.stringify(sent));
+            await bridge.dispose();

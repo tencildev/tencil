@@ -16,7 +16,8 @@ permissions:
 
 jobs:
   release:
-    # Off until the trusted publisher is set up on npmjs.com: set the repository variable RELEASE_ENABLED=true.
+    # Off until a trusted publisher is set up on npmjs.com for every public package (tencil,
+    # @tencil/protocol, @tencil/bridge, @tencil/testing): set the repository variable RELEASE_ENABLED=true.
     if: vars.RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
