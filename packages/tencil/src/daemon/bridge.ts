@@ -470,6 +470,7 @@ export class Bridge {
         const unwatch = provider.watch(providerThreadId, {
             message: message => each(thread => mergeMessage(thread, message)),
             status: (status, statusDetail) => each(thread => ({ ...thread, status, statusDetail })),
+            delivery: delivery => each(thread => ({ ...thread, delivery })),
             gone: () =>
                 each(thread => ({
                     ...thread,

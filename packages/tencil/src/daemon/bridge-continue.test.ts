@@ -9,7 +9,7 @@ import type {
     ServerMessage,
     ThreadSink,
 } from '@tencil/protocol';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';
 import { stripContext } from './prompt.ts';
@@ -142,6 +142,35 @@ describe('existing provider threads', () => {
         expect(store.get('dock1')?.messages.map(m => m.text)).toContain('Done');
         expect(store.get('pin1')?.messages.map(m => m.text)).toContain('Done');
         expect(store.get('dock1')?.anchor).toBeUndefined();
+    });
+
+    it("stores and broadcasts a cloud run's delivery on its pins", async () => {
+        const { bridge, client, provider, store, received } = setup();
+        await bridge.handle(client, {
+            type: 'thread.create',
+            id: 'pin1',
+            pageUrl: 'https://shop-git-feat-acme.vercel.app/',
+            prompt: 'Tweak',
+            anchor: { selector: 'h1', offsetX: 0.5, offsetY: 0.5 },
+            context,
+            providerThreadId: 'p1',
+        });
+        provider.sinks.get('p1')?.delivery?.({
+            status: 'pushed',
+            commit: { sha: 'a1b2c3d4', url: 'https://github.com/acme/shop/commit/a1b2c3d4' },
+            pullRequest: { number: 12, url: 'https://github.com/acme/shop/pull/12', opened: true },
+        });
+        expect(store.get('pin1')?.delivery).toMatchObject({
+            status: 'pushed',
+            pullRequest: { number: 12 },
+        });
+        // Thread broadcasts are coalesced, so the overlay hears about it a moment later.
+        await vi.waitFor(() =>
+            expect(received.at(-1)).toMatchObject({
+                type: 'thread.upsert',
+                thread: { id: 'pin1', delivery: { status: 'pushed' } },
+            }),
+        );
     });
 
     it('reuses the unpinned record when the same thread is opened twice', async () => {
