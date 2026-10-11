@@ -11,9 +11,7 @@ describe('isAllowedOrigin', () => {
         expect(isAllowedOrigin(request({ origin: 'http://app.localhost:3001' }), [])).toBe(true);
         expect(isAllowedOrigin(request({ origin: 'http://devbox:3001' }), [])).toBe(false);
         expect(
-            isAllowedOrigin(request({ origin: 'http://devbox:3001' }), [
-                'http://devbox:3001',
-            ]),
+            isAllowedOrigin(request({ origin: 'http://devbox:3001' }), ['http://devbox:3001']),
         ).toBe(true);
     });
 
