@@ -182,6 +182,9 @@ importers:
 
   packages/testing:
     dependencies:
+      '@tencil/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       ws:
         specifier: ^8.22.0
         version: 8.22.0

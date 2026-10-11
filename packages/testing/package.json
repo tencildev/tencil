@@ -10,6 +10,7 @@
         "typecheck": "tsc -p ."
     },
     "dependencies": {
+        "@tencil/protocol": "workspace:*",
         "ws": "^8.22.0"
     },
     "devDependencies": {
