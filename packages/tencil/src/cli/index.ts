@@ -53,6 +53,7 @@ ${pc.dim('Setup and init options')}
   --dry-run               Show the changes without writing them
   --skip-install          Don't install the tencil package
   --skip-pair             Don't pair with T3 Code
+  --cloud                 init: set up for Tencil Cloud previews (no daemon on this machine)
   --from <spec>           Package to install instead of "tencil" (e.g. a local path)
 
   -h, --help              Show help
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
             'dry-run': { type: 'boolean' },
             'skip-install': { type: 'boolean' },
             'skip-pair': { type: 'boolean' },
+            cloud: { type: 'boolean' },
             from: { type: 'string' },
             help: { type: 'boolean', short: 'h' },
             version: { type: 'boolean', short: 'v' },
@@ -113,7 +115,7 @@ async function main(): Promise<void> {
     };
 
     // Tencil was called Fixhere up to 0.2.0: move such an install over before setting up.
-    if (command === undefined || SETS_UP.includes(command)) {
+    if ((command === undefined || SETS_UP.includes(command)) && !values.cloud) {
         await migrateFromFixhere(port, defaultDataDir(), console.log);
     }
 
@@ -174,8 +176,9 @@ async function main(): Promise<void> {
                 skipPair: values['skip-pair'],
                 from: values.from,
                 port,
-                daemon: daemonCommand,
+                daemon: values.cloud ? undefined : daemonCommand,
                 t3Url,
+                cloud: values.cloud,
             });
         default:
             console.error(`Unknown command "${command}"\n${HELP}`);

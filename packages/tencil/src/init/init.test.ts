@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import {
 } from './codemods.ts';
 import { detectPackageManager, findApps } from './detect-framework.ts';
 import { diffLines } from './diff.ts';
-import { planInit } from './run-init.ts';
+import { planInit, runInit } from './run-init.ts';
 
 const CREATE_NEXT_APP_CONFIG = `import type { NextConfig } from "next";
 
@@ -187,6 +187,20 @@ describe('planInit', () => {
         const unknown = await planInit(project({ 'package.json': '{}' }));
         expect(unknown.edits).toEqual([]);
         expect(unknown.manual[0]).toContain('tencil.js');
+    });
+
+    it('sets up for Tencil Cloud without a daemon or pairing', async () => {
+        const root = project({
+            'package.json': JSON.stringify({ devDependencies: { vite: '8.0.0', tencil: '1' } }),
+            'vite.config.ts': CREATE_VITE_CONFIG,
+        });
+        const lines: string[] = [];
+        await runInit({ root, yes: true, skipInstall: true, cloud: true, log: l => lines.push(l) });
+        const output = lines.join('\n');
+        expect(readFileSync(join(root, 'vite.config.ts'), 'utf8')).toContain('tencil()');
+        expect(output).toContain('TENCIL_CLOUD=<project key>');
+        expect(output).toContain('Preview');
+        expect(output).not.toMatch(/is running|Pair/);
     });
 
     it('finds the apps in a monorepo root, skipping node_modules', async () => {

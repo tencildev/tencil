@@ -6,6 +6,7 @@ import { withoutNpmEnv } from '@tencil/provider-t3code';
 import pc from 'picocolors';
 import { newerDaemonLine } from '../cli/format.ts';
 import { defaultDataDir } from '../daemon/thread-store.ts';
+import { DEFAULT_CLOUD_URL } from '../integrations/cloud.ts';
 import { ensureDaemon } from '../service/autostart.ts';
 import { chooseProvider } from '../service/choose-provider.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
@@ -34,6 +35,8 @@ export interface InitOptions {
     /** Package spec to install, e.g. a local path before Tencil is published. */
     from?: string;
     t3Url?: string;
+    /** Set up for Tencil Cloud previews: no daemon or pairing on this machine. */
+    cloud?: boolean;
     log?: (message: string) => void;
 }
 
@@ -147,6 +150,8 @@ export async function runInit(options: InitOptions): Promise<void> {
         // Tencil was called Fixhere up to 0.2.0; its package has nothing left to do here.
         if (await hasDependency(options.root, 'fixhere')) uninstall(options, 'fixhere', log);
     }
+    if (options.cloud) return logCloudSteps(plan.framework, log);
+
     let autostart = false;
     if (options.daemon) {
         const result = await ensureDaemon(options.daemon, defaultDataDir());
@@ -164,6 +169,27 @@ export async function runInit(options: InitOptions): Promise<void> {
 
     log(`  ${pc.green('✓')} Done. Start your dev server and press ${pc.bold('C')} on the page.`);
     if (options.daemon && !autostart) log(pc.dim('    Start Tencil at login: npx tencil setup'));
+    log('');
+}
+
+/** What's left to do in Tencil Cloud and the host once the code is in place. */
+function logCloudSteps(framework: Framework, log: (message: string) => void): void {
+    const env = pc.cyan('TENCIL_CLOUD=<project key>');
+    log(
+        `  ${pc.green('✓')} The overlay loads from Tencil Cloud on preview builds that set ${env}.`,
+    );
+    log(`    1. Create a project at ${pc.cyan(DEFAULT_CLOUD_URL)} and copy its key.`);
+    log(
+        `    2. Add ${env} to your host's ${pc.bold('Preview')} environment only (Vercel: Settings → Environment Variables).`,
+    );
+    log('    3. Redeploy a preview. Production deployments never load the overlay.');
+    if (framework.kind === 'next-app' || framework.kind === 'next-pages') {
+        log(
+            pc.dim(
+                '    Keep <Tencil /> in a server component: it reads TENCIL_CLOUD when the page renders.',
+            ),
+        );
+    }
     log('');
 }
 
