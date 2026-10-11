@@ -88,6 +88,18 @@ function setup() {
     return { provider, store, bridge, client, received };
 }
 
+describe('tencil cloud viewers', () => {
+    it("echoes a connection's viewer in ready", async () => {
+        const { bridge } = setup();
+        const received: ServerMessage[] = [];
+        const viewer = { name: 'Ada', login: 'ada', access: 'read' as const };
+        const client: BridgeClient = { send: message => received.push(message), viewer };
+        bridge.connect(client);
+        await bridge.handle(client, { type: 'hello', protocol: 1, pageUrl: 'https://x.dev/' });
+        expect(received.find(m => m.type === 'ready')).toMatchObject({ viewer });
+    });
+});
+
 describe('existing provider threads', () => {
     it('lists provider threads', async () => {
         const { bridge, client, received } = setup();

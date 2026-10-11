@@ -8,6 +8,7 @@ import {
     type ServerMessage,
     type Thread,
     type ThreadMessage,
+    type Viewer,
 } from '@tencil/protocol';
 import type { ProjectProviders } from './project-providers.ts';
 import { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
@@ -15,6 +16,8 @@ import type { ThreadStore } from './thread-store.ts';
 
 export interface BridgeClient {
     send(message: ServerMessage): void;
+    /** Tencil Cloud: who this connection signed in as, echoed in `ready`. */
+    viewer?: Viewer;
 }
 
 export interface BridgeOptions {
@@ -89,6 +92,7 @@ export class Bridge {
                         provider: this.#provider().info(),
                         settings: this.#settings(),
                         threads: this.#options.store.list(),
+                        ...(client.viewer && { viewer: client.viewer }),
                     });
                     return;
                 case 'thread.create':
