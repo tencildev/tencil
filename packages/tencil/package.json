@@ -45,6 +45,11 @@
             "types": "./dist/react.d.mts",
             "default": "./dist/react.mjs"
         },
+        "./next": {
+            "types": "./dist/next.d.mts",
+            "default": "./dist/next.mjs"
+        },
+        "./next-loader": "./dist/next-loader.cjs",
         "./overlay.js": "./dist/overlay.global.js",
         "./package.json": "./package.json"
     },
@@ -66,6 +71,8 @@
         "prepack": "turbo run build --filter=tencil"
     },
     "dependencies": {
+        "magic-string": "^1.4.3",
+        "oxc-parser": "^0.153.0",
         "picocolors": "^1.1.1",
         "ws": "^8.22.0",
         "zod": "^4.6.5"

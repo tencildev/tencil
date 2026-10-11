@@ -5,17 +5,24 @@ import {
     type TencilCloudOptions,
 } from './cloud.ts';
 import { DEFAULT_DAEMON_PORT, overlayLoader } from './loader.ts';
+import { addSourceAttributes, repositoryRoot } from './source-attributes.ts';
 
 /** Structural subset of Vite's Plugin type, so `vite` stays an optional peer. */
 interface VitePlugin {
     name: string;
+    /** Before the React plugin compiles JSX, so source attributes can be added. */
+    enforce: 'pre';
     apply(config: unknown, env: { command: 'build' | 'serve' }): boolean;
+    configResolved(config: { root: string }): void;
     transformIndexHtml(): Array<{
         tag: string;
         children: string;
         injectTo: 'body';
     }>;
-    transform(code: string, id: string): string | undefined;
+    transform(
+        code: string,
+        id: string,
+    ): string | undefined | Promise<{ code: string; map: unknown } | undefined>;
 }
 
 export interface TencilViteOptions {
@@ -42,8 +49,10 @@ export default function tencil(options: TencilViteOptions = {}): VitePlugin {
     const port = options.port ?? Number(process.env.TENCIL_PORT ?? DEFAULT_DAEMON_PORT);
     let loader = overlayLoader(port);
     let command: 'build' | 'serve' = 'serve';
+    let root = process.cwd();
     return {
         name: 'tencil',
+        enforce: 'pre',
         apply(_config, env) {
             command = env.command;
             if (command === 'serve') return true;
@@ -53,10 +62,14 @@ export default function tencil(options: TencilViteOptions = {}): VitePlugin {
             loader = cloudLoader(cloud);
             return true;
         },
+        configResolved(config) {
+            root = repositoryRoot(config.root);
+        },
         transform(code, id) {
+            // Production React has no source info: tag elements with file and line instead.
+            if (command === 'build') return addSourceAttributes(code, id, root);
             // Every dev page loads the Vite client, so SSR frameworks (TanStack Start,
             // Astro, SvelteKit) without an index.html get the overlay too.
-            if (command !== 'serve') return undefined;
             return VITE_CLIENT.test(id) ? `${code}\n${loader}\n` : undefined;
         },
         transformIndexHtml() {

@@ -95,6 +95,40 @@ export function addTencilToBody(source: string): string | null {
     );
 }
 
+/**
+ * `export default nextConfig` → `export default withTencil(nextConfig)`, plus
+ * the import. Wraps whatever is exported, including another plugin's wrapper.
+ */
+export function addWithTencil(source: string): string | null {
+    if (/["']tencil\/next["']/.test(source)) return source;
+    const style = detectStyle(source);
+    const exported = /^export\s+default\s+/m.exec(source);
+    if (!exported) return null;
+    const start = exported.index + exported[0].length;
+    const end = expressionEnd(source, start);
+    if (end === -1) return null;
+    const expression = source.slice(start, end).trimEnd();
+    if (!expression || /^(?:function|class|async)\b/.test(expression)) return null;
+    const edited = `${source.slice(0, start)}withTencil(${expression})${source.slice(start + expression.length)}`;
+    return addImport(
+        edited,
+        `import { withTencil } from ${style.quote}tencil/next${style.quote}${style.semi}`,
+    );
+}
+
+/** Where the expression starting at `start` ends: `;`, or a newline outside brackets. */
+function expressionEnd(source: string, start: number): number {
+    for (let i = start; i < source.length; i++) {
+        const char = source[i]!;
+        if (char === '"' || char === "'" || char === '`') i = skipString(source, i);
+        else if (char === '(' || char === '[' || char === '{') {
+            i = matchBracket(source, i);
+            if (i === -1) return -1;
+        } else if (char === ';' || char === '\n') return i;
+    }
+    return source.length;
+}
+
 /** Index of the bracket closing the one at `open`, skipping strings and comments. */
 function matchBracket(source: string, open: number): number {
     const pairs: Record<string, string> = { '[': ']', '(': ')', '{': '}' };

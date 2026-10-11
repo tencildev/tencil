@@ -39,7 +39,7 @@ describe('vite plugin', () => {
         expect(tencil().apply({}, { command: 'build' })).toBe(false);
     });
 
-    it('loads Tencil Cloud in a preview build, and only there', () => {
+    it('loads Tencil Cloud in a preview build, and only there', async () => {
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
         stubEnv(CLOUD_PREVIEW);
         const plugin = tencil();
@@ -47,7 +47,15 @@ describe('vite plugin', () => {
         const [tag] = plugin.transformIndexHtml();
         expect(tag?.children).toContain('https://cloud.tencil.dev/tencil.js');
         expect(tag?.children).toContain('feat/checkout');
-        expect(plugin.transform('client();', '/x/vite/dist/client/client.mjs')).toBeUndefined();
+        expect(
+            await plugin.transform('client();', '/x/vite/dist/client/client.mjs'),
+        ).toBeUndefined();
+        plugin.configResolved({ root: process.cwd() });
+        const tagged = await plugin.transform(
+            'export const A = () => <p>hi</p>;',
+            `${process.cwd()}/src/a.tsx`,
+        );
+        expect(tagged).toMatchObject({ code: expect.stringContaining('data-tencil-src=') });
         expect(log).toHaveBeenCalledWith(expect.stringContaining('acme/shop@feat/checkout'));
 
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
