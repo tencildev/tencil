@@ -1,9 +1,11 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { viewer } from '../lib/cloud-auth.ts';
 import {
     bridgeState,
     daemonHost,
     daemonVersion,
+    isCloud,
     project,
     projectChoices,
     provider,
@@ -71,7 +73,7 @@ function StatusCard({ tone }: { tone: Tone }) {
                 )}
             </div>
             <dl class="status-card-rows">
-                <Row label="Daemon">
+                <Row label={isCloud() ? 'Tencil Cloud' : 'Daemon'}>
                     <span class={`status-card-tone tone-${state === 'open' ? 'ok' : tone}`} />
                     {state === 'open'
                         ? 'Connected'
@@ -103,6 +105,14 @@ function StatusCard({ tone }: { tone: Tone }) {
                     )}
                 </Row>
                 {info?.target && <Row label="Workspace">{info.target}</Row>}
+                {viewer.value && (
+                    <Row label="Signed in">
+                        {viewer.value.login ? `@${viewer.value.login}` : viewer.value.name}
+                        {viewer.value.access === 'read' && (
+                            <span class="status-card-muted">view only</span>
+                        )}
+                    </Row>
+                )}
                 {(working > 0 || queued > 0) && (
                     <Row label="Pins">
                         {[working > 0 && `${working} working`, queued > 0 && `${queued} queued`]

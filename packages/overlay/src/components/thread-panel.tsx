@@ -1,5 +1,6 @@
 import type { Thread, ThreadMessage } from '@tencil/protocol';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { pinBlocked } from '../lib/cloud-auth.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
@@ -66,8 +67,11 @@ export function ThreadPanel() {
                     <Messages key={thread.id} thread={thread} />
                     <StatusLine thread={thread} />
                     <PromptInput
-                        placeholder={thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…'}
-                        disabled={!thread.provider.threadId}
+                        placeholder={
+                            pinBlocked.value ??
+                            (thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…')
+                        }
+                        disabled={!thread.provider.threadId || pinBlocked.value !== null}
                         onSubmit={text => {
                             send({ type: 'thread.reply', threadId: thread.id, text });
                         }}

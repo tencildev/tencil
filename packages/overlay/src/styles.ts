@@ -440,6 +440,7 @@ kbd {
 .settings-help { margin: 0; color: var(--n-600); font-size: 12px; line-height: 1.4; }
 .settings-switch-row { grid-template-columns: 1fr auto; align-items: center; gap: 16px; cursor: pointer; }
 .settings-switch-text { display: grid; gap: 2px; }
+.settings-account { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings-help svg { display: inline; width: 12px; height: 12px; vertical-align: -2px; }
 .settings-switch {
   appearance: none; position: relative; flex: none; margin: 0;
@@ -604,6 +605,7 @@ kbd {
 .tool-label { font-weight: 500; color: inherit; }
 .tool-send { background: var(--accent); color: white; }
 .tool-send:disabled { opacity: 0.5; cursor: default; }
+.tool:disabled { opacity: 0.45; cursor: default; }
 .badge {
   position: absolute; top: 2px; right: 0;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;

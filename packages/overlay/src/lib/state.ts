@@ -1,5 +1,6 @@
 import { computed, signal } from '@preact/signals';
 import type { Anchor, ElementContext } from '@tencil/protocol';
+import { pinBlocked } from './cloud-auth.ts';
 import { send, settings, threads } from './connection.ts';
 import type { Point } from './position.ts';
 
@@ -84,6 +85,7 @@ export const activeCount = computed(
 );
 
 export function startPicking(): void {
+    if (pinBlocked.value) return;
     draft.value = null;
     openThreadId.value = null;
     mode.value = 'picking';

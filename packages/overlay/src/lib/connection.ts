@@ -10,6 +10,7 @@ import type {
     ServerMessage,
     Thread,
 } from '@tencil/protocol';
+import { forgetToken, signInRequired, storedToken, viewer } from './cloud-auth.ts';
 import { newId } from './id.ts';
 
 export type BridgeState = 'connecting' | 'open' | 'closed';
@@ -49,6 +50,27 @@ export function connect(url: string, build?: BuildInfo): void {
     open();
 }
 
+/** Tencil Cloud rather than the daemon on this machine. */
+export function isCloud(): boolean {
+    return pageBuild !== undefined;
+}
+
+export function cloudUrl(): string {
+    return bridgeUrl;
+}
+
+/** Start over with a fresh `hello`, e.g. after signing in or out. */
+export function reconnect(): void {
+    const previous = socket;
+    socket = undefined;
+    previous?.close();
+    retry = 500;
+    open();
+}
+
+/** The token sent with the last `hello`, to forget it when Tencil Cloud rejects it. */
+let sentToken: string | undefined;
+
 /** Where the daemon runs, e.g. `localhost:4747`. */
 export function daemonHost(): string {
     try {
@@ -81,6 +103,7 @@ function open(): void {
     const ws = new WebSocket(wsUrl);
     socket = ws;
 
+    sentToken = pageBuild ? storedToken(bridgeUrl) : undefined;
     ws.addEventListener('open', () => {
         retry = 500;
         ws.send(
@@ -89,6 +112,7 @@ function open(): void {
                 protocol: 1,
                 pageUrl: location.href,
                 ...(pageBuild && { build: pageBuild }),
+                ...(sentToken && { token: sentToken }),
             }),
         );
     });
@@ -112,6 +136,8 @@ function handle(message: ServerMessage): void {
         case 'ready':
             batch(() => {
                 bridgeState.value = 'open';
+                signInRequired.value = null;
+                viewer.value = message.viewer ?? null;
                 projectChoices.value = null;
                 provider.value = message.provider;
                 settings.value = message.settings;
@@ -125,6 +151,15 @@ function handle(message: ServerMessage): void {
                 bridgeState.value = 'open';
                 projectChoices.value = message.choices;
                 projectChoicesHint.value = message.emptyHint;
+            });
+            return;
+        case 'auth.required':
+            // A token we sent was refused (expired, revoked, another project): drop it.
+            if (sentToken) forgetToken(bridgeUrl);
+            batch(() => {
+                bridgeState.value = 'open';
+                viewer.value = null;
+                signInRequired.value = { signIn: message.signIn, reason: message.reason };
             });
             return;
         case 'provider.status':

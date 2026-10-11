@@ -1,5 +1,6 @@
 import type { ProviderInfo } from '@tencil/protocol';
-import { project, provider, send, settings } from '../lib/connection.ts';
+import { forgetToken, viewer } from '../lib/cloud-auth.ts';
+import { cloudUrl, project, provider, reconnect, send, settings } from '../lib/connection.ts';
 import { setBatchAvailable, settingsOpen } from '../lib/state.ts';
 import { AgentIcon } from './agent-icons.tsx';
 import { CloseIcon, LayersIcon } from './icons.tsx';
@@ -99,6 +100,26 @@ export function SettingsPanel() {
                 </>
             ) : (
                 <p class="empty">Connecting…</p>
+            )}
+            {viewer.value && (
+                <div class="settings-section settings-account">
+                    <span class="settings-help">
+                        Signed in to Tencil Cloud as{' '}
+                        <strong>
+                            {viewer.value.login ? `@${viewer.value.login}` : viewer.value.name}
+                        </strong>
+                    </span>
+                    <button
+                        type="button"
+                        class="hint-action"
+                        onClick={() => {
+                            forgetToken(cloudUrl());
+                            reconnect();
+                        }}
+                    >
+                        Sign out
+                    </button>
+                </div>
             )}
         </section>
     );
