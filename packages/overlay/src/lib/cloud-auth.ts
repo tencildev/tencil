@@ -75,15 +75,18 @@ export function forgetToken(bridgeUrl: string): void {
 
 /**
  * Sign in to Tencil Cloud in a popup: authorization code with PKCE, so the
- * overlay needs no secret and an intercepted code is useless. Tencil Cloud's
- * callback page posts the code back (`tencil:oauth`); we trade it for a token.
+ * overlay needs no secret and an intercepted code is useless. `state` carries
+ * this page's origin: Tencil Cloud's callback page posts the code back
+ * (`tencil:oauth`) to that origin only, and only for a preview of a project the
+ * user is a member of. We trade the code for a token.
  */
 export async function signIn(bridgeUrl: string, config: CloudSignIn): Promise<void> {
     // Open before any await: browsers only allow popups straight from the click.
     const popup = window.open('about:blank', 'tencil-sign-in', POPUP_FEATURES);
     if (!popup) throw new Error('The sign-in window was blocked. Allow popups for this page.');
     const verifier = randomString(64);
-    const state = randomString(32);
+    // Tencil Cloud hands the code only to this origin, and only when it's a preview of one of the user's projects.
+    const state = `${randomString(32)}.${base64Url(new TextEncoder().encode(location.origin))}`;
     const authorize = new URL(config.authorizeUrl);
     authorize.search = new URLSearchParams({
         response_type: 'code',
