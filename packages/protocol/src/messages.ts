@@ -4,6 +4,20 @@ import type { ProviderModel, ProviderProject, ProviderThreadSummary, Thread } fr
 
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * The code a page was built from, set by Tencil Cloud builds (`TENCIL_CLOUD`).
+ * Local pages have none: the daemon finds their project from the dev server.
+ */
+export const BuildInfo = z.object({
+    /** Project key from the Tencil Cloud dashboard. */
+    projectKey: z.string().min(1).max(64),
+    /** `owner/name` on GitHub. */
+    repo: z.string().min(3).max(200),
+    branch: z.string().min(1).max(255),
+    sha: z.string().min(7).max(64),
+});
+export type BuildInfo = z.infer<typeof BuildInfo>;
+
 /* ----------------------------- overlay → bridge ----------------------------- */
 
 export const ClientMessage = z.discriminatedUnion('type', [
@@ -11,6 +25,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
         type: z.literal('hello'),
         protocol: z.literal(PROTOCOL_VERSION),
         pageUrl: z.string(),
+        build: BuildInfo.optional(),
     }),
     z.object({
         type: z.literal('thread.create'),
