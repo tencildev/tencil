@@ -52,17 +52,20 @@ export function renderBatchPrompt(
 }
 
 function contextLines(pageUrl: string, context: ElementContext): string[] {
-    const lines = [`- Page: ${pageUrl}`, `- Element: \`${oneLine(context.html)}\``];
+    const lines = [
+        `- Page: ${page(pageUrl)}`,
+        `- Element: \`${page(truncate(oneLine(context.html), 2000))}\``,
+    ];
 
     const [component, ...owners] = context.components;
     if (component) {
         const chain = [component, ...owners.slice(0, 4)].map(formatFrame).join(' ← ');
-        lines.push(`- Component: ${chain}`);
+        lines.push(`- Component: ${page(chain)}`);
     }
-    lines.push(`- Selector: \`${context.selector}\``);
-    if (context.text) lines.push(`- Visible text: "${truncate(oneLine(context.text), 200)}"`);
+    lines.push(`- Selector: \`${page(truncate(context.selector, 500))}\``);
+    if (context.text) lines.push(`- Visible text: "${page(truncate(oneLine(context.text), 200))}"`);
     if (context.selection)
-        lines.push(`- Selected text: "${truncate(oneLine(context.selection), 300)}"`);
+        lines.push(`- Selected text: "${page(truncate(oneLine(context.selection), 300))}"`);
     const { rect, viewport } = context;
     lines.push(
         `- Layout: ${Math.round(rect.width)}×${Math.round(rect.height)} at (${Math.round(rect.x)}, ${Math.round(rect.y)}) in a ${viewport.width}×${viewport.height} viewport @${viewport.dpr}x`,
@@ -90,6 +93,15 @@ function formatFrame(frame: ElementContext['components'][number]): string {
     if (!frame.source) return frame.name;
     const position = [frame.source.line, frame.source.column].filter(n => n != null).join(':');
     return `${frame.name} (${frame.source.file}${position ? `:${position}` : ''})`;
+}
+
+/**
+ * Text from the page goes inside the context block as data. It must not be able
+ * to close that block early and pass the rest off as the user's words, so the
+ * block's tags are defused wherever they appear in it.
+ */
+function page(text: string): string {
+    return text.replace(/<(\/?\s*tencil-context)/gi, '‹$1');
 }
 
 function oneLine(text: string): string {
