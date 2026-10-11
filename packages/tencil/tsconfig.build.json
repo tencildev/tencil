@@ -2,6 +2,12 @@
     "extends": "./tsconfig.json",
     // Declarations for the bundled workspace packages come from this one program;
     // without them in it, the dts build creates a program per file and runs out of memory.
-    "include": ["src", "../protocol/src", "../provider-t3code/src", "../provider-claude-code/src"],
+    "include": [
+        "src",
+        "../bridge/src",
+        "../protocol/src",
+        "../provider-t3code/src",
+        "../provider-claude-code/src"
+    ],
     "exclude": ["**/*.test.ts"]
 }

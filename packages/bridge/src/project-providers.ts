@@ -1,26 +1,34 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
 import type { Provider, ProviderOption } from '@tencil/protocol';
-import { z } from 'zod';
 
-const SettingsFile = z.object({
-    version: z.literal(1),
-    /** The provider new pins go to; unset means the daemon's `--provider`. */
-    provider: z.string().optional(),
+/** What a project picked in the overlay's settings. */
+export interface SavedProjectSettings {
+    /** The provider new pins go to; unset means the host's fallback. */
+    provider?: string;
     /** Model picked per provider for new threads; unset means the provider's default. */
-    models: z.record(z.string(), z.string()).optional(),
-    /** Queue new comments and send them together. */
-    batch: z.boolean().optional(),
-});
+    models?: Record<string, string>;
+    /** Queue new comments and send them together; on when unset. */
+    batch?: boolean;
+}
+
+/**
+ * Where a project's settings live: a file next to its pins for the daemon,
+ * a database row for a hosted runner.
+ */
+export interface ProjectSettingsStore {
+    /** The saved settings, or undefined when the project has none yet. */
+    load(): Promise<SavedProjectSettings | undefined>;
+    save(settings: SavedProjectSettings): Promise<void>;
+}
 
 export interface ProjectProvidersOptions {
     /** Providers the project can pick from. */
     choices: ProviderOption[];
-    /** Used until the project picks one: the daemon's `--provider`. */
+    /** Used until the project picks one, e.g. the daemon's `--provider`. */
     fallback: string;
+    /** Builds a choice's provider; called once per id, on first use. */
     create: (id: string) => Provider;
-    /** Where the project's choice is saved; in memory only when absent. */
-    settingsPath?: string;
+    /** Where the project's choices are saved; in memory only when absent. */
+    settings?: ProjectSettingsStore;
 }
 
 /**
@@ -44,25 +52,30 @@ export class ProjectProviders {
         this.choices = options.choices;
     }
 
-    /** One fixed provider and no settings file (tests). */
-    static of(provider: Provider): ProjectProviders {
-        const providers = new ProjectProviders({
-            choices: [{ id: provider.id, label: provider.label }],
-            fallback: provider.id,
-            create: () => provider,
+    /**
+     * Ready-made providers, the first being the default. Each is started
+     * here; `settings` keeps the project's picks (in memory when absent).
+     */
+    static of(providers: Provider | Provider[], settings?: ProjectSettingsStore): ProjectProviders {
+        const list = Array.isArray(providers) ? providers : [providers];
+        const [first] = list;
+        if (!first) throw new Error('ProjectProviders.of needs at least one provider');
+        const result = new ProjectProviders({
+            choices: list.map(provider => ({ id: provider.id, label: provider.label })),
+            fallback: first.id,
+            create: id => list.find(provider => provider.id === id) ?? first,
+            settings,
         });
-        providers.get(provider.id);
-        return providers;
+        for (const provider of list) result.get(provider.id);
+        return result;
     }
 
     async load(): Promise<void> {
-        if (!this.#options.settingsPath) return;
-        const raw = await readFile(this.#options.settingsPath, 'utf8').catch(() => undefined);
-        const parsed = raw === undefined ? undefined : SettingsFile.safeParse(JSON.parse(raw));
-        if (parsed?.success) {
-            this.#chosen = parsed.data.provider;
-            this.#models = parsed.data.models ?? {};
-            this.#batch = parsed.data.batch ?? true;
+        const saved = await this.#options.settings?.load();
+        if (saved) {
+            this.#chosen = saved.provider;
+            this.#models = saved.models ?? {};
+            this.#batch = saved.batch ?? true;
         }
     }
 
@@ -145,18 +158,10 @@ export class ProjectProviders {
     }
 
     async #save(): Promise<void> {
-        const path = this.#options.settingsPath;
-        if (!path) return;
-        await mkdir(dirname(path), { recursive: true });
-        const temp = `${path}.tmp`;
-        await writeFile(
-            temp,
-            `${JSON.stringify(
-                { version: 1, provider: this.#chosen, models: this.#models, batch: this.#batch },
-                null,
-                2,
-            )}\n`,
-        );
-        await rename(temp, path);
+        await this.#options.settings?.save({
+            provider: this.#chosen,
+            models: this.#models,
+            batch: this.#batch,
+        });
     }
 }

@@ -1,68 +1,10 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type {
-    CreateThreadInput,
-    Provider,
-    ProviderInfo,
-    SendMessageInput,
-    ServerMessage,
-    ThreadSink,
-} from '@tencil/protocol';
+import type { ServerMessage } from '@tencil/protocol';
+import { FakeAgentProvider } from '@tencil/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';
 import { stripContext } from './prompt.ts';
-import { ThreadStore } from './thread-store.ts';
-
-class FakeProvider implements Provider {
-    readonly id = 'fake';
-    readonly label = 'Fake';
-    sent: SendMessageInput[] = [];
-    created: CreateThreadInput[] = [];
-    failCreate = false;
-    sinks = new Map<string, ThreadSink>();
-    watchCount = 0;
-
-    async start() {}
-    info(): ProviderInfo {
-        return { id: this.id, label: this.label, state: 'ready' };
-    }
-    onInfoChange() {
-        return () => {};
-    }
-    async listThreads() {
-        return {
-            project: { name: 'acme/app' },
-            threads: [
-                {
-                    id: 'p1',
-                    title: 'Existing work',
-                    status: 'idle' as const,
-                    updatedAt: '2026-10-07T10:00:00.000Z',
-                },
-            ],
-        };
-    }
-    threadUrl(id: string) {
-        return `fake://${id}`;
-    }
-    async createThread(input: CreateThreadInput) {
-        if (this.failCreate) throw new Error('Agent offline');
-        this.created.push(input);
-        return { providerThreadId: 'new' };
-    }
-    async sendMessage(input: SendMessageInput) {
-        this.sent.push(input);
-    }
-    async interrupt() {}
-    watch(id: string, sink: ThreadSink) {
-        this.watchCount++;
-        this.sinks.set(id, sink);
-        return () => this.sinks.delete(id);
-    }
-    async dispose() {}
-}
+import { MemoryThreadStore } from './thread-store.ts';
 
 const context = {
     tagName: 'h1',
@@ -74,8 +16,19 @@ const context = {
 };
 
 function setup() {
-    const provider = new FakeProvider();
-    const store = new ThreadStore('/projects/acme', mkdtempSync(join(tmpdir(), 'tencil-')));
+    const provider = new FakeAgentProvider({
+        project: { name: 'acme/app' },
+        threads: [
+            {
+                id: 'p1',
+                title: 'Existing work',
+                status: 'idle',
+                updatedAt: '2026-10-07T10:00:00.000Z',
+            },
+        ],
+        threadUrl: id => `fake://${id}`,
+    });
+    const store = new MemoryThreadStore();
     const bridge = new Bridge({
         providers: ProjectProviders.of(provider),
         store,
@@ -190,11 +143,11 @@ describe('existing provider threads', () => {
         for (const id of ['a', 'b']) {
             expect(store.get(id)).toMatchObject({
                 status: 'working',
-                provider: { id: 'fake', threadId: 'new' },
+                provider: { id: 'fake', threadId: 'fake-1' },
             });
         }
         // One subscription, shared: the agent's reply lands on both pins.
-        provider.sinks.get('new')?.message({
+        provider.sinks.get('fake-1')?.message({
             id: 'm1',
             role: 'assistant',
             text: 'Fixed #3 and #4',

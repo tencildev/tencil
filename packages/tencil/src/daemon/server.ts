@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { basename, join, resolve } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { Bridge, type BridgeClient, ProjectProviders } from '@tencil/bridge';
 import type { Provider, ServerMessage } from '@tencil/protocol';
 import {
     ClaudeCodeProvider,
@@ -21,11 +22,10 @@ import {
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
-import { Bridge, type BridgeClient } from './bridge.ts';
-import { ProjectProviders } from './project-providers.ts';
 import { type Exec, ProjectResolver } from './project-resolver.ts';
+import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
-import { defaultDataDir, projectStorePath, ThreadStore } from './thread-store.ts';
+import { defaultDataDir, FileThreadStore } from './thread-store.ts';
 
 export const DEFAULT_PORT = 4747;
 /** Screenshots ride along as data URLs. */
@@ -142,12 +142,9 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     // Read per project, so a new choice in setup applies without a restart.
                     fallback: options.provider ?? (await machineProvider({ dataDir, t3Url })),
                     create: id => createProvider(key, id),
-                    settingsPath: projectStorePath(key, dataDir).replace(
-                        /\.json$/,
-                        '.settings.json',
-                    ),
+                    settings: new FileProjectSettings(projectSettingsPath(key, dataDir)),
                 });
-                const store = new ThreadStore(key, dataDir);
+                const store = new FileThreadStore(key, dataDir);
                 await Promise.all([store.load(), providers.load()]);
                 const bridge = new Bridge({
                     providers,

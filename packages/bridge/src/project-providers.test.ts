@@ -1,47 +1,40 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { Provider } from '@tencil/protocol';
+import { FakeAgentProvider } from '@tencil/testing';
 import { describe, expect, it } from 'vitest';
-import { ProjectProviders } from './project-providers.ts';
+import {
+    ProjectProviders,
+    type ProjectSettingsStore,
+    type SavedProjectSettings,
+} from './project-providers.ts';
 
 const CHOICES = [
     { id: 't3code', label: 'T3 Code' },
     { id: 'claude-code', label: 'Claude Code' },
 ];
 
-function fakeProvider(id: string): Provider & { started: number } {
+/** Settings kept in a variable, shared by every `ProjectProviders` given the same store. */
+function memorySettings(): ProjectSettingsStore & { saved?: SavedProjectSettings } {
     return {
-        id,
-        label: id,
-        started: 0,
-        async start() {
-            this.started++;
+        async load() {
+            return this.saved;
         },
-        info: () => ({ id, label: id, state: 'ready' }),
-        onInfoChange: () => () => {},
-        listThreads: async () => ({ project: { name: 'x' }, threads: [] }),
-        threadUrl: () => undefined,
-        createThread: async () => ({ providerThreadId: 'p' }),
-        sendMessage: async () => {},
-        interrupt: async () => {},
-        watch: () => () => {},
-        dispose: async () => {},
+        async save(settings) {
+            this.saved = structuredClone(settings);
+        },
     };
 }
 
-function setup(settingsPath = join(mkdtempSync(join(tmpdir(), 'tencil-')), 'settings.json')) {
+function setup(settings = memorySettings()) {
     const created: string[] = [];
     const providers = new ProjectProviders({
         choices: CHOICES,
         fallback: 't3code',
         create: id => {
             created.push(id);
-            return fakeProvider(id);
+            return new FakeAgentProvider({ id });
         },
-        settingsPath,
+        settings,
     });
-    return { providers, created, settingsPath };
+    return { providers, created, settings };
 }
 
 describe('ProjectProviders', () => {
@@ -56,21 +49,21 @@ describe('ProjectProviders', () => {
 
     it('creates and starts each provider once', () => {
         const { providers, created } = setup();
-        const first = providers.get('claude-code') as ReturnType<typeof fakeProvider>;
+        const first = providers.get('claude-code') as FakeAgentProvider;
         expect(providers.get('claude-code')).toBe(first);
         expect(first.started).toBe(1);
         expect(created).toEqual(['claude-code']);
     });
 
     it("saves the project's choice and tells listeners", async () => {
-        const { providers, settingsPath } = setup();
+        const { providers, settings } = setup();
         let changes = 0;
         providers.onDefaultChange(() => changes++);
         await providers.setDefault('claude-code');
         expect(providers.defaultId).toBe('claude-code');
         expect(changes).toBe(1);
 
-        const reloaded = setup(settingsPath).providers;
+        const reloaded = setup(settings).providers;
         await reloaded.load();
         expect(reloaded.defaultId).toBe('claude-code');
     });
@@ -83,18 +76,31 @@ describe('ProjectProviders', () => {
     });
 
     it('saves a model per provider and keeps it across loads', async () => {
-        const { providers, settingsPath } = setup();
+        const { providers, settings } = setup();
         let changes = 0;
         providers.onSettingsChange(() => changes++);
         await providers.setModel('t3code', 'claudeAgent/claude-opus-5-5');
         expect(changes).toBe(1);
 
-        const reloaded = setup(settingsPath).providers;
+        const reloaded = setup(settings).providers;
         await reloaded.load();
         expect(reloaded.modelFor('t3code')).toBe('claudeAgent/claude-opus-5-5');
         expect(reloaded.modelFor('claude-code')).toBeUndefined();
 
         await reloaded.setModel('t3code', null);
         expect(reloaded.modelFor('t3code')).toBeUndefined();
+    });
+
+    it('keeps settings in memory without a store', async () => {
+        const providers = ProjectProviders.of([
+            new FakeAgentProvider({ id: 't3code' }),
+            new FakeAgentProvider({ id: 'claude-code' }),
+        ]);
+        expect(providers.defaultId).toBe('t3code');
+        expect(providers.choices.map(choice => choice.id)).toEqual(['t3code', 'claude-code']);
+        await providers.setDefault('claude-code');
+        await providers.setBatch(false);
+        expect(providers.default().id).toBe('claude-code');
+        expect(providers.batch).toBe(false);
     });
 });
