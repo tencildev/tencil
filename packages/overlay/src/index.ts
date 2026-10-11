@@ -1,3 +1,4 @@
+import type { BuildInfo } from '@tencil/protocol';
 import { h, render } from 'preact';
 import { App } from './components/app.tsx';
 import { connect } from './lib/connection.ts';
@@ -21,7 +22,21 @@ function bridgeUrlFromScript(): string {
     return DEFAULT_BRIDGE;
 }
 
-function mount(bridgeUrl: string): void {
+/** The build a Tencil Cloud loader put on our script tag (see `cloudLoader`). */
+function buildFromScript(): BuildInfo | undefined {
+    const data = (document.currentScript as HTMLScriptElement | null)?.dataset;
+    if (!data?.tencilProject || !data.tencilRepo || !data.tencilBranch || !data.tencilSha) {
+        return undefined;
+    }
+    return {
+        projectKey: data.tencilProject,
+        repo: data.tencilRepo,
+        branch: data.tencilBranch,
+        sha: data.tencilSha,
+    };
+}
+
+function mount(bridgeUrl: string, build: BuildInfo | undefined): void {
     const host = document.createElement('tencil-overlay');
     host.setAttribute('data-tencil', '');
     host.style.cssText =
@@ -48,7 +63,7 @@ function mount(bridgeUrl: string): void {
     const uninstall = installPicker(host);
     const unwatchNext = watchNextIndicator();
     render(h(App, {}), container);
-    connect(bridgeUrl);
+    connect(bridgeUrl, build);
 
     window.__TENCIL__ = {
         version: 1,
@@ -65,7 +80,13 @@ function mount(bridgeUrl: string): void {
 }
 
 if (typeof window !== 'undefined' && !window.__TENCIL__) {
+    // `currentScript` is only set while this runs, so read the tag before waiting for <body>.
     const bridgeUrl = bridgeUrlFromScript();
-    if (document.body) mount(bridgeUrl);
-    else document.addEventListener('DOMContentLoaded', () => mount(bridgeUrl), { once: true });
+    const build = buildFromScript();
+    if (document.body) mount(bridgeUrl, build);
+    else {
+        document.addEventListener('DOMContentLoaded', () => mount(bridgeUrl, build), {
+            once: true,
+        });
+    }
 }
