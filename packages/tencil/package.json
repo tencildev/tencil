@@ -2,7 +2,7 @@
     "name": "tencil",
     "version": "0.3.2",
     "description": "Point at any element of your running app and tell your coding agent what to fix.",
-    "license": "MIT",
+    "license": "Apache-2.0",
     "author": "Pixel Perfect Agency",
     "homepage": "https://tencil.dev",
     "repository": {
@@ -50,6 +50,7 @@
     },
     "files": [
         "dist",
+        "NOTICE",
         "THIRD_PARTY_NOTICES.md"
     ],
     "publishConfig": {
