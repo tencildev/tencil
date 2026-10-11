@@ -353,6 +353,9 @@ kbd {
 .status-queued .status-error { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-error { color: var(--error); }
 .status-line a { margin-left: auto; color: var(--n-950); font-weight: 500; }
+.status-line .delivery-commit { margin-left: 0; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.delivery-live { color: var(--n-950); }
+.delivery-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-dot {
   width: 6px; height: 6px; border-radius: 999px; background: var(--live); flex: none;
   animation: live 1.6s ease-in-out infinite;
@@ -546,9 +549,10 @@ kbd {
 .status-button { display: grid; place-items: center; height: 32px; padding: 0 8px 0 10px; border-radius: 999px; outline: none; cursor: default; }
 .status-button:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 .status-dot { position: relative; width: 8px; height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.4); }
-.status-ok { background: #3dd68c; }
-.status-warn { background: #f5b84a; }
-.status-error { background: #ff6369; }
+/* Scoped to the dot: .status-error alone also colours status lines in threads. */
+.status-dot.status-ok { background: #3dd68c; }
+.status-dot.status-warn { background: #f5b84a; }
+.status-dot.status-error { background: #ff6369; }
 /* The connection card, on the toolbar's open side, starting at the dot. */
 .status-card {
   position: absolute; left: -4px; bottom: calc(100% + 14px); z-index: 1;

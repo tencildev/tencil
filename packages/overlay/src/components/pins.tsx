@@ -170,6 +170,15 @@ function DraftPin() {
 
 export function pinVariant(thread: Thread): string {
     if (thread.resolved) return 'resolved';
+    // Once the agent is done, a cloud pin follows its commit to the preview.
+    const delivery = thread.delivery?.status;
+    if (delivery && (thread.status === 'idle' || thread.status === 'error')) {
+        if (delivery === 'queued' || delivery === 'pushed' || delivery === 'deploying') {
+            return 'working';
+        }
+        if (delivery === 'failed' || delivery === 'deploy-failed') return 'error';
+        return 'done';
+    }
     switch (thread.status) {
         case 'draft':
             return 'queued';

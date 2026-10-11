@@ -1,4 +1,4 @@
-import type { Thread, ThreadMessage } from '@tencil/protocol';
+import type { Delivery, Thread, ThreadMessage } from '@tencil/protocol';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';
@@ -66,6 +66,9 @@ export function ThreadPanel() {
                 <>
                     <Messages key={thread.id} thread={thread} />
                     <StatusLine thread={thread} />
+                    {thread.delivery && thread.status !== 'working' && (
+                        <DeliveryLine delivery={thread.delivery} />
+                    )}
                     <PromptInput
                         placeholder={
                             pinBlocked.value ??
@@ -329,4 +332,85 @@ function StatusLine({ thread }: { thread: Thread }) {
         );
     }
     return null;
+}
+
+/** Tencil Cloud: where the change is between the agent and the redeployed preview. */
+export function DeliveryLine({ delivery }: { delivery: Delivery }) {
+    const pr = delivery.pullRequest;
+    const prLink = pr && (
+        <a href={pr.url} target="_blank" rel="noreferrer">
+            {pr.opened ? `Opened #${pr.number}` : `#${pr.number}`}
+        </a>
+    );
+    const commit = delivery.commit && (
+        <a class="delivery-commit" href={delivery.commit.url} target="_blank" rel="noreferrer">
+            {delivery.commit.sha.slice(0, 7)}
+        </a>
+    );
+    switch (delivery.status) {
+        case 'queued':
+            return (
+                <div class="status-line delivery">
+                    <span class="live-dot" />
+                    <Shimmer
+                        text={
+                            delivery.queuePosition
+                                ? `Waiting, ${delivery.queuePosition} ahead on this branch`
+                                : 'Waiting for the branch…'
+                        }
+                    />
+                </div>
+            );
+        case 'pushed':
+            return (
+                <div class="status-line delivery">
+                    <span>Pushed {commit}</span>
+                    {prLink}
+                </div>
+            );
+        case 'deploying':
+            return (
+                <div class="status-line delivery">
+                    <span class="live-dot" />
+                    <Shimmer text="Deploying the preview…" />
+                    {prLink}
+                </div>
+            );
+        case 'live':
+            return (
+                <div class="status-line delivery delivery-live">
+                    <span>Live {commit}</span>
+                    {delivery.previewUrl ? (
+                        // Same tab: the new preview shows the same pins.
+                        <a href={delivery.previewUrl}>Open the new preview</a>
+                    ) : (
+                        prLink
+                    )}
+                </div>
+            );
+        case 'deploy-failed':
+            return (
+                <div class="status-line delivery status-error">
+                    <span>Preview deploy failed {commit}</span>
+                    {delivery.logsUrl ? (
+                        <a href={delivery.logsUrl} target="_blank" rel="noreferrer">
+                            Logs
+                        </a>
+                    ) : (
+                        prLink
+                    )}
+                </div>
+            );
+        case 'no-changes':
+            return <div class="status-line delivery">No changes needed, nothing pushed</div>;
+        case 'failed':
+            return (
+                <div class="status-line delivery status-error">
+                    <span class="delivery-detail" title={delivery.detail}>
+                        Couldn't push{delivery.detail ? `: ${delivery.detail}` : ''}
+                    </span>
+                    {prLink}
+                </div>
+            );
+    }
 }
