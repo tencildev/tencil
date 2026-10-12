@@ -1,4 +1,4 @@
-import type { Provider, ProviderOption } from '@tencil/protocol';
+import type { Provider, ProviderOption } from '@tencildev/protocol';
 
 /** What a project picked in the overlay's settings. */
 export interface SavedProjectSettings {

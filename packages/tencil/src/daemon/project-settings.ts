@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { ProjectSettingsStore, SavedProjectSettings } from '@tencil/bridge';
+import type { ProjectSettingsStore, SavedProjectSettings } from '@tencildev/bridge';
 import { z } from 'zod';
 import { defaultDataDir, projectStorePath } from './thread-store.ts';
 

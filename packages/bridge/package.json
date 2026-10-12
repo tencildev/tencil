@@ -1,5 +1,5 @@
 {
-    "name": "@tencil/bridge",
+    "name": "@tencildev/bridge",
     "version": "0.0.0",
     "description": "The Tencil bridge: pins, prompt rendering and provider wiring, without the machine.",
     "license": "Apache-2.0",
@@ -38,14 +38,14 @@
     "scripts": {
         "build": "tsdown",
         "typecheck": "tsc -p .",
-        "prepack": "turbo run build --filter=@tencil/bridge"
+        "prepack": "turbo run build --filter=@tencildev/bridge"
     },
     "dependencies": {
-        "@tencil/protocol": "workspace:^"
+        "@tencildev/protocol": "workspace:^"
     },
     "devDependencies": {
-        "@tencil/testing": "workspace:*",
-        "@tencil/tsconfig": "workspace:*",
+        "@tencildev/testing": "workspace:*",
+        "@tencildev/tsconfig": "workspace:*",
         "tsdown": "^0.23.0"
     }
 }

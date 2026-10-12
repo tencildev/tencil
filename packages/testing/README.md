@@ -1,9 +1,9 @@
-# @tencil/testing
+# @tencildev/testing
 
 Test doubles for [Tencil](https://tencil.dev) and code built on its bridge.
 
 ```sh
-npm install --save-dev @tencil/testing
+npm install --save-dev @tencildev/testing
 ```
 
 - **`FakeAgentProvider`**: a `Provider` that answers instantly and records every
@@ -14,8 +14,8 @@ npm install --save-dev @tencil/testing
 - **`waitFor`**: poll until a condition holds.
 
 ```ts
-import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencil/bridge';
-import { FakeAgentProvider } from '@tencil/testing';
+import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencildev/bridge';
+import { FakeAgentProvider } from '@tencildev/testing';
 
 const provider = new FakeAgentProvider();
 const bridge = new Bridge({

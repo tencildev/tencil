@@ -1,4 +1,4 @@
-import type { Thread } from '@tencil/protocol';
+import type { Thread } from '@tencildev/protocol';
 import { describe, expect, it } from 'vitest';
 import { MemoryThreadStore } from './thread-store.ts';
 

@@ -1,5 +1,5 @@
 {
-    "name": "@tencil/testing",
+    "name": "@tencildev/testing",
     "version": "0.0.0",
     "description": "Test doubles for Tencil: a fake provider, a fake T3 Code server and a fake Claude Agent SDK.",
     "license": "Apache-2.0",
@@ -38,15 +38,15 @@
     "scripts": {
         "build": "tsdown",
         "typecheck": "tsc -p .",
-        "prepack": "turbo run build --filter=@tencil/testing"
+        "prepack": "turbo run build --filter=@tencildev/testing"
     },
     "dependencies": {
-        "@tencil/protocol": "workspace:^",
+        "@tencildev/protocol": "workspace:^",
         "ws": "^8.22.0"
     },
     "devDependencies": {
         "@types/ws": "^8.18.2",
-        "@tencil/tsconfig": "workspace:*",
+        "@tencildev/tsconfig": "workspace:*",
         "tsdown": "^0.23.0"
     }
 }

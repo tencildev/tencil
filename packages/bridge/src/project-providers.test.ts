@@ -1,4 +1,4 @@
-import { FakeAgentProvider } from '@tencil/testing';
+import { FakeAgentProvider } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import {
     ProjectProviders,

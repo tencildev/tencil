@@ -5,6 +5,10 @@ on:
     branches: [master]
   pull_request:
 
+# Runs on forks and fork pull requests too: no secrets, read-only token.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -82,11 +86,11 @@ jobs:
           npx tencil status
           curl -sf http://127.0.0.1:48777/tencil.js > /dev/null
           npx tencil stop
-      # The @tencil/* libraries publish from dist (publishConfig.exports) with real version ranges.
+      # The @tencildev/* libraries publish from dist (publishConfig.exports) with real version ranges.
       - run: |
-          pnpm --filter @tencil/protocol pack --pack-destination "$RUNNER_TEMP/libraries"
-          pnpm --filter @tencil/bridge pack --pack-destination "$RUNNER_TEMP/libraries"
-          pnpm --filter @tencil/testing pack --pack-destination "$RUNNER_TEMP/libraries"
+          pnpm --filter @tencildev/protocol pack --pack-destination "$RUNNER_TEMP/libraries"
+          pnpm --filter @tencildev/bridge pack --pack-destination "$RUNNER_TEMP/libraries"
+          pnpm --filter @tencildev/testing pack --pack-destination "$RUNNER_TEMP/libraries"
       - name: Smoke-test the packed libraries
         run: |
           mkdir "$RUNNER_TEMP/library-consumer" && cd "$RUNNER_TEMP/library-consumer"
@@ -95,8 +99,8 @@ jobs:
           node --input-type=module -e "$SMOKE"
         env:
           SMOKE: |
-            import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencil/bridge';
-            import { FakeAgentProvider } from '@tencil/testing';
+            import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencildev/bridge';
+            import { FakeAgentProvider } from '@tencildev/testing';
             const bridge = new Bridge({
               providers: ProjectProviders.of(new FakeAgentProvider()),
               store: new MemoryThreadStore(),

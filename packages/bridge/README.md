@@ -1,4 +1,4 @@
-# @tencil/bridge
+# @tencildev/bridge
 
 The bridge behind [Tencil](https://tencil.dev): it owns a project's pins, renders
 element context into the prompt and wires each pin to the agent (provider) that
@@ -6,14 +6,14 @@ works on it. The `tencil` daemon runs it on your machine; any other host can run
 the same bridge with its own storage and providers.
 
 ```sh
-npm install @tencil/bridge
+npm install @tencildev/bridge
 ```
 
 ```ts
-import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencil/bridge';
+import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencildev/bridge';
 
 const bridge = new Bridge({
-    // Your `Provider`s (see @tencil/protocol); the first one is the default.
+    // Your `Provider`s (see @tencildev/protocol); the first one is the default.
     providers: ProjectProviders.of([myProvider]),
     // Anything implementing `ThreadStore`; MemoryThreadStore keeps pins in memory.
     store: new MemoryThreadStore(),

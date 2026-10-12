@@ -1,4 +1,4 @@
-export { Bridge, renderPrompt, stripContext } from '@tencil/bridge';
+export { Bridge, renderPrompt, stripContext } from '@tencildev/bridge';
 export { ProjectResolver, projectRoot } from './daemon/project-resolver.ts';
 export {
     type Daemon,
@@ -8,7 +8,7 @@ export {
     probeDaemon,
     startDaemon,
 } from './daemon/server.ts';
-// The file store keeps its public name; `ThreadStore` in @tencil/bridge is the interface.
+// The file store keeps its public name; `ThreadStore` in @tencildev/bridge is the interface.
 export {
     defaultDataDir,
     FileThreadStore as ThreadStore,

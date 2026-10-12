@@ -1,4 +1,4 @@
-import type { Thread } from '@tencil/protocol';
+import type { Thread } from '@tencildev/protocol';
 
 /**
  * The pins of one project. The bridge reads and writes synchronously, so a

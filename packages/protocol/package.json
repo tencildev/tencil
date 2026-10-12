@@ -1,5 +1,5 @@
 {
-    "name": "@tencil/protocol",
+    "name": "@tencildev/protocol",
     "version": "0.0.0",
     "description": "Tencil's wire schemas (zod) and the Provider interface agents implement.",
     "license": "Apache-2.0",
@@ -38,13 +38,13 @@
     "scripts": {
         "build": "tsdown",
         "typecheck": "tsc -p .",
-        "prepack": "turbo run build --filter=@tencil/protocol"
+        "prepack": "turbo run build --filter=@tencildev/protocol"
     },
     "dependencies": {
         "zod": "^4.6.5"
     },
     "devDependencies": {
-        "@tencil/tsconfig": "workspace:*",
+        "@tencildev/tsconfig": "workspace:*",
         "tsdown": "^0.23.0"
     }
 }

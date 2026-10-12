@@ -1,5 +1,5 @@
-import type { ServerMessage, Thread } from '@tencil/protocol';
-import { FakeAgentProvider, waitFor } from '@tencil/testing';
+import type { ServerMessage, Thread } from '@tencildev/protocol';
+import { FakeAgentProvider, waitFor } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, mergeMessage } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';

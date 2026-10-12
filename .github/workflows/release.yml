@@ -16,9 +16,10 @@ permissions:
 
 jobs:
   release:
-    # Off until a trusted publisher is set up on npmjs.com for every public package (tencil,
-    # @tencil/protocol, @tencil/bridge, @tencil/testing): set the repository variable RELEASE_ENABLED=true.
-    if: vars.RELEASE_ENABLED == 'true'
+    # Only the main repository publishes, from master. Off until a trusted publisher is set up on
+    # npmjs.com for every public package (tencil, @tencildev/protocol, @tencildev/bridge,
+    # @tencildev/testing): set the repository variable RELEASE_ENABLED=true.
+    if: github.repository == 'pixel-perfect-agency/tencil' && github.ref == 'refs/heads/master' && vars.RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -8,7 +8,7 @@ import {
     type ServerMessage,
     type Thread,
     type ThreadMessage,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 import type { ProjectProviders } from './project-providers.ts';
 import { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
 import type { ThreadStore } from './thread-store.ts';

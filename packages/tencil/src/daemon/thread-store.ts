@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { settleInterrupted, type ThreadStore } from '@tencil/bridge';
-import { Thread } from '@tencil/protocol';
+import { settleInterrupted, type ThreadStore } from '@tencildev/bridge';
+import { Thread } from '@tencildev/protocol';
 import { z } from 'zod';
 
 const StoreFile = z.object({

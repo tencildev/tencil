@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ProviderMessage, ThreadSink, ThreadStatus } from '@tencil/protocol';
-import { CODEX_PROVIDER, FakeT3Server, waitFor } from '@tencil/testing';
+import type { ProviderMessage, ThreadSink, ThreadStatus } from '@tencildev/protocol';
+import { CODEX_PROVIDER, FakeT3Server, waitFor } from '@tencildev/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CredentialStore } from './auth.ts';
 import { T3CodeProvider, type T3CodeProviderOptions } from './t3code-provider.ts';

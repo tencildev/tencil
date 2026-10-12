@@ -2,8 +2,8 @@ import { mkdtempSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
-import { ProjectProviders } from '@tencil/bridge';
-import { FakeAgentProvider } from '@tencil/testing';
+import { ProjectProviders } from '@tencildev/bridge';
+import { FakeAgentProvider } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
 

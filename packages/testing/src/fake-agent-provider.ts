@@ -7,7 +7,7 @@ import type {
     ProviderThreadSummary,
     SendMessageInput,
     ThreadSink,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 
 export interface FakeAgentProviderOptions {
     id?: string;

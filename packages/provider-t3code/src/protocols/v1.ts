@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ProviderMessage } from '@tencil/protocol';
+import type { ProviderMessage } from '@tencildev/protocol';
 import {
     decodedSize,
     type ProtocolAdapter,

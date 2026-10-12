@@ -39,8 +39,8 @@ apps/
   each page to its project (dev server port → process → working directory;
   otherwise the overlay asks) and keeps a bridge, provider connection and pin
   store per project.
-- **Providers are swappable.** The bridge (`@tencil/bridge`) owns pins and renders element
-  context into the prompt; providers (`Provider` in `@tencil/protocol`) only see text and images.
+- **Providers are swappable.** The bridge (`@tencildev/bridge`) owns pins and renders element
+  context into the prompt; providers (`Provider` in `@tencildev/protocol`) only see text and images.
   The bridge knows nothing about the machine: its host hands in a `ThreadStore`, the providers
   (`ProjectProviders`, `create(id)`) and a `ProjectSettingsStore`. The daemon passes file-backed
   ones from `daemon/`; Tencil Cloud runs the same bridge with its own.
@@ -54,10 +54,10 @@ apps/
 - **Tencil was called Fixhere** up to 0.2.0 (npm `fixhere`).
   `service/migrate-from-fixhere.ts` moves such an install over and `init` rewrites
   `fixhere/react` and `fixhere/vite` imports; keep those `fixhere` strings.
-- **Published: `tencil`, `@tencil/protocol`, `@tencil/bridge` and `@tencil/testing`.** The
+- **Published: `tencil`, `@tencildev/protocol`, `@tencildev/bridge` and `@tencildev/testing`.** The
   three libraries resolve to `src` in the workspace (`exports`) and to `dist` when packed
   (`publishConfig.exports`); verify with `pnpm --filter <name> pack`. `tencil` still bundles
-  every `@tencil/*` package with tsdown, so it has no `@tencil/*` dependencies. The rest stay
+  every `@tencildev/*` package with tsdown, so it has no `@tencildev/*` dependencies. The rest stay
   private.
 
 ## Conventions
@@ -68,7 +68,7 @@ apps/
 | Components | PascalCase export, kebab-case file | `ThreadPanel` in `components/thread-panel.tsx` |
 | Tests | next to the code | `thread-store.test.ts`, `server.integration.test.ts` |
 | CLI commands | one file per command | `cli/commands/start.ts` |
-| Imports | relative within a package, package name across packages | `@tencil/protocol` |
+| Imports | relative within a package, package name across packages | `@tencildev/protocol` |
 
 - Formatting and lint: `biome-config-pixel` (4 spaces, single quotes). Run `pnpm format`.
 - When adding a file, mirror the closest sibling in the same folder.

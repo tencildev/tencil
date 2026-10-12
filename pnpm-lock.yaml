@@ -45,10 +45,10 @@ importers:
       '@playwright/test':
         specifier: ^1.64.0
         version: 1.64.0
-      '@tencil/testing':
+      '@tencildev/testing':
         specifier: workspace:*
         version: link:../../packages/testing
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/react':
@@ -69,14 +69,14 @@ importers:
 
   packages/bridge:
     dependencies:
-      '@tencil/protocol':
+      '@tencildev/protocol':
         specifier: workspace:^
         version: link:../protocol
     devDependencies:
-      '@tencil/testing':
+      '@tencildev/testing':
         specifier: workspace:*
         version: link:../testing
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       tsdown:
@@ -98,10 +98,10 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
     devDependencies:
-      '@tencil/protocol':
+      '@tencildev/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       tsdown:
@@ -114,7 +114,7 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       tsdown:
@@ -123,30 +123,30 @@ importers:
 
   packages/provider-claude-code:
     dependencies:
-      '@tencil/protocol':
+      '@tencildev/protocol':
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.293
         version: 0.3.293(@anthropic-ai/sdk@0.132.1(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5))(zod@4.6.5)
-      '@tencil/testing':
+      '@tencildev/testing':
         specifier: workspace:*
         version: link:../testing
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
 
   packages/provider-t3code:
     dependencies:
-      '@tencil/protocol':
+      '@tencildev/protocol':
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
-      '@tencil/testing':
+      '@tencildev/testing':
         specifier: workspace:*
         version: link:../testing
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
 
@@ -168,25 +168,25 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.293
         version: 0.3.293(@anthropic-ai/sdk@0.132.1(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5))(zod@4.6.5)
-      '@tencil/bridge':
+      '@tencildev/bridge':
         specifier: workspace:*
         version: link:../bridge
-      '@tencil/overlay':
+      '@tencildev/overlay':
         specifier: workspace:*
         version: link:../overlay
-      '@tencil/protocol':
+      '@tencildev/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@tencil/provider-claude-code':
+      '@tencildev/provider-claude-code':
         specifier: workspace:*
         version: link:../provider-claude-code
-      '@tencil/provider-t3code':
+      '@tencildev/provider-t3code':
         specifier: workspace:*
         version: link:../provider-t3code
-      '@tencil/testing':
+      '@tencildev/testing':
         specifier: workspace:*
         version: link:../testing
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/react':
@@ -204,14 +204,14 @@ importers:
 
   packages/testing:
     dependencies:
-      '@tencil/protocol':
+      '@tencildev/protocol':
         specifier: workspace:^
         version: link:../protocol
       ws:
         specifier: ^8.22.0
         version: 8.22.0
     devDependencies:
-      '@tencil/tsconfig':
+      '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/ws':

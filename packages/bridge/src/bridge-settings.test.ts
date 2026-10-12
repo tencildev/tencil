@@ -1,5 +1,5 @@
-import type { ServerMessage } from '@tencil/protocol';
-import { FakeAgentProvider } from '@tencil/testing';
+import type { ServerMessage } from '@tencildev/protocol';
+import { FakeAgentProvider } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';
