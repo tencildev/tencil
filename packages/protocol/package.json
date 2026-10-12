@@ -1,18 +1,50 @@
 {
     "name": "@tencildev/protocol",
     "version": "0.0.0",
-    "private": true,
+    "description": "Tencil's wire schemas (zod) and the Provider interface agents implement.",
+    "license": "Apache-2.0",
+    "author": "Pixel Perfect Agency",
+    "homepage": "https://tencil.dev",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/pixel-perfect-agency/tencil.git",
+        "directory": "packages/protocol"
+    },
+    "bugs": {
+        "url": "https://github.com/pixel-perfect-agency/tencil/issues"
+    },
     "type": "module",
     "exports": {
-        ".": "./src/index.ts"
+        ".": "./src/index.ts",
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist",
+        "NOTICE"
+    ],
+    "publishConfig": {
+        "access": "public",
+        "exports": {
+            ".": {
+                "types": "./dist/index.d.mts",
+                "default": "./dist/index.mjs"
+            },
+            "./package.json": "./package.json"
+        }
+    },
+    "engines": {
+        "node": ">=22"
     },
     "scripts": {
-        "typecheck": "tsc -p ."
+        "build": "tsdown",
+        "typecheck": "tsc -p .",
+        "prepack": "turbo run build --filter=@tencildev/protocol"
     },
     "dependencies": {
         "zod": "^4.6.5"
     },
     "devDependencies": {
-        "@tencildev/tsconfig": "workspace:*"
+        "@tencildev/tsconfig": "workspace:*",
+        "tsdown": "^0.23.0"
     }
 }

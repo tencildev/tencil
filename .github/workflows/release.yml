@@ -16,8 +16,9 @@ permissions:
 
 jobs:
   release:
-    # Only the main repository publishes, from master. Off until the trusted publisher is set up
-    # on npmjs.com: set the repository variable RELEASE_ENABLED=true.
+    # Only the main repository publishes, from master. Off until a trusted publisher is set up on
+    # npmjs.com for every public package (tencil, @tencildev/protocol, @tencildev/bridge,
+    # @tencildev/testing): set the repository variable RELEASE_ENABLED=true.
     if: github.repository == 'pixel-perfect-agency/tencil' && github.ref == 'refs/heads/master' && vars.RELEASE_ENABLED == 'true'
     # Stays on GitHub: npm trusted publishing only accepts GitHub-hosted runners.
     runs-on: ubuntu-latest

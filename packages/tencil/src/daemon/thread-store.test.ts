@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { projectStorePath, ThreadStore } from './thread-store.ts';
+import { FileThreadStore, projectStorePath } from './thread-store.ts';
 
 const thread = {
     id: 't1',
@@ -16,7 +16,7 @@ const thread = {
     updatedAt: '2026-10-08T10:00:00.000Z',
 };
 
-describe('ThreadStore', () => {
+describe('FileThreadStore', () => {
     it('keeps one file per project outside the repo', () => {
         const a = projectStorePath('/Users/me/Code/eyes', '/data');
         const b = projectStorePath('/Users/me/Work/eyes', '/data');
@@ -27,7 +27,7 @@ describe('ThreadStore', () => {
 
     it('persists pins across restarts', async () => {
         const dataDir = mkdtempSync(join(tmpdir(), 'tencil-data-'));
-        const store = new ThreadStore('/projects/acme', dataDir);
+        const store = new FileThreadStore('/projects/acme', dataDir);
         await store.load();
         store.upsert(thread as never);
         await store.flush();
@@ -35,7 +35,7 @@ describe('ThreadStore', () => {
         const saved = JSON.parse(await readFile(store.path, 'utf8'));
         expect(saved).toMatchObject({ root: resolve('/projects/acme'), threads: [{ id: 't1' }] });
 
-        const reloaded = new ThreadStore('/projects/acme', dataDir);
+        const reloaded = new FileThreadStore('/projects/acme', dataDir);
         await reloaded.load();
         expect(reloaded.get('t1')?.title).toBe('Pin');
     });

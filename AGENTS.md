@@ -11,7 +11,8 @@ packages/
 ├── tencil/             # Published package: CLI, daemon, init, framework integrations
 │   └── src/
 │       ├── cli/        # index.ts (entry, arg parsing) + commands/{name}.ts
-│       ├── daemon/     # server, bridge, project-resolver, thread-store, prompt, security
+│       ├── daemon/     # server, project-resolver, file thread-store and project settings,
+│       │               # agents (machine provider detection), security
 │       ├── service/    # machine setup: background start/stop, login service
 │       │               # (launchd/systemd/schtasks) and its runtime copy, pairing
 │       ├── init/       # `tencil init`: detect-framework, codemods, diff, run-init
@@ -20,10 +21,12 @@ packages/
 │   └── src/
 │       ├── components/ # UI, one component per kebab-case file
 │       └── lib/        # state, bridge connection, element picker/context, positioning
+├── bridge/             # Bridge: pins, prompt rendering, provider wiring; ThreadStore and
+│                       # ProjectSettingsStore interfaces, MemoryThreadStore. No machine state
 ├── protocol/           # Wire schemas (zod) and the Provider interface
 ├── provider-t3code/    # T3 Code provider: Effect RPC socket, auth, protocols/{v1,v2}
 ├── provider-claude-code/  # Claude Code provider: Agent SDK sessions, loaded on first use
-├── testing/            # Fake T3 Code server, fake Agent SDK and test helpers
+├── testing/            # Fake provider, fake T3 Code server, fake Agent SDK and test helpers
 └── tsconfig/           # Shared tsconfig: base, node, browser
 apps/
 └── playground/         # Vite + React app; the browser-test (Playwright) target
@@ -36,10 +39,13 @@ apps/
   each page to its project (dev server port → process → working directory;
   otherwise the overlay asks) and keeps a bridge, provider connection and pin
   store per project.
-- **Providers are swappable.** The bridge owns pins and renders element context into
-  the prompt; providers (`Provider` in `@tencildev/protocol`) only see text and images.
+- **Providers are swappable.** The bridge (`@tencildev/bridge`) owns pins and renders element
+  context into the prompt; providers (`Provider` in `@tencildev/protocol`) only see text and images.
+  The bridge knows nothing about the machine: its host hands in a `ThreadStore`, the providers
+  (`ProjectProviders`, `create(id)`) and a `ProjectSettingsStore`. The daemon passes file-backed
+  ones from `daemon/`; Tencil Cloud runs the same bridge with its own.
   Each project picks its default provider in the overlay's settings (saved next to its
-  pins, `daemon/project-providers.ts`). Otherwise it's the machine's: chosen once by
+  pins, `daemon/project-settings.ts`). Otherwise it's the machine's: chosen once by
   setup and saved in `settings.json`, or detected (`daemon/agents.ts`). Pins keep the
   provider they were made with, so a project can have pins on both. Claude Code runs
   inside the daemon through the Agent SDK. The SDK carries a ~250 MB binary, so it's
@@ -48,8 +54,11 @@ apps/
 - **Tencil was called Fixhere** up to 0.2.0 (npm `fixhere`).
   `service/migrate-from-fixhere.ts` moves such an install over and `init` rewrites
   `fixhere/react` and `fixhere/vite` imports; keep those `fixhere` strings.
-- **Only `tencil` is published.** Workspace packages are private and bundled into it
-  by tsdown.
+- **Published: `tencil`, `@tencildev/protocol`, `@tencildev/bridge` and `@tencildev/testing`.** The
+  three libraries resolve to `src` in the workspace (`exports`) and to `dist` when packed
+  (`publishConfig.exports`); verify with `pnpm --filter <name> pack`. `tencil` still bundles
+  every `@tencildev/*` package with tsdown, so it has no `@tencildev/*` dependencies. The rest stay
+  private.
 
 ## Conventions
 

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { settleInterrupted, type ThreadStore } from '@tencildev/bridge';
 import { Thread } from '@tencildev/protocol';
 import { z } from 'zod';
 
@@ -36,7 +37,7 @@ export function projectStorePath(projectRoot: string, dataDir = defaultDataDir()
  * Pins for one project, persisted outside the repo so they survive bridge
  * restarts without leaving files in the project. Writes are debounced and atomic.
  */
-export class ThreadStore {
+export class FileThreadStore implements ThreadStore {
     readonly path: string;
     readonly #root: string;
     #threads = new Map<string, Thread>();
@@ -54,12 +55,7 @@ export class ThreadStore {
         const parsed = StoreFile.safeParse(JSON.parse(raw));
         if (!parsed.success) return;
         for (const thread of parsed.data.threads) {
-            // Anything mid-flight when the bridge stopped gets its real status from the provider.
-            if (thread.status === 'starting' && !thread.provider.threadId) {
-                thread.status = 'error';
-                thread.statusDetail = 'Bridge stopped before the thread was created';
-            }
-            this.#threads.set(thread.id, thread);
+            this.#threads.set(thread.id, settleInterrupted(thread));
         }
     }
 
