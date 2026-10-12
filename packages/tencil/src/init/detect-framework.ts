@@ -87,10 +87,6 @@ export function installCommand(manager: PackageManager, spec: string): [string, 
     }
 }
 
-export function uninstallCommand(manager: PackageManager, name: string): [string, string[]] {
-    return manager === 'npm' ? ['npm', ['uninstall', name]] : [manager, ['remove', name]];
-}
-
 function variants(bases: string[], extensions: string[]): string[] {
     return bases.flatMap(base => extensions.map(ext => `${base}.${ext}`));
 }

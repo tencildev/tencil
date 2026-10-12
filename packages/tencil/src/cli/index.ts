@@ -6,12 +6,10 @@ import { DEFAULT_T3_URL, type RuntimeMode } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import { PROVIDERS, type ProviderName, saveProvider } from '../daemon/agents.ts';
 import { DEFAULT_PORT } from '../daemon/server.ts';
-import { defaultDataDir } from '../daemon/thread-store.ts';
 import { runInit } from '../init/run-init.ts';
 import { stopDaemon } from '../service/background.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
 import { isServiceInstalled, stopService } from '../service/login-service.ts';
-import { migrateFromFixhere } from '../service/migrate-from-fixhere.ts';
 import { VERSION } from '../version.ts';
 import { connect } from './commands/connect.ts';
 import { runDaemon } from './commands/daemon.ts';
@@ -59,9 +57,6 @@ ${pc.dim('Setup and init options')}
   -h, --help              Show help
   -v, --version           Show version
 `;
-
-/** Commands that start or install the daemon. */
-const SETS_UP = ['setup', 'start', 'init', 'service'];
 
 async function main(): Promise<void> {
     const { values, positionals } = parseArgs({
@@ -113,11 +108,6 @@ async function main(): Promise<void> {
         port,
         args: forwardedFlags(values),
     };
-
-    // Tencil was called Fixhere up to 0.2.0: move such an install over before setting up.
-    if ((command === undefined || SETS_UP.includes(command)) && !values.cloud) {
-        await migrateFromFixhere(port, defaultDataDir(), console.log);
-    }
 
     switch (command) {
         case undefined:
