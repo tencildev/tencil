@@ -1,4 +1,4 @@
-import type { Thread } from '@tencil/protocol';
+import type { Thread } from '@tencildev/protocol';
 import { describe, expect, it } from 'vitest';
 import { mergeMessage } from './bridge.ts';
 import { renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';

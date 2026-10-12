@@ -19,7 +19,7 @@
         "@vitejs/plugin-react": "^6.1.2",
         "tencil": "workspace:*",
         "vite": "^8.3.3",
-        "@tencil/testing": "workspace:*",
-        "@tencil/tsconfig": "workspace:*"
+        "@tencildev/testing": "workspace:*",
+        "@tencildev/tsconfig": "workspace:*"
     }
 }

@@ -1,8 +1,8 @@
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
-import type { ProviderOption } from '@tencil/protocol';
-import { CredentialStore, DEFAULT_T3_URL } from '@tencil/provider-t3code';
+import type { ProviderOption } from '@tencildev/protocol';
+import { CredentialStore, DEFAULT_T3_URL } from '@tencildev/provider-t3code';
 import { z } from 'zod';
 import { defaultDataDir } from './thread-store.ts';
 

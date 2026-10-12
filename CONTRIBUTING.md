@@ -44,7 +44,7 @@ people too). The short version:
   Components are PascalCase exports in kebab-case files. One file per CLI command in
   `packages/tencil/src/cli/commands/`.
 - **Imports:** relative within a package, the package name across packages
-  (`@tencil/protocol`).
+  (`@tencildev/protocol`).
 - **Tests:** next to the code (`thread-store.test.ts`,
   `server.integration.test.ts`). New behaviour comes with a test; providers are
   tested against the fakes in `packages/testing`.

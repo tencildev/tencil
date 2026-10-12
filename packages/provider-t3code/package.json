@@ -1,5 +1,5 @@
 {
-    "name": "@tencil/provider-t3code",
+    "name": "@tencildev/provider-t3code",
     "version": "0.0.0",
     "private": true,
     "type": "module",
@@ -10,10 +10,10 @@
         "typecheck": "tsc -p ."
     },
     "dependencies": {
-        "@tencil/protocol": "workspace:*"
+        "@tencildev/protocol": "workspace:*"
     },
     "devDependencies": {
-        "@tencil/testing": "workspace:*",
-        "@tencil/tsconfig": "workspace:*"
+        "@tencildev/testing": "workspace:*",
+        "@tencildev/tsconfig": "workspace:*"
     }
 }

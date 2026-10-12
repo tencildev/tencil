@@ -1,4 +1,4 @@
-import type { ProviderInfo } from '@tencil/protocol';
+import type { ProviderInfo } from '@tencildev/protocol';
 import { project, provider, send, settings } from '../lib/connection.ts';
 import { setBatchAvailable, settingsOpen } from '../lib/state.ts';
 import { AgentIcon } from './agent-icons.tsx';

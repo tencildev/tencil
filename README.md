@@ -33,17 +33,17 @@ overlay asks) and keeps a bridge, an agent connection and a pin store per projec
 
 ## Providers
 
-Agents plug in through the `Provider` interface in `@tencil/protocol`
+Agents plug in through the `Provider` interface in `@tencildev/protocol`
 ([`packages/protocol/src/provider.ts`](packages/protocol/src/provider.ts)):
 `createThread`, `sendMessage`, `interrupt` and `watch` (a stream of messages and a
 provider-agnostic status), plus `start`, `info`, `listThreads` and optional pairing
 and model listing. The bridge owns pins and renders element context into the prompt,
 so every provider receives identical input: text and images.
 
-- **T3 Code** (`@tencil/provider-t3code`): speaks T3 Code's Effect RPC over
+- **T3 Code** (`@tencildev/provider-t3code`): speaks T3 Code's Effect RPC over
   WebSocket. Supports both orchestration protocols: V1 (all released builds) and
   V2 (newer builds advertising `orchestrationProtocolVersion: 2`).
-- **Claude Code** (`@tencil/provider-claude-code`): runs Claude Code in the daemon
+- **Claude Code** (`@tencildev/provider-claude-code`): runs Claude Code in the daemon
   through the Claude Agent SDK, one process per active session. Threads are Claude
   Code sessions, replayed from the transcripts Claude Code saves. The SDK is installed
   on first use, not bundled.

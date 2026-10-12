@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ProviderMessage, ThreadSink, ThreadStatus } from '@tencil/protocol';
-import { FakeAgentSdk, waitFor } from '@tencil/testing';
+import type { ProviderMessage, ThreadSink, ThreadStatus } from '@tencildev/protocol';
+import { FakeAgentSdk, waitFor } from '@tencildev/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ClaudeCodeProvider, type ClaudeCodeProviderOptions } from './claude-code-provider.ts';
 import type { AgentSdk } from './load-sdk.ts';

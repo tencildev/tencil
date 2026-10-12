@@ -1,5 +1,5 @@
 {
-    "extends": "@tencil/tsconfig/base.json",
+    "extends": "@tencildev/tsconfig/base.json",
     "compilerOptions": {
         "lib": ["ES2023", "DOM", "DOM.Iterable"],
         "jsx": "react-jsx",
