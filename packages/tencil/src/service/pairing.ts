@@ -1,11 +1,11 @@
 import { join } from 'node:path';
-import { loadAgentSdk } from '@tencil/provider-claude-code';
+import { loadAgentSdk } from '@tencildev/provider-claude-code';
 import {
     CredentialStore,
     createLocalPairingCode,
     DEFAULT_T3_URL,
     exchangePairingCredential,
-} from '@tencil/provider-t3code';
+} from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import type { ProviderName } from '../daemon/agents.ts';
 import { defaultDataDir } from '../daemon/thread-store.ts';

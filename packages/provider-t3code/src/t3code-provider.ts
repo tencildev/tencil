@@ -11,7 +11,7 @@ import type {
     ProviderThreadSummary,
     SendMessageInput,
     ThreadSink,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 import {
     CredentialStore,
     createLocalPairingCode,

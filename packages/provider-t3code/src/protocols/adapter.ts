@@ -1,4 +1,4 @@
-import type { ImageAttachment, ProviderMessage, ThreadStatus } from '@tencil/protocol';
+import type { ImageAttachment, ProviderMessage, ThreadStatus } from '@tencildev/protocol';
 import type { RpcSocket } from '../rpc-socket.ts';
 
 export type RuntimeMode = 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access';

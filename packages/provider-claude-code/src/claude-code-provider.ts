@@ -13,7 +13,7 @@ import type {
     ProviderThreadSummary,
     SendMessageInput,
     ThreadSink,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 import { InputQueue } from './input-queue.ts';
 import { type AgentSdk, loadAgentSdk } from './load-sdk.ts';
 import { messagesFromTranscript, type RunStatus, TurnTracker } from './transcript.ts';

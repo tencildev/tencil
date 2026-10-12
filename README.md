@@ -10,45 +10,93 @@ progress back onto the pin while your dev server hot-reloads the result.
 
 Think Vercel Comments, except the reviewer on the other side is an agent.
 
-How to install and use it: [packages/tencil/README.md](packages/tencil/README.md)
-(also the npm page). Teammates trying an unreleased build: [docs/setup-prompt.md](docs/setup-prompt.md).
+## Install and use
+
+You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running) or
+[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in).
+
+```sh
+cd your-app
+npx tencil
+```
+
+The full guide (setup, `init`, the CLI, security) is in
+[packages/tencil/README.md](packages/tencil/README.md), which is also the npm page.
+Teammates trying an unreleased build: [docs/setup-prompt.md](docs/setup-prompt.md).
+
+## How it works
+
+One daemon per machine (`localhost:4747`) serves the browser overlay and talks to the
+agent. Projects only load `/tencil.js` from it in development. The daemon maps each
+page to its project (dev server port → process → working directory; otherwise the
+overlay asks) and keeps a bridge, an agent connection and a pin store per project.
 
 ## Providers
 
-Agents plug in through the `Provider` interface in `@tencil/protocol`:
+Agents plug in through the `Provider` interface in `@tencildev/protocol`
+([`packages/protocol/src/provider.ts`](packages/protocol/src/provider.ts)):
 `createThread`, `sendMessage`, `interrupt` and `watch` (a stream of messages and a
-provider-agnostic status). The bridge owns pins and renders element context into
-the prompt, so every provider receives identical input.
+provider-agnostic status), plus `start`, `info`, `listThreads` and optional pairing
+and model listing. The bridge owns pins and renders element context into the prompt,
+so every provider receives identical input: text and images.
 
-- **T3 Code** (`@tencil/provider-t3code`): speaks T3 Code's Effect RPC over
+- **T3 Code** (`@tencildev/provider-t3code`): speaks T3 Code's Effect RPC over
   WebSocket. Supports both orchestration protocols: V1 (all released builds) and
   V2 (newer builds advertising `orchestrationProtocolVersion: 2`).
-- **Claude Code** (`@tencil/provider-claude-code`): runs Claude Code in the daemon
+- **Claude Code** (`@tencildev/provider-claude-code`): runs Claude Code in the daemon
   through the Claude Agent SDK, one process per active session. Threads are Claude
   Code sessions, replayed from the transcripts Claude Code saves. The SDK is installed
   on first use, not bundled.
 
-## Development
+A new provider is a workspace package that implements `Provider`, with tests against
+a fake of the agent in `packages/testing`. The daemon picks the provider per project in
+`packages/tencil/src/daemon/server.ts`.
 
-```sh
-pnpm install
-pnpm build          # overlay IIFE + bridge
-pnpm check          # lint, typecheck, unit and integration tests
-pnpm test:e2e       # browser tests (Playwright) against the playground
-```
+## Repository layout
 
 | Package | What |
 | --- | --- |
 | `packages/tencil` | Published package: CLI, daemon, `init`, Vite plugin and React component |
-| `packages/overlay` | Browser overlay (Preact + signals, shadow DOM, bippy) |
-| `packages/protocol` | Wire schemas (zod) and the provider interface |
+| `packages/overlay` | Browser overlay (Preact + signals, shadow DOM, bippy), built to one IIFE |
+| `packages/protocol` | Wire schemas (zod) and the `Provider` interface |
 | `packages/provider-t3code` | T3 Code provider (orchestration V1 and V2) |
 | `packages/provider-claude-code` | Claude Code provider (Claude Agent SDK) |
 | `packages/testing` | Fake T3 Code server and fake Agent SDK used by the tests |
 | `packages/tsconfig` | Shared TypeScript configs |
 | `apps/playground` | Vite + React app with the plugin, also the e2e test target |
 
+Only `tencil` is published; the workspace packages are private and bundled into it.
 Structure and naming conventions: [AGENTS.md](AGENTS.md).
+
+## Development
+
+Node 22+ and pnpm (`corepack enable`).
+
+```sh
+pnpm install
+pnpm build          # overlay IIFE + CLI and daemon
+pnpm dev            # rebuild on change; also runs the playground dev server
+pnpm check          # lint, typecheck, unit and integration tests
+pnpm test:e2e       # browser tests (Playwright) against the playground
+pnpm format         # Biome
+```
+
+To try your build by hand, run the daemon from it on a spare port (so it doesn't
+clash with an installed Tencil on 4747) and point the playground at it. Open the URL
+Vite prints and press <kbd>C</kbd> on the page:
+
+```sh
+pnpm build
+node packages/tencil/dist/cli.mjs start --foreground --port 4848
+TENCIL_PORT=4848 pnpm --filter playground dev   # in a second terminal
+```
+
+Restart the daemon after changing daemon or provider code.
+
+For the browser tests, install Chromium once:
+`pnpm --filter playground exec playwright install chromium`.
+
+How to contribute (DCO sign-off, conventions, changesets): [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Tests
 
@@ -73,3 +121,13 @@ Publishing uses npm trusted publishing, so there is no npm token: on npmjs.com,
 `tencil` → Settings → Trusted publisher allows GitHub Actions in
 `pixel-perfect-agency/tencil`, workflow `release.yml`. The workflow only runs while
 the repository variable `RELEASE_ENABLED` is `true`.
+
+## Security
+
+Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache License 2.0](LICENSE). Copyright 2026 Pixel Perfect Agency; see [NOTICE](NOTICE).
+Third-party code bundled into the `tencil` package is listed in
+[packages/tencil/THIRD_PARTY_NOTICES.md](packages/tencil/THIRD_PARTY_NOTICES.md).

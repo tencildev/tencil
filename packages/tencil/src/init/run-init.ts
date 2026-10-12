@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { withoutNpmEnv } from '@tencil/provider-t3code';
+import { withoutNpmEnv } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import { newerDaemonLine } from '../cli/format.ts';
 import { defaultDataDir } from '../daemon/thread-store.ts';

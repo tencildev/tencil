@@ -1,4 +1,4 @@
-import type { ProviderModel } from '@tencil/protocol';
+import type { ProviderModel } from '@tencildev/protocol';
 import type { ModelSelection } from './protocols/adapter.ts';
 
 export interface WireServerProvider {
