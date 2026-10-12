@@ -146,8 +146,12 @@ function visibleText(element: Element): string | undefined {
 /* ------------------------------ react components ------------------------------ */
 
 async function componentFrames(element: Element): Promise<ComponentFrame[]> {
+    // A Tencil Cloud build tagged its elements: that beats production React's
+    // owner stack, which only has minified names (`F`) and no files.
+    const tagged = taggedFrames(element);
+    if (tagged.length > 0) return tagged;
     const fiber = safeFiber(element);
-    if (!fiber) return taggedFrames(element);
+    if (!fiber) return [];
     try {
         const frames = await withTimeout(getOwnerStack(fiber), SOURCE_TIMEOUT_MS);
         const rawPaths = rawPathsByName(fiber);
@@ -165,8 +169,7 @@ async function componentFrames(element: Element): Promise<ComponentFrame[]> {
     } catch {
         // Owner stacks need React 19 dev builds and fetchable source maps; fall back to names.
     }
-    const tagged = taggedFrames(element);
-    return tagged.length > 0 ? tagged : fiberNames(fiber);
+    return fiberNames(fiber);
 }
 
 /**
