@@ -12,19 +12,12 @@ import { ensureDaemon } from '../service/autostart.ts';
 import { chooseProvider } from '../service/choose-provider.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
 import { prepareProvider } from '../service/pairing.ts';
-import {
-    addTencilToBody,
-    addVitePlugin,
-    addWithTencil,
-    renameFromFixhere,
-    usesFixhere,
-} from './codemods.ts';
+import { addTencilToBody, addVitePlugin, addWithTencil } from './codemods.ts';
 import {
     detectFramework,
     detectPackageManager,
     type Framework,
     installCommand,
-    uninstallCommand,
 } from './detect-framework.ts';
 import { diffLines, hunks } from './diff.ts';
 
@@ -75,11 +68,7 @@ export async function planInit(root: string, options: { cloud?: boolean } = {}):
     ) => {
         if (!path) return void manual.push(instruction);
         const before = await readFile(path, 'utf8');
-        if (usesFixhere(before)) {
-            edits.push({ path, before, after: renameFromFixhere(before) });
-            return;
-        }
-        if (/(?:tencil|fixhere)\.js/.test(before)) {
+        if (/tencil\.js/.test(before)) {
             manual.push(
                 `${relative(root, path)} loads tencil.js by hand. Replace that tag with \`<Tencil />\` from \`tencil/react\` so the bridge's port is picked up automatically.`,
             );
@@ -170,8 +159,6 @@ export async function runInit(options: InitOptions): Promise<void> {
 
     if (!options.skipInstall && plan.framework.kind !== 'unknown') {
         if (!(await hasDependency(options.root, 'tencil')) || options.from) install(options, log);
-        // Tencil was called Fixhere up to 0.2.0; its package has nothing left to do here.
-        if (await hasDependency(options.root, 'fixhere')) uninstall(options, 'fixhere', log);
     }
     if (options.cloud) return logCloudSteps(plan.framework, log);
 
@@ -224,17 +211,6 @@ async function hasDependency(root: string, name: string): Promise<boolean> {
     } catch {
         return false;
     }
-}
-
-function uninstall(options: InitOptions, name: string, log: (message: string) => void): void {
-    const [command, args] = uninstallCommand(detectPackageManager(options.root), name);
-    log(`  ${pc.dim(`$ ${command} ${args.join(' ')}`)}`);
-    spawnSync(command, args, {
-        cwd: options.root,
-        stdio: 'inherit',
-        shell: process.platform === 'win32',
-        env: withoutNpmEnv(),
-    });
 }
 
 function install(options: InitOptions, log: (message: string) => void): void {
