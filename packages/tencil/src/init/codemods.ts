@@ -132,17 +132,3 @@ function skipString(source: string, start: number): number {
     }
     return source.length;
 }
-
-/** Projects set up while Tencil was called Fixhere (up to 0.2.0) import it under the old name. */
-export function usesFixhere(source: string): boolean {
-    return /(['"])fixhere\/(?:react|vite)\1/.test(source);
-}
-
-/** Point a Fixhere integration at Tencil: `fixhere/react` → `tencil/react`, `<Fixhere />` → `<Tencil />`. */
-export function renameFromFixhere(source: string): string {
-    return source
-        .replace(/(['"])fixhere\/(react|vite)\1/g, '$1tencil/$2$1')
-        .replace(/\bFixhere\b/g, 'Tencil')
-        .replace(/\bimport\s+fixhere\b/g, 'import tencil')
-        .replace(/\bfixhere\(/g, 'tencil(');
-}
