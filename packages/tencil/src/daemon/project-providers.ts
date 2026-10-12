@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { Provider, ProviderOption } from '@tencil/protocol';
+import type { Provider, ProviderOption } from '@tencildev/protocol';
 import { z } from 'zod';
 
 const SettingsFile = z.object({

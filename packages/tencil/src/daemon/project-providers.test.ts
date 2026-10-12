@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Provider } from '@tencil/protocol';
+import type { Provider } from '@tencildev/protocol';
 import { describe, expect, it } from 'vitest';
 import { ProjectProviders } from './project-providers.ts';
 

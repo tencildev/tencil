@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Tencil doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security problems don't belong here: see [SECURITY.md](https://github.com/pixel-perfect-agency/tencil/blob/master/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `npx tencil` in a Vite app
+        2. Press C and click a button
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tencil version
+      description: Output of `npx tencil --version`.
+      placeholder: 0.3.2
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - T3 Code
+        - Claude Code
+        - Both / not agent-related
+    validations:
+      required: true
+  - type: input
+    id: framework
+    attributes:
+      label: Framework and version
+      placeholder: Next.js 16, Vite 8 + React 19, ...
+  - type: input
+    id: environment
+    attributes:
+      label: OS, Node and browser
+      placeholder: macOS 26, Node 22, Chrome 141
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `npx tencil status`, the daemon log (`~/.config/tencil/daemon.log`) and browser console errors, if relevant. Remove anything private.
+      render: text

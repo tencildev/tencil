@@ -37,7 +37,7 @@ apps/
   otherwise the overlay asks) and keeps a bridge, provider connection and pin
   store per project.
 - **Providers are swappable.** The bridge owns pins and renders element context into
-  the prompt; providers (`Provider` in `@tencil/protocol`) only see text and images.
+  the prompt; providers (`Provider` in `@tencildev/protocol`) only see text and images.
   Each project picks its default provider in the overlay's settings (saved next to its
   pins, `daemon/project-providers.ts`). Otherwise it's the machine's: chosen once by
   setup and saved in `settings.json`, or detected (`daemon/agents.ts`). Pins keep the
@@ -59,7 +59,7 @@ apps/
 | Components | PascalCase export, kebab-case file | `ThreadPanel` in `components/thread-panel.tsx` |
 | Tests | next to the code | `thread-store.test.ts`, `server.integration.test.ts` |
 | CLI commands | one file per command | `cli/commands/start.ts` |
-| Imports | relative within a package, package name across packages | `@tencil/protocol` |
+| Imports | relative within a package, package name across packages | `@tencildev/protocol` |
 
 - Formatting and lint: `biome-config-pixel` (4 spaces, single quotes). Run `pnpm format`.
 - When adding a file, mirror the closest sibling in the same folder.

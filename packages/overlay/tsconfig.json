@@ -1,4 +1,4 @@
 {
-    "extends": "@tencil/tsconfig/browser.json",
+    "extends": "@tencildev/tsconfig/browser.json",
     "include": ["src"]
 }

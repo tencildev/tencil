@@ -1,5 +1,5 @@
 import { computed } from '@preact/signals';
-import type { Thread } from '@tencil/protocol';
+import type { Thread } from '@tencildev/protocol';
 import { send, upsertLocal } from '../lib/connection.ts';
 import { buildSelector } from '../lib/element-context.ts';
 import { getHost } from '../lib/overlay-host.ts';
