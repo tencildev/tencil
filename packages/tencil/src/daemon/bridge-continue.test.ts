@@ -185,6 +185,47 @@ describe('existing provider threads', () => {
         );
     });
 
+    it("keeps a turn's steps on its pins and starts afresh on a reply", async () => {
+        const { bridge, client, provider, store } = setup();
+        await bridge.handle(client, {
+            type: 'thread.create',
+            id: 'pin1',
+            pageUrl: 'https://shop-git-feat-acme.vercel.app/',
+            prompt: 'Tweak',
+            anchor: { selector: 'h1', offsetX: 0.5, offsetY: 0.5 },
+            context,
+            providerThreadId: 'p1',
+        });
+        const sink = provider.sinks.get('p1');
+        const at = '2026-10-07T10:00:00.000Z';
+        sink?.step?.({
+            id: 'sandbox',
+            label: 'Starting Tencil Sandbox',
+            status: 'running',
+            startedAt: at,
+        });
+        sink?.step?.({ id: 'clone', label: 'Cloning', status: 'running', startedAt: at });
+        sink?.step?.({
+            id: 'sandbox',
+            label: 'Starting Tencil Sandbox',
+            status: 'done',
+            startedAt: at,
+            endedAt: at,
+        });
+        expect(store.get('pin1')?.steps?.map(s => [s.id, s.status])).toEqual([
+            ['sandbox', 'done'],
+            ['clone', 'running'],
+        ]);
+
+        await bridge.handle(client, {
+            type: 'thread.reply',
+            threadId: 'pin1',
+            text: 'More',
+            attachments: [],
+        });
+        expect(store.get('pin1')?.steps).toBeUndefined();
+    });
+
     it('reuses the unpinned record when the same thread is opened twice', async () => {
         const { bridge, client, store } = setup();
         await bridge.handle(client, { type: 'thread.open', id: 'a', providerThreadId: 'p1' });

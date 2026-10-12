@@ -7,6 +7,7 @@ import type {
     ProviderProject,
     ProviderThreadSummary,
     ThreadStatus,
+    ThreadStep,
 } from './thread.ts';
 
 /**
@@ -89,4 +90,6 @@ export interface ThreadSink {
     gone(): void;
     /** Tencil Cloud: where the run's commit is (pushed, deploying, live, …). */
     delivery?(delivery: Delivery): void;
+    /** A step of the current turn (sandbox, clone, a tool call…); upsert by `id`. */
+    step?(step: ThreadStep): void;
 }

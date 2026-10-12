@@ -64,6 +64,26 @@ export const Delivery = z.object({
 });
 export type Delivery = z.infer<typeof Delivery>;
 
+export const StepStatus = z.enum(['running', 'done', 'failed', 'skipped']);
+export type StepStatus = z.infer<typeof StepStatus>;
+
+/**
+ * One thing a provider did during the current turn, for the overlay to show
+ * under "Working…": Tencil Cloud starting a sandbox, cloning, installing, then
+ * the agent's tool calls (nested under the agent step through `parentId`).
+ */
+export const ThreadStep = z.object({
+    id: z.string(),
+    label: z.string(),
+    status: StepStatus,
+    /** A second line: the command, a file, why it failed. */
+    detail: z.string().optional(),
+    parentId: z.string().optional(),
+    startedAt: z.string(),
+    endedAt: z.string().optional(),
+});
+export type ThreadStep = z.infer<typeof ThreadStep>;
+
 /**
  * A conversation Tencil tracks, backed by one provider thread. Owned and
  * persisted by the bridge. Pinned threads sit on an element of a page;
@@ -88,6 +108,8 @@ export const Thread = z.object({
     }),
     /** Tencil Cloud only: the run's commit, pull request and preview. */
     delivery: Delivery.optional(),
+    /** What the provider did during the latest turn, when it reports steps. */
+    steps: z.array(ThreadStep).optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
 });
