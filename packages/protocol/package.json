@@ -1,5 +1,5 @@
 {
-    "name": "@tencil/protocol",
+    "name": "@tencildev/protocol",
     "version": "0.0.0",
     "private": true,
     "type": "module",
@@ -13,6 +13,6 @@
         "zod": "^4.6.5"
     },
     "devDependencies": {
-        "@tencil/tsconfig": "workspace:*"
+        "@tencildev/tsconfig": "workspace:*"
     }
 }

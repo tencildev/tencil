@@ -8,7 +8,7 @@ import type {
     ProviderThreadSummary,
     ServerMessage,
     Thread,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 import { newId } from './id.ts';
 
 export type BridgeState = 'connecting' | 'open' | 'closed';

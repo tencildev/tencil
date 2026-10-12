@@ -4,7 +4,7 @@ import type {
     ProviderModel,
     ProviderThreadSummary,
     Thread,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {

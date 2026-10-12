@@ -14,5 +14,5 @@ export default defineConfig({
     tsconfig: 'tsconfig.build.json',
     dts: { eager: true },
     // Workspace packages are private; inline them into the published build.
-    deps: { alwaysBundle: [/^@tencil\//] },
+    deps: { alwaysBundle: [/^@tencildev\//] },
 });

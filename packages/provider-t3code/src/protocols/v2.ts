@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ImageAttachment, ProviderMessage } from '@tencil/protocol';
+import type { ImageAttachment, ProviderMessage } from '@tencildev/protocol';
 import type { RpcSocket } from '../rpc-socket.ts';
 import {
     decodedSize,

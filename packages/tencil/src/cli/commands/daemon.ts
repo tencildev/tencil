@@ -1,4 +1,4 @@
-import type { RuntimeMode } from '@tencil/provider-t3code';
+import type { RuntimeMode } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import type { ProviderName } from '../../daemon/agents.ts';
 import { startDaemon } from '../../daemon/server.ts';

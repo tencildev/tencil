@@ -2,7 +2,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { DEFAULT_T3_URL, type RuntimeMode } from '@tencil/provider-t3code';
+import { DEFAULT_T3_URL, type RuntimeMode } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import { PROVIDERS, type ProviderName, saveProvider } from '../daemon/agents.ts';
 import { DEFAULT_PORT } from '../daemon/server.ts';
