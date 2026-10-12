@@ -1,5 +1,5 @@
 import { computed, signal } from '@preact/signals';
-import type { Anchor, ElementContext } from '@tencil/protocol';
+import type { Anchor, ElementContext } from '@tencildev/protocol';
 import { pinBlocked } from './cloud-auth.ts';
 import { send, settings, threads } from './connection.ts';
 import type { Point } from './position.ts';

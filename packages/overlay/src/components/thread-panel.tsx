@@ -1,4 +1,4 @@
-import type { Thread, ThreadMessage } from '@tencil/protocol';
+import type { Thread, ThreadMessage } from '@tencildev/protocol';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';

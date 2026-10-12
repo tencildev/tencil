@@ -1,4 +1,4 @@
-import type { ComponentFrame, ElementContext } from '@tencil/protocol';
+import type { ComponentFrame, ElementContext } from '@tencildev/protocol';
 import { getDisplayName, getFiberFromHostInstance, isCompositeFiber, traverseFiber } from 'bippy';
 import { getOwnerStack, getRawOwnerStack, isSourceFile } from 'bippy/source';
 

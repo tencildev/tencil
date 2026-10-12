@@ -1,4 +1,4 @@
-import type { Anchor } from '@tencil/protocol';
+import type { Anchor } from '@tencildev/protocol';
 
 export interface Point {
     x: number;

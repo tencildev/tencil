@@ -9,7 +9,7 @@ import type {
     ProviderThreadSummary,
     ServerMessage,
     Thread,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 import { forgetToken, signInRequired, storedToken, viewer } from './cloud-auth.ts';
 import { newId } from './id.ts';
 

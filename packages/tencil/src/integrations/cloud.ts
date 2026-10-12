@@ -1,4 +1,4 @@
-import type { BuildInfo } from '@tencil/protocol';
+import type { BuildInfo } from '@tencildev/protocol';
 
 /** Where Tencil Cloud serves the overlay and its bridge. */
 export const DEFAULT_CLOUD_URL = 'https://cloud.tencil.dev';

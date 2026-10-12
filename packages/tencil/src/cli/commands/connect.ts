@@ -5,7 +5,7 @@ import {
     DEFAULT_T3_URL,
     exchangePairingCredential,
     parsePairingInput,
-} from '@tencil/provider-t3code';
+} from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 
 export async function connect(input: string | undefined, t3Url: string | undefined): Promise<void> {

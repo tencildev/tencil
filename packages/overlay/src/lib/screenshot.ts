@@ -1,4 +1,4 @@
-import type { ImageAttachment } from '@tencil/protocol';
+import type { ImageAttachment } from '@tencildev/protocol';
 import { domToJpeg } from 'modern-screenshot';
 
 const MAX_EDGE = 1600;

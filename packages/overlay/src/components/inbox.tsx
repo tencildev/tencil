@@ -1,4 +1,4 @@
-import type { ProviderProject, ProviderThreadSummary, Thread } from '@tencil/protocol';
+import type { ProviderProject, ProviderThreadSummary, Thread } from '@tencildev/protocol';
 import { useEffect, useState } from 'preact/hooks';
 import {
     bridgeState,

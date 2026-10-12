@@ -4,12 +4,12 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { basename, join, resolve } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import type { Provider, ServerMessage } from '@tencil/protocol';
+import type { Provider, ServerMessage } from '@tencildev/protocol';
 import {
     ClaudeCodeProvider,
     listClaudeCodeProjects,
     type PermissionMode,
-} from '@tencil/provider-claude-code';
+} from '@tencildev/provider-claude-code';
 import {
     type CredentialStore,
     listT3Projects,
@@ -17,7 +17,7 @@ import {
     type RuntimeMode,
     T3CodeProvider,
     type T3CodeProviderOptions,
-} from '@tencil/provider-t3code';
+} from '@tencildev/provider-t3code';
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';

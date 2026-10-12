@@ -1,4 +1,4 @@
 {
-    "extends": "@tencil/tsconfig/node.json",
+    "extends": "@tencildev/tsconfig/node.json",
     "include": ["src", "tsdown.config.ts"]
 }
