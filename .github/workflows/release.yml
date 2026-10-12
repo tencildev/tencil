@@ -19,6 +19,7 @@ jobs:
     # Only the main repository publishes, from master. Off until the trusted publisher is set up
     # on npmjs.com: set the repository variable RELEASE_ENABLED=true.
     if: github.repository == 'pixel-perfect-agency/tencil' && github.ref == 'refs/heads/master' && vars.RELEASE_ENABLED == 'true'
+    # Stays on GitHub: npm trusted publishing only accepts GitHub-hosted runners.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
