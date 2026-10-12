@@ -45,9 +45,6 @@ apps/
   inside the daemon through the Agent SDK. The SDK carries a ~250 MB binary, so it's
   an optional peer, never bundled: loaded from next to Tencil or installed into
   `~/.config/tencil/claude-code` on first use.
-- **Tencil was called Fixhere** up to 0.2.0 (npm `fixhere`).
-  `service/migrate-from-fixhere.ts` moves such an install over and `init` rewrites
-  `fixhere/react` and `fixhere/vite` imports; keep those `fixhere` strings.
 - **Only `tencil` is published.** Workspace packages are private and bundled into it
   by tsdown.
 

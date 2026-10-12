@@ -2,14 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-    addImport,
-    addTencilToBody,
-    addVitePlugin,
-    addWithTencil,
-    renameFromFixhere,
-    usesFixhere,
-} from './codemods.ts';
+import { addImport, addTencilToBody, addVitePlugin, addWithTencil } from './codemods.ts';
 import { detectPackageManager, findApps } from './detect-framework.ts';
 import { diffLines } from './diff.ts';
 import { planInit, runInit } from './run-init.ts';
@@ -298,43 +291,6 @@ describe('diffLines', () => {
     });
 });
 
-describe('projects set up as Fixhere', () => {
-    it('renames the Next.js integration', () => {
-        const layout = `import { Fixhere } from 'fixhere/react';
-
-export default function RootLayout({ children }) {
-    return (
-        <html>
-            <body>
-                {children}
-                <Fixhere port={4800} />
-            </body>
-        </html>
-    );
-}
-`;
-        expect(usesFixhere(layout)).toBe(true);
-        const after = renameFromFixhere(layout);
-        expect(after).toContain("import { Tencil } from 'tencil/react';");
-        expect(after).toContain('<Tencil port={4800} />');
-        expect(after).not.toMatch(/fixhere/i);
-    });
-
-    it('renames the Vite plugin', () => {
-        const config = `import react from '@vitejs/plugin-react';
-import fixhere from "fixhere/vite";
-import { defineConfig } from 'vite';
-
-export default defineConfig({ plugins: [react(), fixhere()] });
-`;
-        const after = renameFromFixhere(config);
-        expect(after).toContain('import tencil from "tencil/vite";');
-        expect(after).toContain('plugins: [react(), tencil()]');
-        expect(usesFixhere(after)).toBe(false);
-        expect(usesFixhere(CREATE_VITE_CONFIG)).toBe(false);
-    });
-});
-
 describe('what setup suggests next', () => {
     it('knows whether the folder it runs in already loads Tencil', async () => {
         const { nextSteps } = await import('../cli/commands/setup.ts');
@@ -348,9 +304,7 @@ describe('what setup suggests next', () => {
             writeFileSync(join(root, 'app', 'layout.tsx'), layout);
             return root;
         };
-        const wired = renameFromFixhere(
-            `import { Fixhere } from 'fixhere/react';\n\nexport default function RootLayout({ children }) {\n    return (\n        <html>\n            <body>\n                {children}\n                <Fixhere />\n            </body>\n        </html>\n    );\n}\n`,
-        );
+        const wired = `import { Tencil } from 'tencil/react';\n\nexport default function RootLayout({ children }) {\n    return (\n        <html>\n            <body>\n                {children}\n                <Tencil />\n            </body>\n        </html>\n    );\n}\n`;
         expect(await nextSteps(project(wired))).toMatch(
             /already loads Tencil[\s\S]*another project/,
         );
