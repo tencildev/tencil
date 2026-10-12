@@ -1,5 +1,5 @@
 import { computed, signal } from '@preact/signals';
-import type { CloudSignIn, Viewer } from '@tencil/protocol';
+import type { CloudSignIn, Viewer } from '@tencildev/protocol';
 
 /** Set while Tencil Cloud wants a sign-in before it serves this page. */
 export const signInRequired = signal<{ signIn: CloudSignIn; reason?: string } | null>(null);

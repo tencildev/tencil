@@ -1,4 +1,4 @@
-import type { ProviderInfo } from '@tencil/protocol';
+import type { ProviderInfo } from '@tencildev/protocol';
 import { forgetToken, viewer } from '../lib/cloud-auth.ts';
 import { cloudUrl, project, provider, reconnect, send, settings } from '../lib/connection.ts';
 import { setBatchAvailable, settingsOpen } from '../lib/state.ts';

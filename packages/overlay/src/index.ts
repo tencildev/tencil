@@ -1,4 +1,4 @@
-import type { BuildInfo } from '@tencil/protocol';
+import type { BuildInfo } from '@tencildev/protocol';
 import { h, render } from 'preact';
 import { App } from './components/app.tsx';
 import { connect } from './lib/connection.ts';

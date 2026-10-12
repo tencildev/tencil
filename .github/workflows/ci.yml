@@ -5,6 +5,10 @@ on:
     branches: [master]
   pull_request:
 
+# Runs on forks and fork pull requests too: no secrets, read-only token.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

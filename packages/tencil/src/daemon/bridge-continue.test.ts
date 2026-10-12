@@ -8,7 +8,7 @@ import type {
     SendMessageInput,
     ServerMessage,
     ThreadSink,
-} from '@tencil/protocol';
+} from '@tencildev/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';

@@ -1,4 +1,4 @@
-import type { ElementContext } from '@tencil/protocol';
+import type { ElementContext } from '@tencildev/protocol';
 
 const CONTEXT_OPEN = '<tencil-context>';
 const CONTEXT_CLOSE = '</tencil-context>';
