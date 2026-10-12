@@ -2,6 +2,24 @@
 
 Up to 0.2.0 this package was published as `fixhere`.
 
+## 0.4.0
+
+### Minor Changes
+
+- [`9fda77b`](https://github.com/pixel-perfect-agency/tencil/commit/9fda77b7f2e8ddb6af29fad543e0acf4aa6f4d28) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Batch comments: use the new batch toggle in the comment box to queue comments instead of sending each one right away, then send them all with Send in the toolbar. Batch mode is on by default and can be turned off per project in the settings, which removes the toggle. They go to the agent as one thread, numbered like their pins, and every pin in the batch opens that conversation. Queued comments survive a reload and can be rewritten or deleted before sending. The settings now open from the toolbar, next to it wherever it's docked.
+
+- [`93ee277`](https://github.com/pixel-perfect-agency/tencil/commit/93ee277a2cf347a538d0be5ad66b6a3809798180) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Drag a pin to move it: it re-anchors to the element you drop it on. Threads now open at their latest message and follow the agent's answer as it streams, unless you scroll up to read. Pins also follow the page when it scrolls.
+
+- [`9fda77b`](https://github.com/pixel-perfect-agency/tencil/commit/9fda77b7f2e8ddb6af29fad543e0acf4aa6f4d28) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Pick the agent and model a new pin runs on, right in the comment box; the choice is saved per project. Without a pick, T3 Code pins now follow T3 Code's own default model (per project, then for all projects), else the model of your latest thread in that project, instead of always starting on Codex.
+
+- [`9fda77b`](https://github.com/pixel-perfect-agency/tencil/commit/9fda77b7f2e8ddb6af29fad543e0acf4aa6f4d28) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Hover (or focus) the toolbar's status dot to see how Tencil is connected: the daemon and its address, the page's project, and the agent with its state.
+
+### Patch Changes
+
+- [`138c98e`](https://github.com/pixel-perfect-agency/tencil/commit/138c98ef3cea7f6477e766b3842cae9d986ec8cb) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Tencil is now licensed under the Apache License 2.0 instead of MIT.
+
+- [`9fda77b`](https://github.com/pixel-perfect-agency/tencil/commit/9fda77b7f2e8ddb6af29fad543e0acf4aa6f4d28) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - The toolbar stands beside Next.js's dev tools button when both are in the same corner, instead of sitting under it. Dragging the toolbar is reliable again: it no longer gets dropped halfway when it starts over a link or image (the browser took over to drag that instead), its landing isn't cut short, and grabbing it mid-landing no longer makes it jump.
+
 ## 0.3.2
 
 ### Patch Changes
