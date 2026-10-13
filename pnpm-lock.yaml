@@ -67,6 +67,22 @@ importers:
         specifier: ^8.3.3
         version: 8.3.3(@types/node@24.19.1)(jiti@2.7.0)(yaml@2.9.1)
 
+  packages/bridge:
+    dependencies:
+      '@tencildev/protocol':
+        specifier: workspace:^
+        version: link:../protocol
+    devDependencies:
+      '@tencildev/testing':
+        specifier: workspace:*
+        version: link:../testing
+      '@tencildev/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      tsdown:
+        specifier: ^0.23.0
+        version: 0.23.0(typescript@6.0.3)
+
   packages/overlay:
     dependencies:
       '@preact/signals':
@@ -101,6 +117,9 @@ importers:
       '@tencildev/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      tsdown:
+        specifier: ^0.23.0
+        version: 0.23.0(typescript@6.0.3)
 
   packages/provider-claude-code:
     dependencies:
@@ -149,6 +168,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.293
         version: 0.3.293(@anthropic-ai/sdk@0.132.1(zod@4.6.5))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.5))(zod@4.6.5)
+      '@tencildev/bridge':
+        specifier: workspace:*
+        version: link:../bridge
       '@tencildev/overlay':
         specifier: workspace:*
         version: link:../overlay
@@ -182,6 +204,9 @@ importers:
 
   packages/testing:
     dependencies:
+      '@tencildev/protocol':
+        specifier: workspace:^
+        version: link:../protocol
       ws:
         specifier: ^8.22.0
         version: 8.22.0
@@ -192,6 +217,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
+      tsdown:
+        specifier: ^0.23.0
+        version: 0.23.0(typescript@6.0.3)
 
   packages/tsconfig: {}
 

@@ -1,63 +1,11 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type {
-    CreateThreadInput,
-    Provider,
-    ProviderInfo,
-    SendMessageInput,
-    ServerMessage,
-    ThreadSink,
-} from '@tencildev/protocol';
+import type { ServerMessage } from '@tencildev/protocol';
+import { FakeAgentProvider } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';
-import { ThreadStore } from './thread-store.ts';
+import { MemoryThreadStore } from './thread-store.ts';
 
-class FakeProvider implements Provider {
-    readonly label: string;
-    created = 0;
-    createdWith: CreateThreadInput[] = [];
-    sent: SendMessageInput[] = [];
-    sinks = new Map<string, ThreadSink>();
-
-    constructor(readonly id: string) {
-        this.label = id === 't3code' ? 'T3 Code' : 'Claude Code';
-    }
-    async start() {}
-    info(): ProviderInfo {
-        return { id: this.id, label: this.label, state: 'ready' };
-    }
-    onInfoChange() {
-        return () => {};
-    }
-    async listThreads() {
-        return { project: { name: this.label }, threads: [] };
-    }
-    threadUrl() {
-        return undefined;
-    }
-    async listModels() {
-        return {
-            models: [{ id: `${this.id}/fast`, label: 'Fast', group: this.label }],
-            defaultModel: `${this.id}/fast`,
-        };
-    }
-    async createThread(input: CreateThreadInput) {
-        this.createdWith.push(input);
-        this.created++;
-        return { providerThreadId: `${this.id}-${this.created}` };
-    }
-    async sendMessage(input: SendMessageInput) {
-        this.sent.push(input);
-    }
-    async interrupt() {}
-    watch(id: string, sink: ThreadSink) {
-        this.sinks.set(id, sink);
-        return () => this.sinks.delete(id);
-    }
-    async dispose() {}
-}
+const LABELS: Record<string, string> = { t3code: 'T3 Code', 'claude-code': 'Claude Code' };
 
 const pin = (id: string) => ({
     type: 'thread.create',
@@ -76,8 +24,7 @@ const pin = (id: string) => ({
 });
 
 function setup() {
-    const dataDir = mkdtempSync(join(tmpdir(), 'tencil-'));
-    const fakes = new Map<string, FakeProvider>();
+    const fakes = new Map<string, FakeAgentProvider>();
     const providers = new ProjectProviders({
         choices: [
             { id: 't3code', label: 'T3 Code' },
@@ -85,13 +32,12 @@ function setup() {
         ],
         fallback: 't3code',
         create: id => {
-            const fake = new FakeProvider(id);
+            const fake = new FakeAgentProvider({ id, label: LABELS[id] });
             fakes.set(id, fake);
             return fake;
         },
-        settingsPath: join(dataDir, 'settings.json'),
     });
-    const store = new ThreadStore('/projects/acme', dataDir);
+    const store = new MemoryThreadStore();
     const bridge = new Bridge({
         providers,
         store,
@@ -173,7 +119,7 @@ describe('project settings', () => {
             settings: expect.objectContaining({ provider: 't3code', model: 't3code/fast' }),
         });
         await bridge.handle(client, pin('a'));
-        expect(fakes.get('t3code')?.createdWith.at(-1)?.model).toBe('t3code/fast');
+        expect(fakes.get('t3code')?.created.at(-1)?.model).toBe('t3code/fast');
 
         // The pick belongs to T3 Code; Claude Code starts on its own default.
         await bridge.handle(client, { type: 'settings.update', provider: 'claude-code' });
@@ -182,12 +128,12 @@ describe('project settings', () => {
             settings: expect.not.objectContaining({ model: expect.anything() }),
         });
         await bridge.handle(client, pin('b'));
-        expect(fakes.get('claude-code')?.createdWith.at(-1)?.model).toBeUndefined();
+        expect(fakes.get('claude-code')?.created.at(-1)?.model).toBeUndefined();
 
         await bridge.handle(client, { type: 'settings.update', provider: 't3code' });
         await bridge.handle(client, { type: 'model.select', model: null });
         await bridge.handle(client, pin('c'));
-        expect(fakes.get('t3code')?.createdWith.at(-1)?.model).toBeUndefined();
+        expect(fakes.get('t3code')?.created.at(-1)?.model).toBeUndefined();
     });
 
     it('turns batching on and off for the project', async () => {

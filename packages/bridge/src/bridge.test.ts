@@ -1,7 +1,10 @@
-import type { Thread } from '@tencildev/protocol';
+import type { ServerMessage, Thread } from '@tencildev/protocol';
+import { FakeAgentProvider, waitFor } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
-import { mergeMessage } from './bridge.ts';
+import { Bridge, mergeMessage } from './bridge.ts';
+import { ProjectProviders } from './project-providers.ts';
 import { renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';
+import { MemoryThreadStore } from './thread-store.ts';
 
 const context = {
     tagName: 'button',
@@ -120,5 +123,66 @@ describe('mergeMessage', () => {
         expect(second.messages.filter(m => m.role === 'assistant')).toEqual([
             expect.objectContaining({ text: 'Working', streaming: false }),
         ]);
+    });
+});
+
+describe('Bridge', () => {
+    it('runs a pin end to end on an in-memory store and a provider the host hands in', async () => {
+        const provider = new FakeAgentProvider();
+        const store = new MemoryThreadStore();
+        const bridge = new Bridge({
+            providers: ProjectProviders.of(provider),
+            store,
+            project: { name: 'acme', root: '/projects/acme' },
+            version: '0',
+        });
+        const received: ServerMessage[] = [];
+        const client = { send: (message: ServerMessage) => received.push(message) };
+        bridge.connect(client);
+
+        await bridge.handle(client, { type: 'hello', protocol: 1, pageUrl: 'http://x/' });
+        expect(received.at(-1)).toMatchObject({
+            type: 'ready',
+            project: { name: 'acme' },
+            provider: { id: 'fake', state: 'ready' },
+            threads: [],
+        });
+
+        await bridge.handle(client, {
+            type: 'thread.create',
+            id: 'pin1',
+            pageUrl: 'http://localhost:3000/',
+            prompt: 'Make it red',
+            anchor: { selector: 'button', offsetX: 0.5, offsetY: 0.5 },
+            context,
+        });
+        expect(provider.started).toBe(1);
+        expect(stripContext(provider.created[0]!.text)).toBe('Make it red');
+        expect(store.get('pin1')).toMatchObject({
+            title: 'PricingCard: Make it red',
+            status: 'working',
+            provider: { id: 'fake', threadId: 'fake-1' },
+        });
+
+        const sink = provider.sinks.get('fake-1')!;
+        sink.message({
+            id: 'a1',
+            role: 'assistant',
+            text: 'Done',
+            streaming: false,
+            createdAt: new Date(Date.now() + 1000).toISOString(),
+        });
+        sink.status('idle');
+        expect(store.get('pin1')?.status).toBe('idle');
+        await waitFor(() =>
+            received.find(
+                m => m.type === 'thread.upsert' && m.thread.messages.at(-1)?.text === 'Done',
+            ),
+        );
+
+        await bridge.handle(client, { type: 'thread.delete', threadId: 'pin1' });
+        expect(store.list()).toEqual([]);
+        expect(provider.sinks.size).toBe(0);
+        await bridge.dispose();
     });
 });
