@@ -6,6 +6,10 @@ on:
   pull_request:
 
 # Runs on forks and fork pull requests too: no secrets, read-only token.
+#
+# While the repository is private, GitHub bills every minute (macOS at 10x and Windows at 2x the Linux
+# rate, each job rounded up to a whole minute), so macOS and Windows only run on a push to master. Once
+# it's public, GitHub-hosted runners are free and every pull request is tested on all three, forks included.
 permissions:
   contents: read
 
@@ -20,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON((github.event_name == 'push' || !github.event.repository.private) && '["ubuntu-latest", "macos-latest", "windows-latest"]' || '["ubuntu-latest"]') }}
         node: [22]
         include:
           - os: ubuntu-latest
@@ -86,3 +90,28 @@ jobs:
           npx tencil status
           curl -sf http://127.0.0.1:48777/tencil.js > /dev/null
           npx tencil stop
+      # The @tencildev/* libraries publish from dist (publishConfig.exports) with real version ranges.
+      - run: |
+          pnpm --filter @tencildev/protocol pack --pack-destination "$RUNNER_TEMP/libraries"
+          pnpm --filter @tencildev/bridge pack --pack-destination "$RUNNER_TEMP/libraries"
+          pnpm --filter @tencildev/testing pack --pack-destination "$RUNNER_TEMP/libraries"
+      - name: Smoke-test the packed libraries
+        run: |
+          mkdir "$RUNNER_TEMP/library-consumer" && cd "$RUNNER_TEMP/library-consumer"
+          npm init -y >/dev/null
+          npm install "$RUNNER_TEMP"/libraries/*.tgz
+          node --input-type=module -e "$SMOKE"
+        env:
+          SMOKE: |
+            import { Bridge, MemoryThreadStore, ProjectProviders } from '@tencildev/bridge';
+            import { FakeAgentProvider } from '@tencildev/testing';
+            const bridge = new Bridge({
+              providers: ProjectProviders.of(new FakeAgentProvider()),
+              store: new MemoryThreadStore(),
+              project: { name: 'x', root: '/x' },
+              version: '0',
+            });
+            const sent = [];
+            await bridge.handle({ send: m => sent.push(m) }, { type: 'hello', protocol: 1, pageUrl: 'http://x/' });
+            if (sent[0]?.type !== 'ready') throw new Error(JSON.stringify(sent));
+            await bridge.dispose();

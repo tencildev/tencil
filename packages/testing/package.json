@@ -1,19 +1,52 @@
 {
     "name": "@tencildev/testing",
-    "version": "0.0.0",
-    "private": true,
+    "version": "0.1.0",
+    "description": "Test doubles for Tencil: a fake provider, a fake T3 Code server and a fake Claude Agent SDK.",
+    "license": "Apache-2.0",
+    "author": "Pixel Perfect Agency",
+    "homepage": "https://tencil.dev",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/tencildev/tencil.git",
+        "directory": "packages/testing"
+    },
+    "bugs": {
+        "url": "https://github.com/tencildev/tencil/issues"
+    },
     "type": "module",
     "exports": {
-        ".": "./src/index.ts"
+        ".": "./src/index.ts",
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist",
+        "NOTICE"
+    ],
+    "publishConfig": {
+        "access": "public",
+        "exports": {
+            ".": {
+                "types": "./dist/index.d.mts",
+                "default": "./dist/index.mjs"
+            },
+            "./package.json": "./package.json"
+        }
+    },
+    "engines": {
+        "node": ">=22"
     },
     "scripts": {
-        "typecheck": "tsc -p ."
+        "build": "tsdown",
+        "typecheck": "tsc -p .",
+        "prepack": "turbo run build --filter=@tencildev/testing"
     },
     "dependencies": {
+        "@tencildev/protocol": "workspace:^",
         "ws": "^8.22.0"
     },
     "devDependencies": {
         "@types/ws": "^8.18.2",
-        "@tencildev/tsconfig": "workspace:*"
+        "@tencildev/tsconfig": "workspace:*",
+        "tsdown": "^0.23.0"
     }
 }
