@@ -6,7 +6,7 @@
 
 Please report vulnerabilities privately, not in a public issue or pull request:
 
-- **GitHub:** [report a vulnerability](https://github.com/pixel-perfect-agency/tencil/security/advisories/new)
+- **GitHub:** [report a vulnerability](https://github.com/tencildev/tencil/security/advisories/new)
   (Security tab → "Report a vulnerability"). This is the preferred route.
 - **Email:** [security@tencil.dev](mailto:security@tencil.dev).
 
