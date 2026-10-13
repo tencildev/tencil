@@ -119,7 +119,7 @@ opens a "Version packages" PR, and merging that PR publishes `tencil` to npm.
 
 Publishing uses npm trusted publishing, so there is no npm token: on npmjs.com,
 `tencil` → Settings → Trusted publisher allows GitHub Actions in
-`pixel-perfect-agency/tencil`, workflow `release.yml`. The workflow only runs while
+`tencildev/tencil`, workflow `release.yml`. The workflow only runs while
 the repository variable `RELEASE_ENABLED` is `true`.
 
 ## Security
