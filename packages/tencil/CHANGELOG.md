@@ -1,5 +1,13 @@
 # tencil
 
+## 0.6.0
+
+### Minor Changes
+
+- [#13](https://github.com/tencildev/tencil/pull/13) [`1f74444`](https://github.com/tencildev/tencil/commit/1f74444271778a5f232086611fd464b45cdb0b6c) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Tencil Cloud preview builds tag each element with the file, line and component it comes from (`data-tencil-src`, `data-tencil-component`), so a pin on a preview tells the agent where the code is, as in development. The Vite plugin does it by itself; for Next.js wrap the config in `withTencil()` from `tencil/next` (`tencil init --cloud` does it for you). Builds without `TENCIL_CLOUD` are unchanged.
+
+- [#17](https://github.com/tencildev/tencil/pull/17) [`5050616`](https://github.com/tencildev/tencil/commit/5050616e04f1b78b7f441b460fccc5fb5ca8c32b) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Click "Working…" on a Tencil Cloud pin to see what the run is doing: starting the sandbox, cloning, installing, each file the agent reads or edits, committing and pushing. When the run is done, the steps stay behind a "steps" toggle with how long it took.
+
 ## 0.5.0
 
 ### Minor Changes
