@@ -1,11 +1,13 @@
 import type { ImageAttachment } from './context.ts';
 import type { ProviderInfo } from './messages.ts';
 import type {
+    Delivery,
     MessageRole,
     ProviderModel,
     ProviderProject,
     ProviderThreadSummary,
     ThreadStatus,
+    ThreadStep,
 } from './thread.ts';
 
 /**
@@ -86,4 +88,8 @@ export interface ThreadSink {
     status(status: Exclude<ThreadStatus, 'starting' | 'draft'>, detail?: string): void;
     /** Provider no longer has this thread (deleted/archived on its side). */
     gone(): void;
+    /** Tencil Cloud: where the run's commit is (pushed, deploying, live, …). */
+    delivery?(delivery: Delivery): void;
+    /** A step of the current turn (sandbox, clone, a tool call…); upsert by `id`. */
+    step?(step: ThreadStep): void;
 }

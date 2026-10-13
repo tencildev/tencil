@@ -8,6 +8,8 @@ import {
     type ServerMessage,
     type Thread,
     type ThreadMessage,
+    type ThreadStep,
+    type Viewer,
 } from '@tencildev/protocol';
 import type { ProjectProviders } from './project-providers.ts';
 import { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
@@ -15,6 +17,8 @@ import type { ThreadStore } from './thread-store.ts';
 
 export interface BridgeClient {
     send(message: ServerMessage): void;
+    /** Tencil Cloud: who this connection signed in as, echoed in `ready`. */
+    viewer?: Viewer;
 }
 
 export interface BridgeOptions {
@@ -89,6 +93,7 @@ export class Bridge {
                         provider: this.#provider().info(),
                         settings: this.#settings(),
                         threads: this.#options.store.list(),
+                        ...(client.viewer && { viewer: client.viewer }),
                     });
                     return;
                 case 'thread.create':
@@ -441,6 +446,8 @@ export class Bridge {
             resolved: false,
             status: 'working',
             statusDetail: undefined,
+            // Steps are per turn; the provider reports this one's afresh.
+            steps: undefined,
             messages: [...current.messages, localMessage(message.text, new Date().toISOString())],
         }));
         await this.#providerOf(thread).sendMessage({
@@ -470,6 +477,8 @@ export class Bridge {
         const unwatch = provider.watch(providerThreadId, {
             message: message => each(thread => mergeMessage(thread, message)),
             status: (status, statusDetail) => each(thread => ({ ...thread, status, statusDetail })),
+            delivery: delivery => each(thread => ({ ...thread, delivery })),
+            step: step => each(thread => mergeStep(thread, step)),
             gone: () =>
                 each(thread => ({
                     ...thread,
@@ -607,4 +616,18 @@ export function mergeMessage(thread: Thread, incoming: ProviderMessage): Thread 
         messages = messages.map((m, i) => (i === index ? message : m));
     }
     return { ...thread, messages };
+}
+
+/** Most steps a pin keeps; a long agent turn drops its oldest tool calls first. */
+const MAX_STEPS = 200;
+
+export function mergeStep(thread: Thread, step: ThreadStep): Thread {
+    const current = thread.steps ?? [];
+    const index = current.findIndex(s => s.id === step.id);
+    let steps = index === -1 ? [...current, step] : current.map((s, i) => (i === index ? step : s));
+    if (steps.length > MAX_STEPS) {
+        const drop = steps.findIndex(s => s.parentId !== undefined && s.status !== 'running');
+        steps = steps.filter((_, i) => i !== (drop === -1 ? 0 : drop));
+    }
+    return { ...thread, steps };
 }
