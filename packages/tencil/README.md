@@ -115,6 +115,15 @@ Nobody is at a terminal to approve tool calls, so `--runtime-mode` decides up fr
 tools that would need approval are refused and Claude Code is told why. A turn that
 is running when the daemon stops is lost; the pin turns red and you can follow up.
 
+### Tencil Cloud as the agent
+
+With a Tencil Cloud account, `npx tencil login` signs this machine in (approve the
+code in any browser) and **Tencil Cloud** joins the agents in a project's settings,
+once the daemon restarts. Its pins run in a Tencil Cloud sandbox on the branch as it
+is on GitHub, and the change arrives as a pull request instead of an edit in your
+working tree: uncommitted and unpushed changes aren't part of it. The project's
+`origin` must be a GitHub repository that is a Tencil Cloud project you're a member of.
+
 ## Using it
 
 | Action | How |
@@ -146,6 +155,8 @@ tencil status                 Show the daemon and the projects it serves
 tencil service install        Start the daemon automatically when you log in
 tencil service uninstall      Remove the login service
 tencil connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
+tencil login                  Sign this machine in to Tencil Cloud (pins become pull requests)
+tencil logout                 Sign this machine out of Tencil Cloud
 
 --port <n>              Port (default 4747, env TENCIL_PORT)
 --provider <name>       Agent for projects without their own: t3code (default) | claude-code

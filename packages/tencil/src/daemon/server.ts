@@ -20,6 +20,8 @@ import {
     type T3CodeProviderOptions,
 } from '@tencildev/provider-t3code';
 import { WebSocket, WebSocketServer } from 'ws';
+import { TencilCloudProvider } from '../cloud/cloud-provider.ts';
+import { CloudCredentials, cloudCredentialsPath } from '../cloud/credentials.ts';
 import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
 import { type Exec, ProjectResolver } from './project-resolver.ts';
@@ -28,6 +30,7 @@ import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
 import { defaultDataDir, FileThreadStore } from './thread-store.ts';
 
 export const DEFAULT_PORT = 4747;
+const CLOUD_OPTION = { id: 'cloud', label: 'Tencil Cloud' };
 /** Screenshots ride along as data URLs. */
 const MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
@@ -108,11 +111,19 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const overlayPath = resolveOverlayPath();
 
     const claudeCodeDir = join(dataDir, 'claude-code');
+    const cloudCredentials = new CloudCredentials({ path: cloudCredentialsPath(dataDir) });
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
     const createProvider =
         options.createProvider ??
         ((root: string, id: string): Provider => {
             const providerLog = (message: string) => log(`[${basename(root)}] ${message}`);
+            if (id === 'cloud') {
+                return new TencilCloudProvider({
+                    projectRoot: root,
+                    credentials: cloudCredentials,
+                    log: providerLog,
+                });
+            }
             if (id === 'claude-code') {
                 return new ClaudeCodeProvider({
                     ...options.claudeCode,
@@ -137,8 +148,10 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         let pending = sessions.get(key);
         if (!pending) {
             pending = (async () => {
+                // Tencil Cloud is a choice once this machine signed in (`tencil login`).
+                const signedIn = (await cloudCredentials.load()) !== undefined;
                 const providers = new ProjectProviders({
-                    choices: PROVIDER_OPTIONS,
+                    choices: signedIn ? [...PROVIDER_OPTIONS, CLOUD_OPTION] : PROVIDER_OPTIONS,
                     // Read per project, so a new choice in setup applies without a restart.
                     fallback: options.provider ?? (await machineProvider({ dataDir, t3Url })),
                     create: id => createProvider(key, id),

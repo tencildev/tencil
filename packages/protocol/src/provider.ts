@@ -1,4 +1,4 @@
-import type { ImageAttachment } from './context.ts';
+import type { Anchor, ElementContext, ImageAttachment } from './context.ts';
 import type { ProviderInfo } from './messages.ts';
 import type {
     Delivery,
@@ -55,6 +55,11 @@ export interface CreateThreadInput {
     attachments: ImageAttachment[];
     /** A `ProviderModel.id` the user picked; the provider's default when absent or unknown. */
     model?: string;
+    /**
+     * The pin as the overlay sent it, for a provider that hands it on to another
+     * bridge (Tencil Cloud renders `context` into its own prompt). Absent for batches.
+     */
+    pin?: { prompt: string; pageUrl: string; anchor: Anchor; context: ElementContext };
 }
 
 export interface ProviderModels {

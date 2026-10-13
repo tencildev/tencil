@@ -13,6 +13,7 @@ packages/
 │       ├── cli/        # index.ts (entry, arg parsing) + commands/{name}.ts
 │       ├── daemon/     # server, project-resolver, file thread-store and project settings,
 │       │               # agents (machine provider detection), security
+│       ├── cloud/      # Tencil Cloud as a provider: `tencil login` credentials, a client of the runner
 │       ├── service/    # machine setup: background start/stop, login service
 │       │               # (launchd/systemd/schtasks) and its runtime copy, pairing
 │       ├── init/       # `tencil init`: detect-framework, codemods, diff, run-init

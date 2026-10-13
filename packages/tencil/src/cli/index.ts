@@ -13,6 +13,7 @@ import { isServiceInstalled, stopService } from '../service/login-service.ts';
 import { VERSION } from '../version.ts';
 import { connect } from './commands/connect.ts';
 import { runDaemon } from './commands/daemon.ts';
+import { login, logout } from './commands/login.ts';
 import { quickstart } from './commands/quickstart.ts';
 import { service } from './commands/service.ts';
 import { setup } from './commands/setup.ts';
@@ -34,6 +35,8 @@ ${pc.dim('Usage')}
   tencil service install        Start the daemon automatically when you log in
   tencil service uninstall      Remove the login service
   tencil connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
+  tencil login                  Sign this machine in to Tencil Cloud (pins become pull requests)
+  tencil logout                 Sign this machine out of Tencil Cloud
 
 ${pc.dim('Daemon options')}
   --port <n>              Port (default ${DEFAULT_PORT}, env TENCIL_PORT)
@@ -45,6 +48,7 @@ ${pc.dim('Daemon options')}
   --listen <address>      Also listen here, e.g. a Tailscale IP for a remote browser (repeatable)
   --allow-origin <url>    Allow a non-localhost page to connect (repeatable)
   --no-create-project     Don't register unknown folders as T3 Code projects
+  --cloud-url <url>       login: Tencil Cloud (default https://cloud.tencil.dev, env TENCIL_CLOUD_URL)
 
 ${pc.dim('Setup and init options')}
   -y, --yes               Accept the defaults / apply changes without asking
@@ -78,6 +82,7 @@ async function main(): Promise<void> {
             'skip-pair': { type: 'boolean' },
             cloud: { type: 'boolean' },
             from: { type: 'string' },
+            'cloud-url': { type: 'string' },
             help: { type: 'boolean', short: 'h' },
             version: { type: 'boolean', short: 'v' },
         },
@@ -157,6 +162,10 @@ async function main(): Promise<void> {
             return service(rest[0], daemonCommand, values.from);
         case 'connect':
             return connect(rest[0], t3Url);
+        case 'login':
+            return login(values['cloud-url']);
+        case 'logout':
+            return logout();
         case 'init':
             return runInit({
                 root: resolve(values.root ?? process.cwd()),

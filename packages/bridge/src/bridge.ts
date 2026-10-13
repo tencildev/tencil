@@ -235,6 +235,12 @@ export class Bridge {
                 }),
                 attachments: message.attachments,
                 model: this.#options.providers.modelFor(provider.id),
+                pin: {
+                    prompt: message.prompt,
+                    pageUrl: message.pageUrl,
+                    anchor: message.anchor,
+                    context: message.context,
+                },
             });
             this.#update(thread.id, current => ({
                 ...current,

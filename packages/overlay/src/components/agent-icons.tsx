@@ -1,3 +1,5 @@
+import { TencilLogo } from './icons.tsx';
+
 /**
  * Agent marks as T3 Code draws them (apps/web/src/components/Icons.tsx,
  * MIT, pingdotgg/t3code), so threads look the same in both places.
@@ -58,6 +60,8 @@ export function AgentIcon({
     decorative?: boolean;
 }) {
     if (!agent) return null;
+    // Tencil Cloud runs our own agent: its mark is Tencil's.
+    if (agent === 'cloud') return <TencilLogo size={size} />;
     const mark = markFor(agent);
     if (!mark) return null;
     return (
