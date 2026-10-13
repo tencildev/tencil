@@ -8,9 +8,8 @@ on:
 # Runs on forks and fork pull requests too: no secrets, read-only token.
 #
 # While the repository is private, GitHub bills every minute (macOS at 10x and Windows at 2x the Linux
-# rate, each job rounded up to a whole minute). So Linux runs on Blacksmith, and macOS and Windows only
-# on a push to master. Once it's public, GitHub-hosted runners are free, so every job runs on GitHub
-# again and every pull request is tested on all three, forks included.
+# rate, each job rounded up to a whole minute), so macOS and Windows only run on a push to master. Once
+# it's public, GitHub-hosted runners are free and every pull request is tested on all three, forks included.
 permissions:
   contents: read
 
@@ -21,7 +20,7 @@ concurrency:
 jobs:
   check:
     name: Lint, typecheck, test (${{ matrix.os }}, node ${{ matrix.node }})
-    runs-on: ${{ matrix.os == 'ubuntu-latest' && github.event.repository.private && 'blacksmith-4vcpu-ubuntu-2404' || matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +44,7 @@ jobs:
 
   e2e:
     name: Browser end-to-end
-    runs-on: ${{ github.event.repository.private && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -66,7 +65,7 @@ jobs:
 
   package:
     name: Package contents
-    runs-on: ${{ github.event.repository.private && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

@@ -1,6 +1,6 @@
 {
     "$schema": "https://unpkg.com/@changesets/config@3/schema.json",
-    "changelog": ["@changesets/changelog-github", { "repo": "pixel-perfect-agency/tencil" }],
+    "changelog": ["@changesets/changelog-github", { "repo": "tencildev/tencil" }],
     "commit": false,
     "fixed": [],
     "linked": [],
