@@ -23,54 +23,59 @@ function cli(args: string[], env: Record<string, string>) {
     );
 }
 
-describe.skipIf(!existsSync(CLI))('tencil CLI daemon lifecycle (built)', () => {
-    it('starts in the background, reports status, reuses a running daemon and stops', async () => {
-        const env = {
-            XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'tencil-cli-')),
-            TENCIL_PORT: String(48_500 + Math.floor(Math.random() * 400)),
-        };
-        try {
-            const started = await cli(['start'], env);
-            expect(started.out).toMatch(/Tencil started/);
+// Each test runs the CLI several times, and each run may take seconds (process spawns are slow on Windows CI).
+describe.skipIf(!existsSync(CLI))(
+    'tencil CLI daemon lifecycle (built)',
+    { timeout: 60_000 },
+    () => {
+        it('starts in the background, reports status, reuses a running daemon and stops', async () => {
+            const env = {
+                XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'tencil-cli-')),
+                TENCIL_PORT: String(48_500 + Math.floor(Math.random() * 400)),
+            };
+            try {
+                const started = await cli(['start'], env);
+                expect(started.out).toMatch(/Tencil started/);
 
-            const status = await cli(['status'], env);
-            expect(status.code).toBe(0);
-            expect(status.out).toMatch(/Tencil v/);
+                const status = await cli(['status'], env);
+                expect(status.code).toBe(0);
+                expect(status.out).toMatch(/Tencil v/);
 
-            const again = await cli(['start'], env);
-            expect(again.out).toMatch(/is running/);
-        } finally {
-            const stopped = await cli(['stop'], env);
-            expect(stopped.out).toMatch(/Stopped/);
-        }
-        const after = await cli(['status'], env);
-        expect(after.code).toBe(1);
-    });
+                const again = await cli(['start'], env);
+                expect(again.out).toMatch(/is running/);
+            } finally {
+                const stopped = await cli(['stop'], env);
+                expect(stopped.out).toMatch(/Stopped/);
+            }
+            const after = await cli(['status'], env);
+            expect(after.code).toBe(1);
+        });
 
-    it('keeps the daemon flags across restarts unless new ones are given', async () => {
-        const env = {
-            XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'tencil-cli-')),
-            TENCIL_PORT: String(48_900 + Math.floor(Math.random() * 400)),
-        };
-        const flags = async () =>
-            (
-                (await (await fetch(`http://127.0.0.1:${env.TENCIL_PORT}/health`)).json()) as {
-                    flags: string[];
-                }
-            ).flags;
-        try {
-            await cli(['start', '--allow-origin', 'http://devbox:3000'], env);
-            expect(await flags()).toEqual(['--allow-origin', 'http://devbox:3000']);
+        it('keeps the daemon flags across restarts unless new ones are given', async () => {
+            const env = {
+                XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'tencil-cli-')),
+                TENCIL_PORT: String(48_900 + Math.floor(Math.random() * 400)),
+            };
+            const flags = async () =>
+                (
+                    (await (await fetch(`http://127.0.0.1:${env.TENCIL_PORT}/health`)).json()) as {
+                        flags: string[];
+                    }
+                ).flags;
+            try {
+                await cli(['start', '--allow-origin', 'http://devbox:3000'], env);
+                expect(await flags()).toEqual(['--allow-origin', 'http://devbox:3000']);
 
-            // What `init` and upgrades do: start without flags.
-            expect((await cli(['start'], env)).out).toMatch(/is running/);
-            expect(await flags()).toEqual(['--allow-origin', 'http://devbox:3000']);
+                // What `init` and upgrades do: start without flags.
+                expect((await cli(['start'], env)).out).toMatch(/is running/);
+                expect(await flags()).toEqual(['--allow-origin', 'http://devbox:3000']);
 
-            const changed = await cli(['start', '--allow-origin', 'http://other:3000'], env);
-            expect(changed.out).toMatch(/restarted/);
-            expect(await flags()).toEqual(['--allow-origin', 'http://other:3000']);
-        } finally {
-            await cli(['stop'], env);
-        }
-    });
-});
+                const changed = await cli(['start', '--allow-origin', 'http://other:3000'], env);
+                expect(changed.out).toMatch(/restarted/);
+                expect(await flags()).toEqual(['--allow-origin', 'http://other:3000']);
+            } finally {
+                await cli(['stop'], env);
+            }
+        });
+    },
+);
