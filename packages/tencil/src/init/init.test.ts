@@ -1,17 +1,11 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-    addImport,
-    addTencilToBody,
-    addVitePlugin,
-    renameFromFixhere,
-    usesFixhere,
-} from './codemods.ts';
+import { addImport, addTencilToBody, addVitePlugin } from './codemods.ts';
 import { detectPackageManager, findApps } from './detect-framework.ts';
 import { diffLines } from './diff.ts';
-import { planInit } from './run-init.ts';
+import { planInit, runInit } from './run-init.ts';
 
 const CREATE_NEXT_APP_CONFIG = `import type { NextConfig } from "next";
 
@@ -189,6 +183,20 @@ describe('planInit', () => {
         expect(unknown.manual[0]).toContain('tencil.js');
     });
 
+    it('sets up for Tencil Cloud without a daemon or pairing', async () => {
+        const root = project({
+            'package.json': JSON.stringify({ devDependencies: { vite: '8.0.0', tencil: '1' } }),
+            'vite.config.ts': CREATE_VITE_CONFIG,
+        });
+        const lines: string[] = [];
+        await runInit({ root, yes: true, skipInstall: true, cloud: true, log: l => lines.push(l) });
+        const output = lines.join('\n');
+        expect(readFileSync(join(root, 'vite.config.ts'), 'utf8')).toContain('tencil()');
+        expect(output).toContain('TENCIL_CLOUD=<project key>');
+        expect(output).toContain('Preview');
+        expect(output).not.toMatch(/is running|Pair/);
+    });
+
     it('finds the apps in a monorepo root, skipping node_modules', async () => {
         const root = project({
             'package.json': JSON.stringify({ private: true }),
@@ -239,43 +247,6 @@ describe('diffLines', () => {
     });
 });
 
-describe('projects set up as Fixhere', () => {
-    it('renames the Next.js integration', () => {
-        const layout = `import { Fixhere } from 'fixhere/react';
-
-export default function RootLayout({ children }) {
-    return (
-        <html>
-            <body>
-                {children}
-                <Fixhere port={4800} />
-            </body>
-        </html>
-    );
-}
-`;
-        expect(usesFixhere(layout)).toBe(true);
-        const after = renameFromFixhere(layout);
-        expect(after).toContain("import { Tencil } from 'tencil/react';");
-        expect(after).toContain('<Tencil port={4800} />');
-        expect(after).not.toMatch(/fixhere/i);
-    });
-
-    it('renames the Vite plugin', () => {
-        const config = `import react from '@vitejs/plugin-react';
-import fixhere from "fixhere/vite";
-import { defineConfig } from 'vite';
-
-export default defineConfig({ plugins: [react(), fixhere()] });
-`;
-        const after = renameFromFixhere(config);
-        expect(after).toContain('import tencil from "tencil/vite";');
-        expect(after).toContain('plugins: [react(), tencil()]');
-        expect(usesFixhere(after)).toBe(false);
-        expect(usesFixhere(CREATE_VITE_CONFIG)).toBe(false);
-    });
-});
-
 describe('what setup suggests next', () => {
     it('knows whether the folder it runs in already loads Tencil', async () => {
         const { nextSteps } = await import('../cli/commands/setup.ts');
@@ -289,9 +260,7 @@ describe('what setup suggests next', () => {
             writeFileSync(join(root, 'app', 'layout.tsx'), layout);
             return root;
         };
-        const wired = renameFromFixhere(
-            `import { Fixhere } from 'fixhere/react';\n\nexport default function RootLayout({ children }) {\n    return (\n        <html>\n            <body>\n                {children}\n                <Fixhere />\n            </body>\n        </html>\n    );\n}\n`,
-        );
+        const wired = `import { Tencil } from 'tencil/react';\n\nexport default function RootLayout({ children }) {\n    return (\n        <html>\n            <body>\n                {children}\n                <Tencil />\n            </body>\n        </html>\n    );\n}\n`;
         expect(await nextSteps(project(wired))).toMatch(
             /already loads Tencil[\s\S]*another project/,
         );

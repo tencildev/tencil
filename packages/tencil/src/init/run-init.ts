@@ -6,17 +6,17 @@ import { withoutNpmEnv } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import { newerDaemonLine } from '../cli/format.ts';
 import { defaultDataDir } from '../daemon/thread-store.ts';
+import { DEFAULT_CLOUD_URL } from '../integrations/cloud.ts';
 import { ensureDaemon } from '../service/autostart.ts';
 import { chooseProvider } from '../service/choose-provider.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
 import { prepareProvider } from '../service/pairing.ts';
-import { addTencilToBody, addVitePlugin, renameFromFixhere, usesFixhere } from './codemods.ts';
+import { addTencilToBody, addVitePlugin } from './codemods.ts';
 import {
     detectFramework,
     detectPackageManager,
     type Framework,
     installCommand,
-    uninstallCommand,
 } from './detect-framework.ts';
 import { diffLines, hunks } from './diff.ts';
 
@@ -34,6 +34,8 @@ export interface InitOptions {
     /** Package spec to install, e.g. a local path before Tencil is published. */
     from?: string;
     t3Url?: string;
+    /** Set up for Tencil Cloud previews: no daemon or pairing on this machine. */
+    cloud?: boolean;
     log?: (message: string) => void;
 }
 
@@ -64,11 +66,7 @@ export async function planInit(root: string): Promise<InitPlan> {
     ) => {
         if (!path) return void manual.push(instruction);
         const before = await readFile(path, 'utf8');
-        if (usesFixhere(before)) {
-            edits.push({ path, before, after: renameFromFixhere(before) });
-            return;
-        }
-        if (/(?:tencil|fixhere)\.js/.test(before)) {
+        if (/tencil\.js/.test(before)) {
             manual.push(
                 `${relative(root, path)} loads tencil.js by hand. Replace that tag with \`<Tencil />\` from \`tencil/react\` so the bridge's port is picked up automatically.`,
             );
@@ -144,9 +142,9 @@ export async function runInit(options: InitOptions): Promise<void> {
 
     if (!options.skipInstall && plan.framework.kind !== 'unknown') {
         if (!(await hasDependency(options.root, 'tencil')) || options.from) install(options, log);
-        // Tencil was called Fixhere up to 0.2.0; its package has nothing left to do here.
-        if (await hasDependency(options.root, 'fixhere')) uninstall(options, 'fixhere', log);
     }
+    if (options.cloud) return logCloudSteps(plan.framework, log);
+
     let autostart = false;
     if (options.daemon) {
         const result = await ensureDaemon(options.daemon, defaultDataDir());
@@ -167,6 +165,27 @@ export async function runInit(options: InitOptions): Promise<void> {
     log('');
 }
 
+/** What's left to do in Tencil Cloud and the host once the code is in place. */
+function logCloudSteps(framework: Framework, log: (message: string) => void): void {
+    const env = pc.cyan('TENCIL_CLOUD=<project key>');
+    log(
+        `  ${pc.green('✓')} The overlay loads from Tencil Cloud on preview builds that set ${env}.`,
+    );
+    log(`    1. Create a project at ${pc.cyan(DEFAULT_CLOUD_URL)} and copy its key.`);
+    log(
+        `    2. Add ${env} to your host's ${pc.bold('Preview')} environment only (Vercel: Settings → Environment Variables).`,
+    );
+    log('    3. Redeploy a preview. Production deployments never load the overlay.');
+    if (framework.kind === 'next-app' || framework.kind === 'next-pages') {
+        log(
+            pc.dim(
+                '    Keep <Tencil /> in a server component: it reads TENCIL_CLOUD when the page renders.',
+            ),
+        );
+    }
+    log('');
+}
+
 /** Already a dependency (and no other package asked for with `--from`)? */
 async function hasDependency(root: string, name: string): Promise<boolean> {
     try {
@@ -175,17 +194,6 @@ async function hasDependency(root: string, name: string): Promise<boolean> {
     } catch {
         return false;
     }
-}
-
-function uninstall(options: InitOptions, name: string, log: (message: string) => void): void {
-    const [command, args] = uninstallCommand(detectPackageManager(options.root), name);
-    log(`  ${pc.dim(`$ ${command} ${args.join(' ')}`)}`);
-    spawnSync(command, args, {
-        cwd: options.root,
-        stdio: 'inherit',
-        shell: process.platform === 'win32',
-        env: withoutNpmEnv(),
-    });
 }
 
 function install(options: InitOptions, log: (message: string) => void): void {

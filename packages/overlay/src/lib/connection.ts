@@ -1,5 +1,6 @@
 import { batch, signal } from '@preact/signals';
 import type {
+    BuildInfo,
     ClientMessageInput,
     ProjectSettings,
     ProviderInfo,
@@ -39,9 +40,12 @@ export const lastError = signal<{ message: string; threadId?: string; at: number
 let socket: WebSocket | undefined;
 let retry = 500;
 let bridgeUrl = '';
+/** Set on Tencil Cloud builds, sent with every `hello`. */
+let pageBuild: BuildInfo | undefined;
 
-export function connect(url: string): void {
+export function connect(url: string, build?: BuildInfo): void {
     bridgeUrl = url;
+    pageBuild = build;
     open();
 }
 
@@ -79,7 +83,14 @@ function open(): void {
 
     ws.addEventListener('open', () => {
         retry = 500;
-        ws.send(JSON.stringify({ type: 'hello', protocol: 1, pageUrl: location.href }));
+        ws.send(
+            JSON.stringify({
+                type: 'hello',
+                protocol: 1,
+                pageUrl: location.href,
+                ...(pageBuild && { build: pageBuild }),
+            }),
+        );
     });
     ws.addEventListener('message', event => {
         try {

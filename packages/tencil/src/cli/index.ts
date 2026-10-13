@@ -6,12 +6,10 @@ import { DEFAULT_T3_URL, type RuntimeMode } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import { PROVIDERS, type ProviderName, saveProvider } from '../daemon/agents.ts';
 import { DEFAULT_PORT } from '../daemon/server.ts';
-import { defaultDataDir } from '../daemon/thread-store.ts';
 import { runInit } from '../init/run-init.ts';
 import { stopDaemon } from '../service/background.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
 import { isServiceInstalled, stopService } from '../service/login-service.ts';
-import { migrateFromFixhere } from '../service/migrate-from-fixhere.ts';
 import { VERSION } from '../version.ts';
 import { connect } from './commands/connect.ts';
 import { runDaemon } from './commands/daemon.ts';
@@ -53,14 +51,12 @@ ${pc.dim('Setup and init options')}
   --dry-run               Show the changes without writing them
   --skip-install          Don't install the tencil package
   --skip-pair             Don't pair with T3 Code
+  --cloud                 init: set up for Tencil Cloud previews (no daemon on this machine)
   --from <spec>           Package to install instead of "tencil" (e.g. a local path)
 
   -h, --help              Show help
   -v, --version           Show version
 `;
-
-/** Commands that start or install the daemon. */
-const SETS_UP = ['setup', 'start', 'init', 'service'];
 
 async function main(): Promise<void> {
     const { values, positionals } = parseArgs({
@@ -80,6 +76,7 @@ async function main(): Promise<void> {
             'dry-run': { type: 'boolean' },
             'skip-install': { type: 'boolean' },
             'skip-pair': { type: 'boolean' },
+            cloud: { type: 'boolean' },
             from: { type: 'string' },
             help: { type: 'boolean', short: 'h' },
             version: { type: 'boolean', short: 'v' },
@@ -111,11 +108,6 @@ async function main(): Promise<void> {
         port,
         args: forwardedFlags(values),
     };
-
-    // Tencil was called Fixhere up to 0.2.0: move such an install over before setting up.
-    if (command === undefined || SETS_UP.includes(command)) {
-        await migrateFromFixhere(port, defaultDataDir(), console.log);
-    }
 
     switch (command) {
         case undefined:
@@ -174,8 +166,9 @@ async function main(): Promise<void> {
                 skipPair: values['skip-pair'],
                 from: values.from,
                 port,
-                daemon: daemonCommand,
+                daemon: values.cloud ? undefined : daemonCommand,
                 t3Url,
+                cloud: values.cloud,
             });
         default:
             console.error(`Unknown command "${command}"\n${HELP}`);
