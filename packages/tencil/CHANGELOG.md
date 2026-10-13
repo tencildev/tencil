@@ -1,5 +1,11 @@
 # tencil
 
+## 0.5.0
+
+### Minor Changes
+
+- [#12](https://github.com/tencildev/tencil/pull/12) [`9fd363b`](https://github.com/tencildev/tencil/commit/9fd363b069415c8c0b2e04477296b66e3e0b3d26) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Preview builds can load the overlay from Tencil Cloud. Set `TENCIL_CLOUD` to a project key in your host's preview environment and the Vite plugin and `<Tencil />` load the overlay from Tencil Cloud, with the repository, branch and commit the host reports (Vercel, Netlify, Cloudflare Pages, GitHub Actions). Production deployments never load it, and builds without `TENCIL_CLOUD` are unchanged. `tencil init --cloud` sets a project up for it without starting a daemon.
+
 ## 0.4.0
 
 ### Minor Changes
