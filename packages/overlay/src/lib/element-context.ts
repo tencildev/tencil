@@ -146,6 +146,10 @@ function visibleText(element: Element): string | undefined {
 /* ------------------------------ react components ------------------------------ */
 
 async function componentFrames(element: Element): Promise<ComponentFrame[]> {
+    // A Tencil Cloud build tagged its elements: that beats production React's
+    // owner stack, which only has minified names (`F`) and no files.
+    const tagged = taggedFrames(element);
+    if (tagged.length > 0) return tagged;
     const fiber = safeFiber(element);
     if (!fiber) return [];
     try {
@@ -166,6 +170,36 @@ async function componentFrames(element: Element): Promise<ComponentFrame[]> {
         // Owner stacks need React 19 dev builds and fetchable source maps; fall back to names.
     }
     return fiberNames(fiber);
+}
+
+/**
+ * Tencil Cloud preview builds tag each element with where it's written
+ * (`data-tencil-src="src/card.tsx:42:7"`) and its component, because
+ * production React has no source info. Innermost component first, one frame
+ * per component, at the element closest to the picked one.
+ */
+export function taggedFrames(element: Element): ComponentFrame[] {
+    const frames: ComponentFrame[] = [];
+    let last: string | undefined;
+    for (
+        let node: Element | null = element;
+        node && frames.length < MAX_FRAMES;
+        node = node.parentElement
+    ) {
+        const source = node.getAttribute('data-tencil-src');
+        const match = source?.match(/^(.+):(\d+):(\d+)$/);
+        if (!match) continue;
+        const [, file = '', line, column] = match;
+        const name = node.getAttribute('data-tencil-component') ?? fileName(file);
+        if (name === last) continue;
+        last = name;
+        frames.push({ name, source: { file, line: Number(line), column: Number(column) } });
+    }
+    return frames;
+}
+
+function fileName(path: string): string {
+    return path.slice(path.lastIndexOf('/') + 1);
 }
 
 /**

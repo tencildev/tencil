@@ -1,10 +1,13 @@
-import type { Thread, ThreadMessage } from '@tencildev/protocol';
+import type { Delivery, Thread, ThreadMessage, ThreadStep } from '@tencildev/protocol';
+import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { pinBlocked } from '../lib/cloud-auth.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
 import {
     CheckIcon,
+    ChevronIcon,
     CloseIcon,
     CodeIcon,
     ExternalIcon,
@@ -64,10 +67,13 @@ export function ThreadPanel() {
             ) : (
                 <>
                     <Messages key={thread.id} thread={thread} />
-                    <StatusLine thread={thread} />
+                    <RunStatus key={thread.id} thread={thread} />
                     <PromptInput
-                        placeholder={thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…'}
-                        disabled={!thread.provider.threadId}
+                        placeholder={
+                            pinBlocked.value ??
+                            (thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…')
+                        }
+                        disabled={!thread.provider.threadId || pinBlocked.value !== null}
                         onSubmit={text => {
                             send({ type: 'thread.reply', threadId: thread.id, text });
                         }}
@@ -281,7 +287,122 @@ function Shimmer({ text }: { text: string }) {
     );
 }
 
-function StatusLine({ thread }: { thread: Thread }) {
+/** The status line, and the turn's steps behind it when the provider reports them. */
+function RunStatus({ thread }: { thread: Thread }) {
+    const [open, setOpen] = useState(false);
+    const steps = thread.steps ?? [];
+    const toggle = steps.length > 0 ? { open, onToggle: () => setOpen(!open) } : undefined;
+    const working = thread.status === 'working';
+    return (
+        <>
+            {open && steps.length > 0 && <StepList steps={steps} follow={working} />}
+            <StatusLine thread={thread} steps={toggle} />
+            {toggle && !working && (
+                <div class="status-line">
+                    <StepsToggle {...toggle}>
+                        {steps.filter(step => !step.parentId).length} steps
+                        {elapsed(steps) ? ` · ${elapsed(steps)}` : ''}
+                    </StepsToggle>
+                </div>
+            )}
+            {thread.delivery && !working && <DeliveryLine delivery={thread.delivery} />}
+        </>
+    );
+}
+
+interface Toggle {
+    open: boolean;
+    onToggle: () => void;
+}
+
+function StepsToggle({ open, onToggle, children }: Toggle & { children: ComponentChildren }) {
+    return (
+        <button
+            type="button"
+            class={`steps-toggle${open ? ' open' : ''}`}
+            aria-expanded={open}
+            title={open ? 'Hide steps' : 'Show steps'}
+            onClick={onToggle}
+        >
+            {children}
+            <ChevronIcon />
+        </button>
+    );
+}
+
+function StepList({ steps, follow }: { steps: ThreadStep[]; follow: boolean }) {
+    const ref = useRef<HTMLOListElement>(null);
+    const atEnd = useRef(true);
+    // Stay at the newest step while it's working, unless the user scrolled up.
+    useLayoutEffect(() => {
+        const element = ref.current;
+        if (element && follow && atEnd.current) element.scrollTop = element.scrollHeight;
+    });
+    return (
+        <ol
+            ref={ref}
+            class="steps"
+            onScroll={event => {
+                const element = event.currentTarget;
+                atEnd.current =
+                    element.scrollHeight - element.scrollTop - element.clientHeight < 16;
+            }}
+        >
+            {steps.map(step => (
+                <li
+                    key={step.id}
+                    class={`step step-${step.status}${step.parentId ? ' step-child' : ''}`}
+                    title={step.detail ? `${step.label}\n${step.detail}` : step.label}
+                >
+                    <span class="step-mark">
+                        {step.status === 'running' ? (
+                            <span class="live-dot" />
+                        ) : step.status === 'done' ? (
+                            <CheckIcon />
+                        ) : step.status === 'failed' ? (
+                            <CloseIcon />
+                        ) : (
+                            '–'
+                        )}
+                    </span>
+                    <span class="step-label">
+                        {step.label}
+                        {step.detail && <span class="step-detail">{step.detail}</span>}
+                    </span>
+                    {step.endedAt && <span class="step-time">{duration(step)}</span>}
+                </li>
+            ))}
+        </ol>
+    );
+}
+
+/** The step being worked on: the newest one still running (a tool call over the agent). */
+function currentStep(steps: ThreadStep[]): ThreadStep | undefined {
+    return steps.findLast(step => step.status === 'running');
+}
+
+function duration(step: ThreadStep): string {
+    if (!step.endedAt) return '';
+    return formatSeconds((Date.parse(step.endedAt) - Date.parse(step.startedAt)) / 1000);
+}
+
+/** From the first step's start to the last one's end. */
+function elapsed(steps: ThreadStep[]): string {
+    const first = steps[0];
+    const ends = steps.map(step => step.endedAt).filter((end): end is string => !!end);
+    if (!first || ends.length === 0) return '';
+    const last = ends.reduce((a, b) => (a > b ? a : b));
+    return formatSeconds((Date.parse(last) - Date.parse(first.startedAt)) / 1000);
+}
+
+function formatSeconds(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 1) return '';
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ${String(Math.round(seconds % 60)).padStart(2, '0')}s`;
+}
+
+function StatusLine({ thread, steps }: { thread: Thread; steps?: Toggle }) {
     if (thread.status === 'starting') {
         return (
             <div class="status-line">
@@ -294,7 +415,13 @@ function StatusLine({ thread }: { thread: Thread }) {
         return (
             <div class="status-line">
                 <span class="live-dot" />
-                <Shimmer text="Working…" />
+                {steps ? (
+                    <StepsToggle {...steps}>
+                        <Shimmer text={`${currentStep(thread.steps ?? [])?.label ?? 'Working'}…`} />
+                    </StepsToggle>
+                ) : (
+                    <Shimmer text="Working…" />
+                )}
                 <button
                     type="button"
                     class="stop"
@@ -325,4 +452,85 @@ function StatusLine({ thread }: { thread: Thread }) {
         );
     }
     return null;
+}
+
+/** Tencil Cloud: where the change is between the agent and the redeployed preview. */
+export function DeliveryLine({ delivery }: { delivery: Delivery }) {
+    const pr = delivery.pullRequest;
+    const prLink = pr && (
+        <a href={pr.url} target="_blank" rel="noreferrer">
+            {pr.opened ? `Opened #${pr.number}` : `#${pr.number}`}
+        </a>
+    );
+    const commit = delivery.commit && (
+        <a class="delivery-commit" href={delivery.commit.url} target="_blank" rel="noreferrer">
+            {delivery.commit.sha.slice(0, 7)}
+        </a>
+    );
+    switch (delivery.status) {
+        case 'queued':
+            return (
+                <div class="status-line delivery">
+                    <span class="live-dot" />
+                    <Shimmer
+                        text={
+                            delivery.queuePosition
+                                ? `Waiting, ${delivery.queuePosition} ahead on this branch`
+                                : 'Waiting for the branch…'
+                        }
+                    />
+                </div>
+            );
+        case 'pushed':
+            return (
+                <div class="status-line delivery">
+                    <span>Pushed {commit}</span>
+                    {prLink}
+                </div>
+            );
+        case 'deploying':
+            return (
+                <div class="status-line delivery">
+                    <span class="live-dot" />
+                    <Shimmer text="Deploying the preview…" />
+                    {prLink}
+                </div>
+            );
+        case 'live':
+            return (
+                <div class="status-line delivery delivery-live">
+                    <span>Live {commit}</span>
+                    {delivery.previewUrl ? (
+                        // Same tab: the new preview shows the same pins.
+                        <a href={delivery.previewUrl}>Open the new preview</a>
+                    ) : (
+                        prLink
+                    )}
+                </div>
+            );
+        case 'deploy-failed':
+            return (
+                <div class="status-line delivery status-error">
+                    <span>Preview deploy failed {commit}</span>
+                    {delivery.logsUrl ? (
+                        <a href={delivery.logsUrl} target="_blank" rel="noreferrer">
+                            Logs
+                        </a>
+                    ) : (
+                        prLink
+                    )}
+                </div>
+            );
+        case 'no-changes':
+            return <div class="status-line delivery">No changes needed, nothing pushed</div>;
+        case 'failed':
+            return (
+                <div class="status-line delivery status-error">
+                    <span class="delivery-detail" title={delivery.detail}>
+                        Couldn't push{delivery.detail ? `: ${delivery.detail}` : ''}
+                    </span>
+                    {prLink}
+                </div>
+            );
+    }
 }

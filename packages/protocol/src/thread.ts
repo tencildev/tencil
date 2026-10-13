@@ -27,6 +27,64 @@ export const ThreadMessage = z.object({
 export type ThreadMessage = z.infer<typeof ThreadMessage>;
 
 /**
+ * Where a Tencil Cloud run's change is once the agent is done: Tencil Cloud
+ * commits and pushes it, the host redeploys the preview. The local daemon
+ * never sets it; there the dev server reloads.
+ * - `queued`: waiting for earlier runs on the same branch
+ * - `pushed`: committed and pushed (to the branch's pull request, or a new one)
+ * - `deploying` / `live` / `deploy-failed`: the preview of that commit
+ * - `no-changes`: the agent changed nothing, so nothing was pushed
+ * - `failed`: couldn't commit or push (e.g. a conflict); see `detail`
+ */
+export const DeliveryStatus = z.enum([
+    'queued',
+    'pushed',
+    'deploying',
+    'live',
+    'deploy-failed',
+    'no-changes',
+    'failed',
+]);
+export type DeliveryStatus = z.infer<typeof DeliveryStatus>;
+
+export const Delivery = z.object({
+    status: DeliveryStatus,
+    detail: z.string().optional(),
+    /** Runs ahead of this one on the branch, while queued. */
+    queuePosition: z.number().int().nonnegative().optional(),
+    commit: z.object({ sha: z.string(), url: z.string() }).optional(),
+    /** `opened`: Tencil Cloud opened it for this run (the branch had none). */
+    pullRequest: z
+        .object({ number: z.number().int(), url: z.string(), opened: z.boolean().default(false) })
+        .optional(),
+    /** The redeployed preview, once live. */
+    previewUrl: z.string().optional(),
+    /** Deploy logs, when the deploy failed. */
+    logsUrl: z.string().optional(),
+});
+export type Delivery = z.infer<typeof Delivery>;
+
+export const StepStatus = z.enum(['running', 'done', 'failed', 'skipped']);
+export type StepStatus = z.infer<typeof StepStatus>;
+
+/**
+ * One thing a provider did during the current turn, for the overlay to show
+ * under "Working…": Tencil Cloud starting a sandbox, cloning, installing, then
+ * the agent's tool calls (nested under the agent step through `parentId`).
+ */
+export const ThreadStep = z.object({
+    id: z.string(),
+    label: z.string(),
+    status: StepStatus,
+    /** A second line: the command, a file, why it failed. */
+    detail: z.string().optional(),
+    parentId: z.string().optional(),
+    startedAt: z.string(),
+    endedAt: z.string().optional(),
+});
+export type ThreadStep = z.infer<typeof ThreadStep>;
+
+/**
  * A conversation Tencil tracks, backed by one provider thread. Owned and
  * persisted by the bridge. Pinned threads sit on an element of a page;
  * threads opened from the provider's list have no anchor and live in the dock.
@@ -48,6 +106,10 @@ export const Thread = z.object({
         /** Deep link into the provider UI, when it has one. */
         url: z.string().optional(),
     }),
+    /** Tencil Cloud only: the run's commit, pull request and preview. */
+    delivery: Delivery.optional(),
+    /** What the provider did during the latest turn, when it reports steps. */
+    steps: z.array(ThreadStep).optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
 });

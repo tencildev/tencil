@@ -353,6 +353,9 @@ kbd {
 .status-queued .status-error { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-error { color: var(--error); }
 .status-line a { margin-left: auto; color: var(--n-950); font-weight: 500; }
+.status-line .delivery-commit { margin-left: 0; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.delivery-live { color: var(--n-950); }
+.delivery-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-dot {
   width: 6px; height: 6px; border-radius: 999px; background: var(--live); flex: none;
   animation: live 1.6s ease-in-out infinite;
@@ -363,6 +366,27 @@ kbd {
   padding: 3px 9px; border-radius: 999px; color: var(--n-700);
   box-shadow: 0 0 0 1px var(--n-200); font-size: 12px;
 }
+
+/* A provider's steps for the turn (Tencil Cloud: sandbox, clone, install, the agent's tool calls). */
+.steps-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--n-600); }
+.steps-toggle:hover { color: var(--n-900); }
+.steps-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.steps-toggle svg { flex: none; color: var(--n-500); transition: transform 150ms var(--ease-out); }
+.steps-toggle.open svg { transform: rotate(180deg); }
+.steps {
+  display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;
+  margin: 0 2px 10px; padding: 10px 12px; list-style: none; border-radius: 0.875rem;
+  background: var(--n-100); color: var(--n-700); font-size: 12px; line-height: 1rem;
+}
+.step { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.step-child { padding-left: 20px; color: var(--n-600); }
+.step-mark { display: inline-grid; place-items: center; width: 12px; flex: none; color: var(--n-500); }
+.step-mark svg { width: 12px; height: 12px; }
+.step-done .step-mark { color: var(--done); }
+.step-failed, .step-failed .step-mark { color: var(--error); }
+.step-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-detail { margin-left: 6px; color: var(--n-500); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
+.step-time { flex: none; color: var(--n-500); font-variant-numeric: tabular-nums; }
 
 /* A color wave across the label, one character at a time. */
 .shimmer { display: inline-flex; align-items: center; line-height: 1; user-select: none; }
@@ -440,6 +464,7 @@ kbd {
 .settings-help { margin: 0; color: var(--n-600); font-size: 12px; line-height: 1.4; }
 .settings-switch-row { grid-template-columns: 1fr auto; align-items: center; gap: 16px; cursor: pointer; }
 .settings-switch-text { display: grid; gap: 2px; }
+.settings-account { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings-help svg { display: inline; width: 12px; height: 12px; vertical-align: -2px; }
 .settings-switch {
   appearance: none; position: relative; flex: none; margin: 0;
@@ -545,9 +570,10 @@ kbd {
 .status-button { display: grid; place-items: center; height: 32px; padding: 0 8px 0 10px; border-radius: 999px; outline: none; cursor: default; }
 .status-button:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 .status-dot { position: relative; width: 8px; height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.4); }
-.status-ok { background: #3dd68c; }
-.status-warn { background: #f5b84a; }
-.status-error { background: #ff6369; }
+/* Scoped to the dot: .status-error alone also colours status lines in threads. */
+.status-dot.status-ok { background: #3dd68c; }
+.status-dot.status-warn { background: #f5b84a; }
+.status-dot.status-error { background: #ff6369; }
 /* The connection card, on the toolbar's open side, starting at the dot. */
 .status-card {
   position: absolute; left: -4px; bottom: calc(100% + 14px); z-index: 1;
@@ -604,6 +630,7 @@ kbd {
 .tool-label { font-weight: 500; color: inherit; }
 .tool-send { background: var(--accent); color: white; }
 .tool-send:disabled { opacity: 0.5; cursor: default; }
+.tool:disabled { opacity: 0.45; cursor: default; }
 .badge {
   position: absolute; top: 2px; right: 0;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;

@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -11,7 +12,7 @@ import { ensureDaemon } from '../service/autostart.ts';
 import { chooseProvider } from '../service/choose-provider.ts';
 import type { DaemonCommand } from '../service/daemon-command.ts';
 import { prepareProvider } from '../service/pairing.ts';
-import { addTencilToBody, addVitePlugin } from './codemods.ts';
+import { addTencilToBody, addVitePlugin, addWithTencil } from './codemods.ts';
 import {
     detectFramework,
     detectPackageManager,
@@ -52,9 +53,10 @@ export interface InitPlan {
 }
 
 const SCRIPT_TAG = '<script src="http://localhost:4747/tencil.js" async></script>';
+const NEXT_CONFIGS = ['next.config.ts', 'next.config.mts', 'next.config.mjs', 'next.config.js'];
 
 /** Work out the edits without touching the disk. */
-export async function planInit(root: string): Promise<InitPlan> {
+export async function planInit(root: string, options: { cloud?: boolean } = {}): Promise<InitPlan> {
     const framework = await detectFramework(root);
     const edits: FileEdit[] = [];
     const manual: string[] = [];
@@ -103,12 +105,27 @@ export async function planInit(root: string): Promise<InitPlan> {
             manual.push(`${framework.reason} Load this in development only: ${SCRIPT_TAG}`);
             break;
     }
+    // Preview builds tag elements with their source through Next's bundler.
+    if (options.cloud && (framework.kind === 'next-app' || framework.kind === 'next-pages')) {
+        const config = NEXT_CONFIGS.map(name => join(root, name)).find(path => existsSync(path));
+        if (config) {
+            const before = await readFile(config, 'utf8');
+            const after = addWithTencil(before);
+            if (after === null) {
+                manual.push(
+                    `Wrap the exported config in \`withTencil()\` from \`tencil/next\` (in ${relative(root, config)})`,
+                );
+            } else if (after !== before) edits.push({ path: config, before, after });
+        } else {
+            manual.push('Create next.config.ts that exports `withTencil({})` from `tencil/next`');
+        }
+    }
     return { framework, edits, manual };
 }
 
 export async function runInit(options: InitOptions): Promise<void> {
     const log = options.log ?? console.log;
-    const plan = await planInit(options.root);
+    const plan = await planInit(options.root, { cloud: options.cloud });
     log(`\n  ${pc.bold('Tencil')} ${pc.dim('·')} ${describe(plan.framework)}\n`);
 
     for (const edit of plan.edits) {

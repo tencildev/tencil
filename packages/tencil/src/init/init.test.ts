@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addImport, addTencilToBody, addVitePlugin } from './codemods.ts';
+import { addImport, addTencilToBody, addVitePlugin, addWithTencil } from './codemods.ts';
 import { detectPackageManager, findApps } from './detect-framework.ts';
 import { diffLines } from './diff.ts';
 import { planInit, runInit } from './run-init.ts';
@@ -143,6 +143,33 @@ describe('addImport', () => {
     });
 });
 
+describe('addWithTencil', () => {
+    it('wraps the exported Next config', () => {
+        const after = addWithTencil(CREATE_NEXT_APP_CONFIG);
+        expect(after).toContain('import { withTencil } from "tencil/next";');
+        expect(after).toContain('export default withTencil(nextConfig);');
+        expect(addWithTencil(after as string)).toBe(after);
+    });
+
+    it('wraps object literals and other plugins, keeping the style', () => {
+        const literal = `import type { NextConfig } from 'next'\n\nexport default {\n  images: { unoptimized: true },\n} satisfies NextConfig\n`;
+        expect(addWithTencil(literal)).toBe(
+            `import type { NextConfig } from 'next'\nimport { withTencil } from 'tencil/next'\n\nexport default withTencil({\n  images: { unoptimized: true },\n} satisfies NextConfig)\n`,
+        );
+        const wrapped = addWithTencil(
+            "import createMDX from '@next/mdx';\n\nexport default createMDX({})({ reactStrictMode: true });\n",
+        );
+        expect(wrapped).toContain(
+            'export default withTencil(createMDX({})({ reactStrictMode: true }));',
+        );
+    });
+
+    it('gives up on shapes it cannot wrap', () => {
+        expect(addWithTencil('module.exports = { reactStrictMode: true };\n')).toBeNull();
+        expect(addWithTencil('export default function config() { return {}; }\n')).toBeNull();
+    });
+});
+
 describe('planInit', () => {
     const project = (files: Record<string, string>) => {
         const root = mkdtempSync(join(tmpdir(), 'tencil-init-'));
@@ -181,6 +208,23 @@ describe('planInit', () => {
         const unknown = await planInit(project({ 'package.json': '{}' }));
         expect(unknown.edits).toEqual([]);
         expect(unknown.manual[0]).toContain('tencil.js');
+    });
+
+    it('wraps next.config for Tencil Cloud, and leaves it alone otherwise', async () => {
+        const files = {
+            'package.json': JSON.stringify({ dependencies: { next: '16.0.0' } }),
+            'next.config.ts': CREATE_NEXT_APP_CONFIG,
+            'app/layout.tsx': CREATE_NEXT_APP_LAYOUT,
+        };
+        const paths = (plan: Awaited<ReturnType<typeof planInit>>, root: string) =>
+            plan.edits.map(e => relative(root, e.path).split(sep).join('/'));
+        const local = project(files);
+        expect(paths(await planInit(local), local)).toEqual(['app/layout.tsx']);
+        const cloud = project(files);
+        expect(paths(await planInit(cloud, { cloud: true }), cloud)).toEqual([
+            'app/layout.tsx',
+            'next.config.ts',
+        ]);
     });
 
     it('sets up for Tencil Cloud without a daemon or pairing', async () => {

@@ -1,5 +1,16 @@
 import { useRef } from 'preact/hooks';
-import { bridgeState, project, projectChoices, provider, send } from '../lib/connection.ts';
+import { pinBlocked, signIn, signInRequired, signingIn } from '../lib/cloud-auth.ts';
+import {
+    bridgeState,
+    cloudUrl,
+    isCloud,
+    lastError,
+    project,
+    projectChoices,
+    provider,
+    reconnect,
+    send,
+} from '../lib/connection.ts';
 import { dock, moveDockBy, startDrag } from '../lib/dock.ts';
 import { besideIndicator, nextIndicator } from '../lib/next-devtools.ts';
 import {
@@ -68,7 +79,8 @@ export function Toolbar() {
                 <button
                     type="button"
                     class={`tool${picking ? ' tool-active' : ''}`}
-                    title="Comment (C)"
+                    title={pinBlocked.value ?? 'Comment (C)'}
+                    disabled={pinBlocked.value !== null}
                     onClick={() => (picking ? stopPicking() : startPicking())}
                 >
                     <CommentIcon />
@@ -147,6 +159,16 @@ const switchAgent = {
 
 function connectionStatus(): ConnectionStatus {
     if (bridgeState.value !== 'open') {
+        if (isCloud()) {
+            return {
+                tone: 'error',
+                title: 'Tencil Cloud unreachable',
+                hint:
+                    bridgeState.value === 'connecting'
+                        ? undefined
+                        : "Can't reach Tencil Cloud. Retrying…",
+            };
+        }
         return {
             tone: 'error',
             title: 'Tencil daemon offline',
@@ -154,6 +176,17 @@ function connectionStatus(): ConnectionStatus {
                 bridgeState.value === 'connecting'
                     ? undefined
                     : 'The Tencil daemon stopped. Start it again with npx tencil start.',
+        };
+    }
+    const required = signInRequired.value;
+    if (required) {
+        return {
+            tone: 'warn',
+            title: 'Sign in to Tencil Cloud',
+            hint: required.reason ?? 'Sign in with GitHub to pin on this preview',
+            action: signingIn.value
+                ? undefined
+                : { label: 'Sign in', run: () => startSignIn(required.signIn) },
         };
     }
     if (projectChoices.value) return { tone: 'warn', title: "Pick this page's project" };
@@ -186,4 +219,13 @@ function connectionStatus(): ConnectionStatus {
         default:
             return { tone: 'warn', title: `Connecting to ${info.label}…` };
     }
+}
+
+function startSignIn(config: NonNullable<typeof signInRequired.value>['signIn']): void {
+    signIn(cloudUrl(), config).then(reconnect, (error: unknown) => {
+        lastError.value = {
+            message: error instanceof Error ? error.message : String(error),
+            at: Date.now(),
+        };
+    });
 }
