@@ -94,4 +94,65 @@ describe('V2ThreadTracker', () => {
         });
         expect(finished.status?.status).toBe('idle');
     });
+
+    it('stays working while a finished run saves its checkpoint', () => {
+        const tracker = new V2ThreadTracker();
+        const run = (status: string) =>
+            tracker.apply({
+                kind: 'event',
+                sequence: 1,
+                event: { type: 'run.updated', payload: { id: 'r1', ordinal: 1, status } },
+            });
+        run('running');
+        expect(run('waiting').status).toBeUndefined();
+        expect(tracker.status().status).toBe('working');
+        expect(run('completed').status?.status).toBe('idle');
+    });
+
+    it('waits on pending approvals and questions from the current run', () => {
+        const tracker = new V2ThreadTracker();
+        const request = (id: string, kind: string, status: string, createdAt: string) =>
+            tracker.apply({
+                kind: 'event',
+                sequence: 1,
+                event: {
+                    type: 'runtime-request.updated',
+                    payload: { id, kind, status, createdAt },
+                },
+            });
+        tracker.apply({
+            kind: 'snapshot',
+            projection: {
+                runs: [
+                    { id: 'r1', ordinal: 1, status: 'interrupted', requestedAt: at },
+                    {
+                        id: 'r2',
+                        ordinal: 2,
+                        status: 'running',
+                        requestedAt: '2026-10-07T10:05:00.000Z',
+                    },
+                ],
+                // Left pending when r1 was stopped.
+                runtimeRequests: [
+                    { id: 'q0', kind: 'file-change', status: 'pending', createdAt: at },
+                ],
+            },
+        });
+        expect(tracker.status().status).toBe('working');
+
+        expect(
+            request('q1', 'auth_refresh', 'pending', '2026-10-07T10:06:00.000Z').status,
+        ).toBeUndefined();
+        expect(request('q2', 'command', 'pending', '2026-10-07T10:06:00.000Z').status).toEqual({
+            status: 'waiting',
+            detail: 'Waiting for approval in T3 Code',
+        });
+        expect(
+            request('q2', 'command', 'resolved', '2026-10-07T10:06:00.000Z').status?.status,
+        ).toBe('working');
+        expect(request('q3', 'user_input', 'pending', '2026-10-07T10:07:00.000Z').status).toEqual({
+            status: 'waiting',
+            detail: 'Waiting for your answer in T3 Code',
+        });
+    });
 });

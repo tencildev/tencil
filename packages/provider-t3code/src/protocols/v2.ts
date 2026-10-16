@@ -105,6 +105,15 @@ interface WireRun {
     id: string;
     ordinal: number;
     status: string;
+    requestedAt?: string;
+}
+
+/** An approval, question or sign-in the agent is blocked on. */
+interface WireRuntimeRequest {
+    id: string;
+    kind: string;
+    status: string;
+    createdAt?: string;
 }
 
 interface WireMessage {
@@ -127,15 +136,30 @@ type WireItem =
     | { kind: 'synchronized' }
     | {
           kind: 'snapshot';
-          projection: { runs?: WireRun[]; messages?: WireMessage[]; turnItems?: WireTurnItem[] };
+          projection: {
+              runs?: WireRun[];
+              runtimeRequests?: WireRuntimeRequest[];
+              messages?: WireMessage[];
+              turnItems?: WireTurnItem[];
+          };
       }
     | { kind: 'event'; sequence: number; event: { type: string; payload: unknown } }
     | { kind: 'unknown-event' };
 
+/** Requests the user answers; T3 Code resolves `auth_refresh` and `dynamic_tool_call` itself. */
+const USER_REQUEST_KINDS = new Set([
+    'command',
+    'file-read',
+    'file-change',
+    'mcp-elicitation',
+    'permission',
+    'user_input',
+]);
 const ACTIVE_RUN_STATUSES = new Set(['preparing', 'starting', 'running', 'waiting']);
 
 export class V2ThreadTracker implements ThreadTracker {
     #runs = new Map<string, WireRun>();
+    #requests = new Map<string, WireRuntimeRequest>();
     #messages = new Map<string, ProviderMessage>();
     #lastStatusKey = '';
 
@@ -146,6 +170,8 @@ export class V2ThreadTracker implements ThreadTracker {
 
         if (item.kind === 'snapshot') {
             for (const run of item.projection.runs ?? []) this.#runs.set(run.id, run);
+            for (const request of item.projection.runtimeRequests ?? [])
+                this.#requests.set(request.id, request);
             for (const message of item.projection.messages ?? [])
                 this.#upsertMessage(message, changed);
             for (const turnItem of item.projection.turnItems ?? [])
@@ -155,6 +181,9 @@ export class V2ThreadTracker implements ThreadTracker {
             if (type === 'run.created' || type === 'run.updated') {
                 const run = payload as WireRun;
                 this.#runs.set(run.id, run);
+            } else if (type === 'runtime-request.updated') {
+                const request = payload as WireRuntimeRequest;
+                this.#requests.set(request.id, request);
             } else if (type === 'message.updated') {
                 this.#upsertMessage(payload as WireMessage, changed);
             } else if (type === 'turn-item.updated') {
@@ -183,9 +212,9 @@ export class V2ThreadTracker implements ThreadTracker {
             case 'queued':
             case 'starting':
             case 'running':
-                return { status: 'working' };
+            // The turn is done and T3 Code is saving its checkpoint.
             case 'waiting':
-                return { status: 'waiting', detail: 'Waiting for approval in T3 Code' };
+                return this.#pendingRequest(latest) ?? { status: 'working' };
             case 'failed':
                 return { status: 'error', detail: 'Run failed' };
             case 'interrupted':
@@ -203,6 +232,26 @@ export class V2ThreadTracker implements ThreadTracker {
             if (!active || run.ordinal > active.ordinal) active = run;
         }
         return active?.id;
+    }
+
+    /**
+     * Approvals and questions don't change the run's status; they're runtime requests.
+     * A stopped run can leave one pending, so only count those made during `run`.
+     */
+    #pendingRequest(run: WireRun): ReturnType<ThreadTracker['status']> | undefined {
+        for (const request of this.#requests.values()) {
+            if (request.status !== 'pending' || !USER_REQUEST_KINDS.has(request.kind)) continue;
+            if (run.requestedAt && request.createdAt && request.createdAt < run.requestedAt)
+                continue;
+            return {
+                status: 'waiting',
+                detail:
+                    request.kind === 'user_input'
+                        ? 'Waiting for your answer in T3 Code'
+                        : 'Waiting for approval in T3 Code',
+            };
+        }
+        return undefined;
     }
 
     #latestRun(): WireRun | undefined {
