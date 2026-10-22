@@ -187,6 +187,11 @@ export type ServerMessage =
     | { type: 'auth.required'; signIn: CloudSignIn; reason?: string }
     | { type: 'provider.status'; provider: ProviderInfo }
     | { type: 'settings'; settings: ProjectSettings }
+    /**
+     * Local daemon: this site isn't allowed to connect yet. The developer can allow it
+     * at `approveUrl`, a page the daemon serves; the socket closes right after.
+     */
+    | { type: 'origin.blocked'; origin: string; approveUrl: string }
     /** The daemon couldn't tell which project this page belongs to; the overlay asks. */
     | {
           type: 'project.unknown';

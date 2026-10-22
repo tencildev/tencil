@@ -39,6 +39,8 @@ export const providerModels = signal<{
 } | null>(null);
 /** Set when the daemon can't tell which project this page belongs to. */
 export const projectChoices = signal<Array<{ root: string; title: string }> | null>(null);
+/** Set when the daemon refused this site; the developer can allow it at `approveUrl`. */
+export const originBlocked = signal<{ origin: string; approveUrl: string } | null>(null);
 /** What to do when there are no project choices. */
 export const projectChoicesHint = signal<string | undefined>(undefined);
 export const lastError = signal<{ message: string; threadId?: string; at: number } | null>(null);
@@ -55,6 +57,10 @@ export function connect(url: string, build?: BuildInfo, root?: string): void {
     bridgeUrl = url;
     pageBuild = build;
     pageRoot = root;
+    // Allowing happens in another tab; try again as soon as the developer is back.
+    window.addEventListener('focus', () => {
+        if (originBlocked.value) reconnect();
+    });
     open();
 }
 
@@ -135,6 +141,8 @@ function open(): void {
     ws.addEventListener('close', () => {
         if (socket !== ws) return;
         bridgeState.value = 'closed';
+        // Retrying won't help until the site is allowed; coming back to the page will.
+        if (originBlocked.value) return;
         // A daemon restarting on a new version is back in seconds: keep trying quickly.
         const restarting = update.value?.state === 'restarting';
         setTimeout(open, restarting ? 500 : retry);
@@ -147,6 +155,7 @@ function handle(message: ServerMessage): void {
         case 'ready':
             batch(() => {
                 bridgeState.value = 'open';
+                originBlocked.value = null;
                 signInRequired.value = null;
                 viewer.value = message.viewer ?? null;
                 projectChoices.value = null;
@@ -159,9 +168,13 @@ function handle(message: ServerMessage): void {
                 threads.value = new Map(message.threads.map(thread => [thread.id, thread]));
             });
             return;
+        case 'origin.blocked':
+            originBlocked.value = { origin: message.origin, approveUrl: message.approveUrl };
+            return;
         case 'project.unknown':
             batch(() => {
                 bridgeState.value = 'open';
+                originBlocked.value = null;
                 projectChoices.value = message.choices;
                 projectChoicesHint.value = message.emptyHint;
             });

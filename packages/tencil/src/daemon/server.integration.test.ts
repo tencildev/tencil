@@ -136,18 +136,41 @@ const pin = (id: string, prompt: string, pageUrl: string) => ({
 });
 
 function httpGet(url: string, headers: Record<string, string> = {}) {
-    return new Promise<{ status: number; body: string }>((resolve, reject) => {
-        const req = request(url, { headers }, res => {
-            let body = '';
-            res.on('data', chunk => {
-                body += chunk;
-            });
-            res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
-        });
-        req.on('error', reject);
-        req.end();
-    });
+    return httpRequest(url, { headers });
 }
+
+function httpRequest(
+    url: string,
+    options: { method?: string; headers?: Record<string, string>; body?: string } = {},
+) {
+    return new Promise<{ status: number; body: string; headers: Record<string, unknown> }>(
+        (resolve, reject) => {
+            const req = request(url, { method: options.method, headers: options.headers }, res => {
+                let body = '';
+                res.on('data', chunk => {
+                    body += chunk;
+                });
+                res.on('end', () =>
+                    resolve({ status: res.statusCode ?? 0, body, headers: res.headers }),
+                );
+            });
+            req.on('error', reject);
+            req.end(options.body);
+        },
+    );
+}
+
+/** The approval form, posted the way a browser would from the daemon's own page. */
+const postAllow = (daemon: Daemon, origin: string, from = daemon.url) =>
+    httpRequest(`${daemon.url}/allow`, {
+        method: 'POST',
+        headers: {
+            origin: from,
+            'content-type': 'application/x-www-form-urlencoded',
+            'sec-fetch-site': from === daemon.url ? 'same-origin' : 'cross-site',
+        },
+        body: new URLSearchParams({ origin }).toString(),
+    });
 
 describe.each([1, 2] as const)('daemon end to end, protocol v%i', protocol => {
     it('pins an element and streams the reply, with the element context sent to the agent', async () => {
@@ -242,11 +265,58 @@ describe('pairing from the overlay', () => {
 });
 
 describe('security', () => {
-    it('rejects pages from other origins', async () => {
+    it('tells pages from other origins where to get allowed, and nothing else', async () => {
         const { daemon } = await setup();
-        await expect(
-            connectPage(daemon, 'http://localhost:3001/', 'https://evil.example'),
-        ).rejects.toThrow(/403/);
+        const page = await connectPage(daemon, 'http://localhost:3001/', 'https://site.example');
+        await waitFor(() => page.received.length > 0);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        expect(page.received).toEqual([
+            {
+                type: 'origin.blocked',
+                origin: 'https://site.example',
+                approveUrl: `http://localhost:${daemon.port}/allow?origin=https%3A%2F%2Fsite.example`,
+            },
+        ]);
+    });
+
+    it('refuses an upgrade without a real origin', async () => {
+        const { daemon } = await setup();
+        await expect(connectPage(daemon, 'http://localhost:3001/', 'null')).rejects.toThrow(/403/);
+    });
+
+    it('lets a site in once it is allowed from the daemon page, and remembers it', async () => {
+        const dataDir = tmp('tencil-data-');
+        const { daemon } = await setup({ dataDir });
+        const site = 'https://site.example';
+
+        const confirm = await httpGet(`${daemon.url}/allow?origin=${encodeURIComponent(site)}`);
+        expect(confirm.status).toBe(200);
+        expect(confirm.body).toContain('Let https://site.example use Tencil?');
+        expect(confirm.headers['x-frame-options']).toBe('DENY');
+        expect(confirm.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+
+        expect((await postAllow(daemon, site)).status).toBe(200);
+        const page = await connectPage(daemon, 'http://localhost:3001/', site);
+        await ready(page.received);
+
+        // Another daemon on the same data folder (a restart) still knows it.
+        const { daemon: restarted } = await setup({ dataDir });
+        await ready((await connectPage(restarted, 'http://localhost:3001/', site)).received);
+    });
+
+    it("won't let a site approve itself", async () => {
+        const { daemon } = await setup();
+        const site = 'https://site.example';
+        expect((await postAllow(daemon, site, site)).status).toBe(403);
+        const forged = await httpRequest(`${daemon.url}/allow`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ origin: site }).toString(),
+        });
+        expect(forged.status).toBe(403);
+        expect((await postAllow(daemon, '*')).status).toBe(400);
+        const page = await connectPage(daemon, 'http://localhost:3001/', site);
+        await waitFor(() => page.received[0]?.type === 'origin.blocked');
     });
 
     it('rejects requests addressed to another host name (DNS rebinding)', async () => {
@@ -270,9 +340,11 @@ describe('security', () => {
             host,
         });
         await ready(page.received);
-        await expect(
-            connectPage(daemon, 'http://devbox:3002/', undefined, { url: remote, host }),
-        ).rejects.toThrow(/403/);
+        const other = await connectPage(daemon, 'http://devbox:3002/', undefined, {
+            url: remote,
+            host,
+        });
+        await waitFor(() => other.received[0]?.type === 'origin.blocked');
     });
 
     it('serves the overlay script', async () => {

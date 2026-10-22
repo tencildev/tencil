@@ -6,6 +6,7 @@ import {
     daemonHost,
     daemonVersion,
     isCloud,
+    originBlocked,
     project,
     projectChoices,
     provider,
@@ -77,9 +78,11 @@ function StatusCard({ tone }: { tone: Tone }) {
                     <span class={`status-card-tone tone-${state === 'open' ? 'ok' : tone}`} />
                     {state === 'open'
                         ? 'Connected'
-                        : state === 'connecting'
-                          ? 'Connecting…'
-                          : 'Offline'}
+                        : originBlocked.value
+                          ? 'Site not allowed'
+                          : state === 'connecting'
+                            ? 'Connecting…'
+                            : 'Offline'}
                 </Row>
                 <Row label="Address">{daemonHost()}</Row>
                 <Row label="Project">

@@ -1,0 +1,30 @@
+{
+    "manifest_version": 3,
+    "name": "Tencil",
+    "version": "0.0.1",
+    "description": "Load the Tencil overlay into a running app without adding its script tag.",
+    "icons": {
+        "16": "icon-16.png",
+        "32": "icon-32.png",
+        "48": "icon-48.png",
+        "128": "icon-128.png"
+    },
+    "permissions": ["activeTab", "scripting", "storage"],
+    "host_permissions": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "http://*.localhost/*",
+        "https://localhost/*",
+        "https://*.localhost/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_title": "Turn on Tencil for this site",
+        "default_icon": {
+            "16": "icon-16.png",
+            "32": "icon-32.png"
+        }
+    }
+}
