@@ -3,4 +3,8 @@
 "@tencildev/testing": minor
 ---
 
-Send pins to Ensemble. Choose it in setup, with `--provider ensemble` or in a project's settings. Pages Ensemble serves for a thread continue that thread. `@tencildev/testing` adds `FakeEnsembleServer`.
+Add Ensemble as an agent provider through its public local API. Keep the Ensemble
+app running and allow Tencil once when pairing. Pages map to Ensemble threads by
+dev server port, including forwarded ports; each pin creates a separate chat on
+the same checkout. Pages served from an Ensemble project's own folder start a new
+thread per pin. Stream messages and tool steps over a shared, resumable feed.

@@ -1,308 +1,367 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProviderMessage, ThreadSink, ThreadStatus, ThreadStep } from '@tencildev/protocol';
 import { FakeEnsembleServer, waitFor } from '@tencildev/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { EnsembleProvider, type EnsembleProviderOptions } from './ensemble-provider.ts';
-
-const FAST = { requestMs: 1_000, pollSeconds: 1, reconnectMinMs: 20, reconnectMaxMs: 100 };
-const PNG =
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+import { EnsembleClient } from './api.ts';
+import { EnsembleCredentialStore } from './auth.ts';
+import { EnsembleProvider } from './ensemble-provider.ts';
+import { ensembleProjectForPort, ensembleRoot, listEnsembleProjects } from './projects.ts';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
     while (cleanup.length) await cleanup.pop()?.();
 });
-
-function tempDir(prefix: string): string {
-    return realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
-}
-
-async function setup(
-    options: Partial<EnsembleProviderOptions> & {
-        seedProject?: boolean;
-        pageSize?: number;
-        subdir?: string;
-    } = {},
-) {
-    const root = tempDir('tencil-project-');
-    const projectRoot = join(root, options.subdir ?? '');
-    mkdirSync(projectRoot, { recursive: true });
-    const ensembleDir = tempDir('tencil-ensemble-');
-    const server = await FakeEnsembleServer.start({
-        projects: options.seedProject === false ? [] : [{ id: 'p1', name: 'acme', remote: root }],
-        transcriptPageSize: options.pageSize,
-    });
-    writeFileSync(join(ensembleDir, 'listen-port'), `${server.port}\n`);
+async function setup(autoAllow = true, silenceMs = 45_000) {
+    const dir = await mkdtemp(join(tmpdir(), 'tencil-ensemble-'));
+    const credentials = new EnsembleCredentialStore(join(dir, 'credentials.json'));
+    const server = await FakeEnsembleServer.start({ autoAllow, turnDelayMs: 100 });
+    const thread = server.addThread({ projectId: 'p1', title: 'Landing' });
     const provider = new EnsembleProvider({
-        projectRoot,
-        ensembleDir,
-        timeouts: FAST,
-        ...options,
+        projectRoot: ensembleRoot(thread.id),
+        baseUrl: server.url,
+        credentials,
+        timeouts: {
+            requestMs: 1000,
+            retryMs: 100,
+            reconnectMinMs: 20,
+            reconnectMaxMs: 100,
+            silenceMs,
+        },
     });
     cleanup.push(async () => {
         await provider.dispose();
         await server.close();
+        await rm(dir, { recursive: true, force: true });
     });
-    return { root, ensembleDir, server, provider };
+    await provider.start();
+    return { provider, server, thread, credentials };
 }
-
-function recordingSink() {
+function record() {
     const messages = new Map<string, ProviderMessage>();
-    const statuses: Array<{ status: ThreadStatus; detail?: string }> = [];
     const steps = new Map<string, ThreadStep>();
+    const statuses: ThreadStatus[] = [];
     let gone = false;
     const sink: ThreadSink = {
         message: message => messages.set(message.id, message),
-        status: (status, detail) => statuses.push({ status, detail }),
         step: step => steps.set(step.id, step),
+        status: status => statuses.push(status),
         gone: () => {
             gone = true;
         },
     };
-    const last = () => statuses.at(-1)?.status;
-    return { sink, messages, statuses, steps, last, isGone: () => gone };
+    return { sink, messages, steps, statuses, last: () => statuses.at(-1), gone: () => gone };
 }
+const pin = { title: 'Make it blue', text: 'Make the button blue', attachments: [] };
 
-const ready = (provider: EnsembleProvider) =>
-    waitFor(() => provider.info().state === 'ready', { message: 'provider ready' });
-
-describe('Ensemble provider', () => {
-    it('finds the host through its port file and maps the folder to its project', async () => {
-        const { provider } = await setup();
-        await provider.start();
-        expect(provider.info()).toMatchObject({ state: 'ready', target: 'acme' });
+describe('Ensemble public API', () => {
+    it('discovers without auth, waits for approval and stores a private token', async () => {
+        const { provider, server, credentials } = await setup(false);
+        expect(await new EnsembleClient({ baseUrl: server.url }).isRunning()).toBe(true);
+        expect(provider.info()).toMatchObject({ state: 'unauthorized', canPair: true });
+        const pairing = provider.pair();
+        await waitFor(() => server.callsOf('POST', 'connect').length === 1);
+        expect(provider.info().state).toBe('connecting');
+        server.allow();
+        await pairing;
+        expect(provider.info()).toMatchObject({ state: 'ready', target: 'Landing' });
+        expect(await credentials.get(server.url)).toMatch(/^ens_/);
+        expect((await stat(credentials.path)).mode & 0o777).toBe(0o600);
+        expect(server.callsOf('POST', 'connect')).toEqual([{ name: 'Tencil', access: 'work' }]);
     });
-
-    it('maps a subfolder of the project, like a monorepo app', async () => {
-        const { provider } = await setup({ subdir: join('apps', 'web') });
-        await provider.start();
-        expect(provider.info()).toMatchObject({ state: 'ready', target: 'acme' });
+    it.each([403, 408])('allows pairing again after connect returns %s', async status => {
+        const { provider, server } = await setup(false);
+        const pairing = provider.pair();
+        const rejection = expect(pairing).rejects.toThrow(String(status));
+        await waitFor(() => server.callsOf('POST', 'connect').length === 1);
+        server.deny(status);
+        await rejection;
+        expect(provider.info()).toMatchObject({ state: 'unauthorized', canPair: true });
+        const retry = provider.pair();
+        await waitFor(() => server.callsOf('POST', 'connect').length === 2);
+        server.allow();
+        await retry;
+        expect(provider.info().state).toBe('ready');
     });
-
-    it("is unavailable when the folder isn't an Ensemble project", async () => {
-        const { provider } = await setup({ seedProject: false });
-        await provider.start();
-        expect(provider.info().state).toBe('unavailable');
-        expect(provider.info().detail).toContain("isn't in Ensemble yet");
+    it('creates one chat per pin on the same checkout, with attachments and deep links', async () => {
+        const { provider, server, thread } = await setup();
+        await provider.pair();
+        const first = await provider.createThread({
+            ...pin,
+            attachments: [
+                { name: 'shot.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,YWJj' },
+            ],
+        });
+        const second = await provider.createThread(pin);
+        expect(first.providerThreadId).toMatch(new RegExp(`^${thread.id}/`));
+        expect(second.providerThreadId).not.toBe(first.providerThreadId);
+        expect(first.url).toBe(`ensemble://thread/${thread.id}`);
+        expect(server.callsOf('POST', `threads/${thread.id}/chats`)[0]).toMatchObject({
+            prompt: pin.text,
+            title: pin.title,
+            attachments: [{ name: 'shot.png', mediaType: 'image/png', data: 'YWJj' }],
+        });
+        const listed = await provider.listThreads();
+        expect(listed.project.name).toBe('Landing');
+        expect(listed.threads.map(t => t.id)).toContain(first.providerThreadId);
+        const writes = server.calls.filter(c => c.method === 'POST');
+        expect(new Set(writes.map(c => c.headers['idempotency-key'])).size).toBe(writes.length);
+        expect(writes.every(c => c.headers['idempotency-key'])).toBe(true);
     });
-
-    it("is unavailable when Ensemble isn't installed", async () => {
-        const provider = new EnsembleProvider({
-            projectRoot: tempDir('tencil-project-'),
-            ensembleDir: tempDir('tencil-ensemble-'),
-            timeouts: FAST,
+    it('streams cumulative replies, shares one feed, replays late watchers and routes steps and status', async () => {
+        const { provider, server, thread } = await setup();
+        await provider.pair();
+        const first = await provider.createThread(pin);
+        const second = await provider.createThread({ ...pin, text: 'Other pin' });
+        const a = record();
+        const b = record();
+        provider.watch(first.providerThreadId, a.sink);
+        provider.watch(second.providerThreadId, b.sink);
+        const streaming = await waitFor(() => [...a.messages.values()].find(m => m.streaming));
+        await waitFor(() => a.last() === 'idle' && b.last() === 'idle');
+        expect(server.feedCount).toBe(1);
+        expect(a.messages.get(streaming.id)).toMatchObject({
+            text: `Done: ${pin.text}`,
+            streaming: false,
+            createdAt: streaming.createdAt,
         });
-        cleanup.push(() => provider.dispose());
-        await provider.start();
-        expect(provider.info()).toMatchObject({ state: 'unavailable' });
-        expect(provider.info().detail).toContain('tryensemble.co');
+        expect([...b.messages.values()].some(m => m.text.includes(pin.text))).toBe(false);
+        const late = record();
+        provider.watch(first.providerThreadId, late.sink);
+        expect([...late.messages.values()]).toEqual([...a.messages.values()]);
+        const chatId = first.providerThreadId.split('/')[1];
+        server.emit('steps', {
+            threadId: thread.id,
+            chatId,
+            steps: [{ id: 'tool', label: 'Edit', detail: 'button.tsx', status: 'running' }],
+        });
+        server.emit('status', { threadId: thread.id, chatId, status: 'waiting' });
+        await waitFor(() => a.last() === 'waiting');
+        expect(a.steps.get('tool')).toMatchObject({
+            label: 'Edit',
+            status: 'running',
+            startedAt: expect.any(String),
+        });
+        server.emit('message', {
+            threadId: thread.id,
+            chatId,
+            message: { id: 'failure', role: 'system', text: 'Failed', streaming: false },
+        });
+        server.emit('status', { threadId: thread.id, chatId, status: 'error' });
+        await waitFor(() => a.last() === 'error');
+        expect(a.messages.get('failure')?.role).toBe('system');
     });
-
-    it('starts a thread with the screenshot and follows the reply', async () => {
-        const { provider, server } = await setup();
-        await provider.start();
-
-        const created = await provider.createThread({
-            title: 'Make it blue',
-            text: 'Make the button blue',
-            attachments: [{ name: 'shot.png', mimeType: 'image/png', dataUrl: PNG }],
-        });
-        expect(server.callsOf('POST', 'threads')).toEqual([
-            expect.objectContaining({
-                projectId: 'p1',
-                prompt: 'Make the button blue',
-                title: 'Make it blue',
-                attachments: [
-                    { name: 'shot.png', mediaType: 'image/png', data: PNG.split(',')[1] },
-                ],
-            }),
-        ]);
-
-        const { sink, messages, last } = recordingSink();
-        provider.watch(created.providerThreadId, sink);
-        await waitFor(() => [...messages.values()].find(m => m.role === 'assistant'), {
-            message: 'assistant reply',
-        });
-        await waitFor(() => last() === 'idle', { message: 'idle' });
-        expect([...messages.values()].map(m => [m.role, m.text])).toEqual([
-            ['user', 'Make the button blue'],
-            ['assistant', 'Done: Make the button blue'],
-        ]);
-    });
-
-    it('replays a long transcript across pages, then follows live events', async () => {
-        const { provider, server } = await setup({ pageSize: 3 });
-        const thread = server.addThread({ projectId: 'p1', title: 'Old' });
-        for (let i = 0; i < 5; i++) {
-            server.emit(thread.id, 'message.user', { text: `q${i}` });
-            server.emitAssistant(thread.id, `a${i}`);
-        }
-        await provider.start();
-        const { sink, messages } = recordingSink();
-        provider.watch(thread.id, sink);
-        await waitFor(() => messages.size === 10, { message: 'replayed history' });
-
-        server.emitAssistant(thread.id, 'live');
-        await waitFor(() => [...messages.values()].some(m => m.text === 'live'), {
-            message: 'live message',
-        });
-        expect([...messages.values()].map(m => m.text).slice(0, 2)).toEqual(['q0', 'a0']);
-    });
-
-    it('waits on a question and answers it with the next message', async () => {
-        const { provider, server } = await setup();
-        const thread = server.addThread({ projectId: 'p1', title: 'Ask' });
-        server.emit(thread.id, 'question.asked', {
-            id: 'q-1',
-            questions: [{ question: 'Blue or green?', options: [] }],
-        });
-        server.emit(thread.id, 'turn.ended', { outcome: 'asked' });
-        server.emit(thread.id, 'thread.state', { state: 'idle' });
-        await provider.start();
-
-        const { sink, statuses } = recordingSink();
-        provider.watch(thread.id, sink);
-        await waitFor(() => statuses.at(-1)?.status === 'waiting', { message: 'waiting' });
-        expect(statuses.at(-1)?.detail).toBe('Blue or green?');
-
-        await provider.sendMessage({ providerThreadId: thread.id, text: 'Blue', attachments: [] });
-        expect(server.callsOf('POST', `threads/${thread.id}/messages`)).toEqual([
-            { chatId: '', text: 'Blue', attachments: [], answers: 'q-1' },
-        ]);
-    });
-
-    it('reports tool calls as steps and ignores side chats', async () => {
-        const { provider, server } = await setup();
-        const thread = server.addThread({ projectId: 'p1', title: 'Tools' });
-        await provider.start();
-        const { sink, messages, steps } = recordingSink();
-        provider.watch(thread.id, sink);
-        await waitFor(() => provider.info().state === 'ready');
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        server.emit(thread.id, 'turn.started', {});
-        server.emit(thread.id, 'agent.event', {
-            type: 'assistant',
-            parent_tool_use_id: null,
-            message: {
-                content: [
-                    { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'pnpm test' } },
-                ],
-            },
-        });
-        server.emit(thread.id, 'agent.event', {
-            type: 'user',
-            parent_tool_use_id: null,
-            message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: false }] },
-        });
-        server.emit(thread.id, 'message.user', { text: 'from a side chat' }, 'chat-2');
-        await waitFor(() => steps.get('t1')?.status === 'done', { message: 'step done' });
-        expect(steps.get('t1')).toMatchObject({ label: 'Bash', detail: 'pnpm test' });
-        expect([...messages.values()].some(m => m.text === 'from a side chat')).toBe(false);
-    });
-
-    it('continues the thread whose workspace serves the page', async () => {
-        const { server, ensembleDir } = await setup();
-        const thread = server.addThread({ projectId: 'p1', title: 'Landing' });
-        const workspace = join(ensembleDir, 'threads', thread.id, 'workspace', 'landing');
-        mkdirSync(workspace, { recursive: true });
-        const provider = new EnsembleProvider({
-            projectRoot: workspace,
-            ensembleDir,
-            timeouts: FAST,
-        });
-        cleanup.push(() => provider.dispose());
-        await provider.start();
-        expect(provider.info()).toMatchObject({ state: 'ready', target: 'acme · Landing' });
-
-        const created = await provider.createThread({
-            title: 'Pin',
-            text: 'Tighten the hero',
+    it('sends follow-ups and stops only the pin chat', async () => {
+        const { provider, server, thread } = await setup();
+        await provider.pair();
+        const created = await provider.createThread(pin);
+        await provider.sendMessage({
+            providerThreadId: created.providerThreadId,
+            text: 'Green',
             attachments: [],
         });
-        expect(created.providerThreadId).toBe(thread.id);
-        expect(server.callsOf('POST', 'threads')).toEqual([]);
-        expect(server.callsOf('POST', `threads/${thread.id}/messages`)).toHaveLength(1);
+        await provider.interrupt(created.providerThreadId);
+        const path = `threads/${thread.id}/chats/${created.providerThreadId.split('/')[1]}`;
+        expect(server.callsOf('POST', `${path}/messages`)).toEqual([
+            { text: 'Green', attachments: [] },
+        ]);
+        expect(server.callsOf('POST', `${path}/stop`)).toEqual([{}]);
     });
-
-    it('lists the project threads newest first, without archived ones', async () => {
-        const { provider, server } = await setup();
-        server.addThread({ projectId: 'p1', title: 'Older', createdAt: '2026-01-01T00:00:00Z' });
-        server.addThread({
-            projectId: 'p1',
-            title: 'Newer',
-            createdAt: '2026-02-01T00:00:00Z',
-            state: 'running',
-            agent: 'codex',
+    it('resumes dropped feeds with Last-Event-ID and handles full snapshots after restart', async () => {
+        const { provider, server, thread } = await setup();
+        await provider.pair();
+        const a = record();
+        provider.watch(`${thread.id}/main`, a.sink);
+        await waitFor(() => a.last() === 'idle');
+        const message = { id: 'reply', role: 'assistant', text: 'First', streaming: true };
+        const event = server.emit('message', { threadId: thread.id, chatId: 'main', message });
+        await waitFor(() => a.messages.has('reply'));
+        const timestamp = a.messages.get('reply')?.createdAt;
+        server.dropFeeds();
+        server.emit('message', {
+            threadId: thread.id,
+            chatId: 'main',
+            message: { ...message, text: 'Complete', streaming: false },
         });
-        server.addThread({
-            projectId: 'p1',
-            title: 'Gone',
-            archivedAt: '2026-03-01T00:00:00Z',
+        await waitFor(() => a.messages.get('reply')?.text === 'Complete');
+        expect(server.calls.filter(c => c.path === 'feed').at(-1)?.headers['last-event-id']).toBe(
+            event.id,
+        );
+        server.resetHistory();
+        server.dropFeeds();
+        server.emit('message', {
+            threadId: thread.id,
+            chatId: 'main',
+            message: { ...message, text: 'Restarted', streaming: false },
         });
-        server.addThread({ projectId: 'other', title: 'Elsewhere' });
-        await provider.start();
-        const { project, threads } = await provider.listThreads();
-        expect(project).toEqual({ name: 'acme' });
-        expect(threads.map(t => [t.title, t.status, t.agent])).toEqual([
-            ['Newer', 'working', 'codex'],
-            ['Older', 'idle', 'claudeAgent'],
+        await waitFor(() => a.messages.get('reply')?.text === 'Restarted');
+        expect(a.messages.get('reply')?.createdAt).toBe(timestamp);
+    });
+    it('reconnects a silent feed, and follows it again for a watcher after the last one left', async () => {
+        const { provider, server, thread } = await setup(true, 60);
+        await provider.pair();
+        const a = record();
+        const unwatch = provider.watch(`${thread.id}/main`, a.sink);
+        await waitFor(() => a.last() === 'idle');
+        await waitFor(() => server.calls.filter(c => c.path === 'feed').length >= 2);
+        unwatch();
+        await waitFor(() => server.feedCount === 0);
+        const b = record();
+        provider.watch(`${thread.id}/main`, b.sink);
+        await waitFor(() => server.feedCount === 1);
+        server.emit('status', { threadId: thread.id, chatId: 'main', status: 'waiting' });
+        await waitFor(() => b.last() === 'waiting');
+    });
+    it.each(['feed', 'write'])(
+        'reports revoked auth on a %s and reconnects after re-pairing',
+        async route => {
+            const { provider, server, thread } = await setup();
+            await provider.pair();
+            const oldToken = [...server.tokens][0];
+            const a = record();
+            provider.watch(`${thread.id}/main`, a.sink);
+            await waitFor(() => a.last() === 'idle');
+            server.revoke();
+            if (route === 'write')
+                await expect(provider.interrupt(`${thread.id}/main`)).rejects.toThrow('401');
+            await waitFor(() => provider.info().state === 'unauthorized');
+            expect(provider.info().canPair).toBe(true);
+            await provider.pair();
+            expect(provider.info().state).toBe('ready');
+            expect([...server.tokens][0]).not.toBe(oldToken);
+            await waitFor(() => server.feedCount === 1);
+            server.emit('status', { threadId: thread.id, chatId: 'main', status: 'waiting' });
+            await waitFor(() => a.last() === 'waiting');
+        },
+    );
+    it('marks every watched chat gone when the thread is archived', async () => {
+        const { provider, server, thread } = await setup();
+        await provider.pair();
+        const a = record();
+        const b = record();
+        const pinChat = await provider.createThread(pin);
+        provider.watch(`${thread.id}/main`, a.sink);
+        provider.watch(pinChat.providerThreadId, b.sink);
+        await waitFor(() => a.last() === 'idle');
+        server.emit('archived', { threadId: thread.id });
+        await waitFor(() => a.gone() && b.gone());
+    });
+    it('maps forwarded ports to thread identities and offers open threads in the picker', async () => {
+        const { provider, server, thread, credentials } = await setup();
+        await provider.pair();
+        server.ports.set(4174, thread.id);
+        thread.machine = { id: 'remote', name: 'Remote Mac' };
+        const options = { baseUrl: server.url, credentials };
+        expect(await ensembleProjectForPort(4174, options)).toBe(ensembleRoot(thread.id));
+        expect(await ensembleProjectForPort(1234, options)).toBeUndefined();
+        expect(await listEnsembleProjects(options)).toEqual([
+            { workspaceRoot: ensembleRoot(thread.id), title: 'Landing' },
         ]);
     });
+});
 
-    it('follows a thread watched again after its last watch ended', async () => {
-        const { provider, server } = await setup();
-        const thread = server.addThread({ projectId: 'p1', title: 'Again' });
-        await provider.start();
-        const first = recordingSink();
-        const unwatch = provider.watch(thread.id, first.sink);
-        await waitFor(() => first.last() === 'idle', { message: 'first replay' });
-        unwatch();
-
-        const { sink, messages, last } = recordingSink();
-        provider.watch(thread.id, sink);
-        await waitFor(() => last() === 'idle', { message: 'second replay' });
-        await provider.sendMessage({ providerThreadId: thread.id, text: 'Again', attachments: [] });
-        await waitFor(() => [...messages.values()].some(m => m.text === 'Done: Again'), {
-            message: 'reply after watching again',
+describe('pages served from a folder', () => {
+    function git(cwd: string, ...args: string[]) {
+        execFileSync('git', args, { cwd, stdio: 'ignore' });
+    }
+    /** A repository at `<tmp>/web` with an app folder, and a paired provider for `folder`. */
+    async function setupFolder(folder: (repo: string, tmp: string) => Promise<string> | string) {
+        const tmp = await realpath(await mkdtemp(join(tmpdir(), 'tencil-ensemble-folder-')));
+        const repo = join(tmp, 'web');
+        await mkdir(join(repo, 'apps', 'site'), { recursive: true });
+        await writeFile(join(repo, 'apps', 'site', 'index.html'), '');
+        git(repo, 'init', '-q', '-b', 'main');
+        git(repo, 'add', '.');
+        git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
+        const credentials = new EnsembleCredentialStore(join(tmp, 'credentials.json'));
+        const server = await FakeEnsembleServer.start({ turnDelayMs: 20 });
+        const provider = new EnsembleProvider({
+            projectRoot: await folder(repo, tmp),
+            baseUrl: server.url,
+            credentials,
+            timeouts: { requestMs: 1000, retryMs: 50 },
         });
-        await waitFor(() => last() === 'idle', { message: 'idle after the turn' });
-    });
-
-    it('stops a turn', async () => {
-        const { provider, server } = await setup();
-        const thread = server.addThread({ projectId: 'p1', title: 'Stop' });
-        await provider.start();
-        await provider.interrupt(thread.id);
-        expect(server.callsOf('POST', `threads/${thread.id}/stop`)).toEqual([{ chatId: '' }]);
-    });
-
-    it('reports a thread Ensemble no longer has as gone', async () => {
-        const { provider } = await setup();
-        await provider.start();
-        const { sink, isGone } = recordingSink();
-        provider.watch('missing', sink);
-        await waitFor(() => isGone(), { message: 'gone' });
-    });
-
-    it('reconnects when Ensemble comes back', async () => {
-        const { provider, server, ensembleDir, root } = await setup();
-        const thread = server.addThread({ projectId: 'p1', title: 'Live' });
-        await provider.start();
-        const { sink, messages } = recordingSink();
-        provider.watch(thread.id, sink);
-        await waitFor(() => messages.size === 0 && provider.info().state === 'ready');
-        await new Promise(resolve => setTimeout(resolve, 50));
-        await server.close();
-        await waitFor(() => provider.info().state === 'unavailable', { message: 'lost' });
-
-        const next = await FakeEnsembleServer.start({
-            projects: [{ id: 'p1', name: 'acme', remote: root }],
+        cleanup.push(async () => {
+            await provider.dispose();
+            await server.close();
+            await rm(tmp, { recursive: true, force: true });
         });
-        cleanup.push(() => next.close());
-        writeFileSync(join(ensembleDir, 'listen-port'), `${next.port}\n`);
-        await ready(provider);
+        return { provider, server, repo, tmp };
+    }
+
+    it('starts a thread per pin in the project whose folder serves the page', async () => {
+        const { provider, server, repo } = await setupFolder(repo => join(repo, 'apps', 'site'));
+        server.projects.push(
+            { id: 'web', name: 'web', source: { kind: 'local', path: repo } },
+            {
+                id: 'site',
+                name: 'site',
+                source: { kind: 'local', path: join(repo, 'apps', 'site') },
+            },
+        );
+        await provider.pair();
+        expect(provider.info()).toMatchObject({
+            state: 'ready',
+            target: 'site · new thread per pin',
+        });
+        const created = await provider.createThread(pin);
+        expect(server.callsOf('POST', 'threads')).toEqual([
+            { projectId: 'site', title: pin.title, prompt: pin.text, attachments: [] },
+        ]);
+        const [threadId, chatId] = created.providerThreadId.split('/');
+        expect(chatId).toBe('main');
+        expect(created.url).toBe(ensembleRoot(String(threadId)));
+        const a = record();
+        provider.watch(created.providerThreadId, a.sink);
+        await waitFor(() => [...a.messages.values()].some(m => m.text === `Done: ${pin.text}`));
+        const listed = await provider.listThreads();
+        expect(listed.project.name).toBe('site');
+        expect(listed.threads.map(t => t.id)).toEqual([created.providerThreadId]);
+    });
+
+    it("sends pins to the thread whose workspace is on the folder's branch", async () => {
+        const { provider, server } = await setupFolder(repo => {
+            git(repo, 'checkout', '-q', '-b', 'ensemble/landing');
+            return repo;
+        });
+        const thread = server.addThread({
+            projectId: 'web',
+            title: 'Landing',
+            branch: 'ensemble/landing',
+        });
+        server.addThread({ projectId: 'web', title: 'Other', branch: 'ensemble/other' });
+        await provider.pair();
+        expect(provider.info()).toMatchObject({ state: 'ready', target: 'Landing' });
+        const created = await provider.createThread(pin);
+        expect(created.providerThreadId).toMatch(new RegExp(`^${thread.id}/`));
+        expect(server.callsOf('POST', 'threads')).toEqual([]);
+    });
+
+    it("counts a worktree of a project's repository as that project", async () => {
+        const { provider, server, repo } = await setupFolder((repo, tmp) => {
+            git(repo, 'worktree', 'add', '-q', join(tmp, 'web-feature'), '-b', 'feature');
+            return join(tmp, 'web-feature', 'apps', 'site');
+        });
+        server.projects.push({ id: 'web', name: 'web', source: { kind: 'local', path: repo } });
+        await provider.pair();
+        expect(provider.info()).toMatchObject({
+            state: 'ready',
+            target: 'web · new thread per pin',
+        });
+    });
+
+    it('names the repository to add, and picks the project up once it is added', async () => {
+        const { provider, server, repo } = await setupFolder(repo => join(repo, 'apps', 'site'));
+        await provider.pair();
+        expect(provider.info().state).toBe('unavailable');
+        const where = repo.startsWith(homedir()) ? `~${repo.slice(homedir().length)}` : repo;
+        expect(provider.info().detail).toBe(
+            `web isn't in Ensemble yet. Add ${where} as a project in Ensemble.`,
+        );
+        server.projects.push({ id: 'web', name: 'web', source: { kind: 'local', path: repo } });
+        await waitFor(() => provider.info().state === 'ready');
+        expect(provider.info().target).toBe('web · new thread per pin');
     });
 });

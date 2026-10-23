@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { loadAgentSdk } from '@tencildev/provider-claude-code';
-import { EnsembleClient, ensembleUrl } from '@tencildev/provider-ensemble';
+import { EnsembleClient, EnsembleCredentialStore } from '@tencildev/provider-ensemble';
 import {
     CredentialStore,
     createLocalPairingCode,
@@ -66,18 +66,32 @@ async function prepareClaudeCode(log: (message: string) => void): Promise<void> 
     }
 }
 
-/** Ensemble needs no pairing; just say whether its host is up. */
+/** Ask the user once to allow Tencil in Ensemble, unless Tencil's token still works. */
 async function checkEnsemble(log: (message: string) => void): Promise<void> {
-    const baseUrl = await ensembleUrl();
-    const running =
-        baseUrl !== undefined &&
-        (await new EnsembleClient({ baseUrl, requestTimeoutMs: 3_000 }).health().then(
+    const client = new EnsembleClient();
+    if (!(await client.isRunning())) {
+        log(
+            `  ${pc.yellow('!')} Ensemble isn't running. Open the Ensemble app, then press Pair in the overlay.`,
+        );
+        return;
+    }
+    const credentials = new EnsembleCredentialStore();
+    const token = await credentials.get(client.baseUrl);
+    const allowed =
+        token !== undefined &&
+        (await new EnsembleClient({ baseUrl: client.baseUrl, token }).threads().then(
             () => true,
             () => false,
         ));
-    log(
-        running
-            ? `  ${pc.green('✓')} Ensemble is running. Pins go to the Ensemble project of each page.`
-            : `  ${pc.yellow('!')} Ensemble isn't running. Open the Ensemble app; Tencil connects once it is.`,
-    );
+    try {
+        if (!allowed) {
+            log('  Allow Tencil in the Ensemble app (one time)…');
+            await credentials.set(client.baseUrl, await client.connect());
+        }
+        log(
+            `  ${pc.green('✓')} Connected to Ensemble. Pins go to the Ensemble thread serving each page.`,
+        );
+    } catch (error) {
+        log(`  ${pc.yellow('!')} ${error instanceof Error ? error.message : String(error)}`);
+    }
 }

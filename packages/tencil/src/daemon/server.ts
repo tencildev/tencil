@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { basename, join, resolve } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { Bridge, type BridgeClient, ProjectProviders } from '@tencildev/bridge';
@@ -12,9 +12,11 @@ import {
     type PermissionMode,
 } from '@tencildev/provider-claude-code';
 import {
+    type EnsembleCredentialStore,
     EnsembleProvider,
+    ensembleProjectForPort,
+    ensembleThreadId,
     listEnsembleProjects,
-    threadForPath,
 } from '@tencildev/provider-ensemble';
 import {
     type CredentialStore,
@@ -27,7 +29,7 @@ import {
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
-import { type Exec, ProjectResolver } from './project-resolver.ts';
+import { type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
 import { defaultDataDir, FileThreadStore } from './thread-store.ts';
@@ -53,8 +55,8 @@ export interface DaemonOptions {
      */
     provider?: ProviderName;
     claudeCode?: { model?: string; permissionMode?: PermissionMode };
-    /** The Ensemble host; found through the Ensemble app's files when unset. */
-    ensemble?: { url?: string; dir?: string };
+    /** Ensemble's public local API. */
+    ensemble?: { url?: string; credentials?: EnsembleCredentialStore };
     t3?: Pick<T3CodeProviderOptions, 'autoPair' | 'createPairingCode' | 'timeouts'> & {
         url?: string;
         token?: string;
@@ -117,7 +119,15 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const knownHosts = knownHostsFor(addresses, allowedOrigins);
     const dataDir = options.dataDir ?? defaultDataDir();
     const log = options.log ?? (() => {});
-    const resolver = new ProjectResolver({ dataDir, exec: options.exec });
+    const ensembleOptions = {
+        baseUrl: options.ensemble?.url,
+        credentials: options.ensemble?.credentials,
+    };
+    const resolver = new ProjectResolver({
+        dataDir,
+        exec: options.exec,
+        ensembleForPort: port => ensembleProjectForPort(port, ensembleOptions),
+    });
     const resolveProject =
         options.resolveProject ?? ((pageUrl, root) => resolver.resolve(pageUrl, root));
     const sessions = new Map<string, Promise<Session>>();
@@ -127,7 +137,6 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
 
     const claudeCodeDir = join(dataDir, 'claude-code');
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
-    const ensembleOptions = options.ensemble ?? {};
     const createProvider =
         options.createProvider ??
         ((root: string, id: string): Provider => {
@@ -143,8 +152,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
             if (id === 'ensemble') {
                 return new EnsembleProvider({
                     projectRoot: root,
-                    baseUrl: ensembleOptions.url,
-                    ensembleDir: ensembleOptions.dir,
+                    ...ensembleOptions,
                     log: providerLog,
                 });
             }
@@ -160,19 +168,19 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         });
 
     const session = (root: string): Promise<Session> => {
-        const key = resolve(root);
+        const key = projectKey(root);
         let pending = sessions.get(key);
         if (!pending) {
             pending = (async () => {
                 const providers = new ProjectProviders({
                     choices: PROVIDER_OPTIONS,
-                    // Read per project, so a new choice in setup applies without a restart.
-                    // A dev server Ensemble runs for a thread belongs to that thread.
+                    // An Ensemble thread's pins go to Ensemble. Otherwise the machine's agent,
+                    // read per project so a new choice in setup applies without a restart.
                     fallback:
                         options.provider ??
-                        (threadForPath(key, ensembleOptions.dir) !== undefined
-                            ? 'ensemble'
-                            : await machineProvider({ dataDir, t3Url })),
+                        (ensembleThreadId(key) === undefined
+                            ? await machineProvider({ dataDir, t3Url })
+                            : 'ensemble'),
                     create: id => createProvider(key, id),
                     settings: new FileProjectSettings(projectSettingsPath(key, dataDir)),
                 });
@@ -203,10 +211,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 credentials: options.t3?.credentials,
             }).catch(() => []),
             listClaudeCodeProjects({ installDir: claudeCodeDir }).catch(() => []),
-            listEnsembleProjects({
-                baseUrl: ensembleOptions.url,
-                ensembleDir: ensembleOptions.dir,
-            }).catch(() => []),
+            listEnsembleProjects(ensembleOptions).catch(() => []),
         ]);
         const byRoot = new Map<string, { root: string; title: string }>();
         for (const project of [...t3, ...claude, ...ensemble]) {

@@ -17,16 +17,16 @@ const T3 =
 
 /**
  * Ensemble's mark (tryensemble.co/favicon.svg): four bars, each its own
- * opacity, so it's a list of paths instead of one.
+ * opacity, with the favicon's rounded corners.
  */
 const ENSEMBLE = [
-    { d: 'M2.5 3.25h3v13.5h-3z', opacity: 0.6 },
-    { d: 'M6.5 2h3v16h-3z' },
-    { d: 'M10.5 2.75h3v14.5h-3z', opacity: 0.8 },
-    { d: 'M14.5 4.25h3v11.5h-3z', opacity: 0.5 },
+    { x: 2.5, y: 3.25, height: 13.5, opacity: 0.6 },
+    { x: 6.5, y: 2, height: 16, opacity: 1 },
+    { x: 10.5, y: 2.75, height: 14.5, opacity: 0.8 },
+    { x: 14.5, y: 4.25, height: 11.5, opacity: 0.5 },
 ];
 
-type MarkPath = { d: string; opacity?: number };
+type MarkPath = { x: number; y: number; height: number; opacity: number };
 
 const MARKS: Record<
     string,
@@ -96,7 +96,17 @@ export function AgentIcon({
             {typeof mark.path === 'string' ? (
                 <path d={mark.path} />
             ) : (
-                mark.path.map(part => <path key={part.d} d={part.d} fill-opacity={part.opacity} />)
+                mark.path.map(part => (
+                    <rect
+                        key={part.x}
+                        x={part.x}
+                        y={part.y}
+                        width="3"
+                        height={part.height}
+                        rx="0.15"
+                        fill-opacity={part.opacity}
+                    />
+                ))
             )}
         </svg>
     );

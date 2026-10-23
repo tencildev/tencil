@@ -2,7 +2,7 @@ import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import type { ProviderOption } from '@tencildev/protocol';
-import { ensembleUrl } from '@tencildev/provider-ensemble';
+import { EnsembleClient } from '@tencildev/provider-ensemble';
 import { CredentialStore, DEFAULT_T3_URL } from '@tencildev/provider-t3code';
 import { z } from 'zod';
 import { defaultDataDir } from './thread-store.ts';
@@ -47,7 +47,7 @@ export async function saveProvider(provider: ProviderName, dataDir = defaultData
 
 /**
  * Which agents this machine has: a paired or running T3 Code, an installed
- * Claude Code, an Ensemble app that has run here.
+ * Claude Code, a running Ensemble app.
  */
 export async function detectAgents(
     options: { t3Url?: string } = {},
@@ -89,9 +89,9 @@ async function hasT3Code(t3Url: string | undefined): Promise<boolean> {
     }
 }
 
-/** Ensemble writes the port its host listens on when it first starts. */
-async function hasEnsemble(): Promise<boolean> {
-    return (await ensembleUrl()) !== undefined;
+/** Ensemble's app, running now; finding it needs no token. */
+function hasEnsemble(): Promise<boolean> {
+    return new EnsembleClient().isRunning();
 }
 
 /** `claude` on the PATH, or its config folder (login services get a bare PATH). */

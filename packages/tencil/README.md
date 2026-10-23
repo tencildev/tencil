@@ -26,7 +26,7 @@ Tencil works with three agents. With **T3 Code**, every pin is a real T3 Code th
 in the project that matches your dev site's folder, so you can continue any
 conversation there. With **Claude Code**, the daemon runs Claude Code itself and
 every pin is a Claude Code session you can resume in a terminal. With **Ensemble**,
-every pin is an Ensemble thread in the app.
+every pin is a chat on the Ensemble thread serving your page.
 
 ## Quick start
 
@@ -125,11 +125,18 @@ Agent SDK into its config folder (it brings Claude Code along, about 250 MB).
 
 ### Ensemble
 
-With `--provider ensemble` (or Ensemble picked in a project's settings), pins go to the
-[Ensemble](https://tryensemble.co) app running on your machine. A page from a project you
-added in Ensemble starts a new Ensemble thread. A page Ensemble itself serves for a
-thread (a dev server it started in that thread's workspace) uses Ensemble by default and
-continues that thread, so the change lands where the page runs.
+With `--provider ensemble` (or Ensemble picked in a project's settings), keep the
+[Ensemble](https://tryensemble.co) app running. Pair from the overlay or during
+setup and allow “Tencil” once in Ensemble. Tencil stores the token privately;
+if you remove Tencil in Ensemble › Settings › Ensemble API, pair again.
+
+Tencil uses the page's dev server port to find its Ensemble thread, including ports
+forwarded from another machine. Each pin creates a separate chat on that thread's
+checkout, so changes reload in the page. A dev server you run yourself, from a folder
+of an Ensemble project (or a worktree of its repository), starts a new Ensemble
+thread per pin instead; that thread works on its own branch, so its changes don't
+reach your page until you merge them. If the folder isn't in Ensemble, the overlay
+names the repository to add.
 
 Nobody is at a terminal to approve tool calls, so `--runtime-mode` decides up front:
 `full-access` (the default) lets Claude Code run anything; with the stricter modes,

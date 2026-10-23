@@ -48,10 +48,11 @@ so every provider receives identical input: text and images.
   through the Claude Agent SDK, one process per active session. Threads are Claude
   Code sessions, replayed from the transcripts Claude Code saves. The SDK is installed
   on first use, not bundled.
-- **Ensemble** (`@tencildev/provider-ensemble`): talks to the host the Ensemble app
-  runs on this machine over its (undocumented) loopback HTTP API. Pins on a project
-  Ensemble knows start Ensemble threads; pages served from an Ensemble thread's
-  workspace continue that thread.
+- **Ensemble** (`@tencildev/provider-ensemble`): uses the app's public local API.
+  Keep Ensemble running and allow Tencil once when pairing. The page's dev server
+  port identifies its Ensemble thread (including forwarded ports); each pin creates
+  a chat on that thread's checkout. A page served from an Ensemble project's own folder
+  starts a new thread per pin. A shared feed streams chat messages and tool steps.
 
 A new provider is a workspace package that implements `Provider`, with tests against
 a fake of the agent in `packages/testing`. The daemon picks the provider per project in
@@ -66,7 +67,7 @@ a fake of the agent in `packages/testing`. The daemon picks the provider per pro
 | `packages/protocol` | Wire schemas (zod) and the `Provider` interface |
 | `packages/provider-t3code` | T3 Code provider (orchestration V1 and V2) |
 | `packages/provider-claude-code` | Claude Code provider (Claude Agent SDK) |
-| `packages/provider-ensemble` | Ensemble provider (the Ensemble app's local host) |
+| `packages/provider-ensemble` | Ensemble provider (public local API and SSE feed) |
 | `packages/testing` | Fake T3 Code and Ensemble servers and fake Agent SDK used by the tests |
 | `packages/tsconfig` | Shared TypeScript configs |
 | `apps/playground` | Vite + React app with the plugin, also the e2e test target |

@@ -3,6 +3,7 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerMessage, Thread } from '@tencildev/protocol';
+import { EnsembleCredentialStore, ensembleRoot } from '@tencildev/provider-ensemble';
 import { CredentialStore } from '@tencildev/provider-t3code';
 import { FakeEnsembleServer, FakeRegistry, FakeT3Server, waitFor } from '@tencildev/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -71,8 +72,8 @@ async function setup(
             autoPair: false,
             createPairingCode: async () => t3.issuePairingCode(),
         },
-        // An empty Ensemble folder, so this machine's Ensemble projects stay out of it.
-        ensemble: { dir: tmp('tencil-ensemble-') },
+        // Keep this machine's Ensemble app out of these tests.
+        ensemble: { url: 'http://127.0.0.1:1' },
         resolveProject: async pageUrl => byPort[new URL(pageUrl).port],
         // No registry requests unless a test brings its own.
         updates: { check: false },
@@ -427,20 +428,20 @@ describe('updates', () => {
 
 describe('Ensemble', () => {
     it('sends pins on a page Ensemble serves for a thread to that thread', async () => {
-        const ensembleDir = tmp('tencil-ensemble-');
-        const repo = tmp('tencil-repo-');
-        const ensemble = await FakeEnsembleServer.start({
-            projects: [{ id: 'p1', name: 'acme', remote: repo }],
-        });
+        const ensemble = await FakeEnsembleServer.start();
         cleanup.push(() => ensemble.close());
-        writeFileSync(join(ensembleDir, 'listen-port'), String(ensemble.port));
+        const credentials = new EnsembleCredentialStore(
+            join(tmp('tencil-ensemble-'), 'credentials.json'),
+        );
+        const token = 'ens_test';
+        ensemble.tokens.add(token);
+        await credentials.set(ensemble.url, token);
         const thread = ensemble.addThread({ projectId: 'p1', title: 'Landing' });
-        const workspace = join(ensembleDir, 'threads', thread.id, 'workspace');
-        mkdirSync(workspace, { recursive: true });
-
+        ensemble.ports.set(4174, thread.id);
         const { daemon } = await setup({
-            ensemble: { dir: ensembleDir },
-            resolveProject: async () => workspace,
+            ensemble: { url: ensemble.url, credentials },
+            resolveProject: undefined,
+            exec: async () => '',
         });
         const page = await connectPage(daemon, 'http://localhost:4174/');
         await ready(page.received);
@@ -457,10 +458,15 @@ describe('Ensemble', () => {
             },
             { message: 'Ensemble reply on the pin' },
         );
-        expect(done.provider).toMatchObject({ id: 'ensemble', threadId: thread.id });
+        expect(done.provider).toMatchObject({
+            id: 'ensemble',
+            threadId: expect.stringMatching(new RegExp(`^${thread.id}/`)),
+        });
+        const health = JSON.parse((await httpGet(`${daemon.url}/health`)).body);
+        expect(health.projects[0]?.root).toBe(ensembleRoot(thread.id));
         expect(ensemble.callsOf('POST', 'threads')).toEqual([]);
-        expect(ensemble.callsOf('POST', `threads/${thread.id}/messages`)).toEqual([
-            expect.objectContaining({ text: expect.stringContaining('Tighten the hero') }),
+        expect(ensemble.callsOf('POST', `threads/${thread.id}/chats`)).toEqual([
+            expect.objectContaining({ prompt: expect.stringContaining('Tighten the hero') }),
         ]);
     });
 });
