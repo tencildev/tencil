@@ -135,9 +135,9 @@ forwarded from another machine. Each pin creates a separate chat on that thread'
 checkout, so changes reload in the page. A dev server you run yourself, from a folder
 of an Ensemble project (or a worktree of its repository), starts a new Ensemble
 thread per pin instead; that thread works on its own branch, so its changes don't
-reach your page until you merge them. Resolving the pin archives that thread, and
-reopening the pin or replying to it brings it back. Threads you started yourself
-stay open. If the folder isn't in Ensemble, the overlay names the repository to add.
+reach your page until you merge them. Resolving or deleting the pin archives that
+thread, and reopening the pin or replying to it brings it back. Threads you started
+yourself stay open, and so does one you've added a chat to. If the folder isn't in Ensemble, the overlay names the repository to add.
 
 Nobody is at a terminal to approve tool calls, so `--runtime-mode` decides up front:
 `full-access` (the default) lets Claude Code run anything; with the stricter modes,

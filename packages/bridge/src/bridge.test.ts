@@ -295,4 +295,42 @@ describe('Bridge', () => {
         expect(provider.sinks.has('theirs')).toBe(true);
         await bridge.dispose();
     });
+
+    it('archives a thread it started once its last open pin is deleted', async () => {
+        const provider = new FakeAgentProvider({ archivable: true });
+        const store = new MemoryThreadStore();
+        const bridge = new Bridge({
+            providers: ProjectProviders.of(provider),
+            store,
+            project: { name: 'acme', root: '/projects/acme' },
+            version: '0',
+        });
+        const client = { send: () => {} };
+        const pin = (id: string) => ({
+            type: 'thread.create' as const,
+            id,
+            pageUrl: 'http://localhost:3000/',
+            prompt: 'Make it red',
+            anchor: { selector: 'button', offsetX: 0.5, offsetY: 0.5 },
+            context,
+        });
+        await bridge.handle(client, pin('pin1'));
+        await bridge.handle(client, {
+            type: 'thread.open',
+            id: 'pin2',
+            providerThreadId: 'fake-1',
+        });
+        await bridge.handle(client, { type: 'thread.delete', threadId: 'pin1' });
+        expect(provider.archived).toEqual([]);
+        await bridge.handle(client, { type: 'thread.resolve', threadId: 'pin2', resolved: true });
+        expect(provider.archived).toEqual(['fake-1']);
+        await bridge.handle(client, { type: 'thread.delete', threadId: 'pin2' });
+        expect(provider.archived).toEqual(['fake-1']);
+
+        await bridge.handle(client, pin('pin3'));
+        await bridge.handle(client, { type: 'thread.delete', threadId: 'pin3' });
+        expect(provider.archived).toEqual(['fake-1', 'fake-2']);
+        expect(provider.sinks.size).toBe(0);
+        await bridge.dispose();
+    });
 });

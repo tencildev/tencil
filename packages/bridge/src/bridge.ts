@@ -182,12 +182,21 @@ export class Bridge {
                     }));
                     return;
                 case 'thread.delete': {
-                    const provider = this.#options.store.get(message.threadId)?.provider;
+                    const thread = this.#options.store.get(message.threadId);
                     this.#draftAttachments.delete(message.threadId);
                     if (this.#options.store.delete(message.threadId)) {
                         this.#broadcast({ type: 'thread.removed', threadId: message.threadId });
                     }
-                    if (provider?.threadId) this.#release(provider.id, provider.threadId);
+                    if (!thread?.provider.threadId) return;
+                    // Deleting the last open pin is done with the thread, as resolving it is.
+                    if (
+                        !thread.resolved &&
+                        this.#options.providers.has(thread.provider.id) &&
+                        this.#archived(thread.provider)
+                    ) {
+                        await this.#archive(thread);
+                    }
+                    this.#release(thread.provider.id, thread.provider.threadId);
                     return;
                 }
                 case 'update.start':
@@ -488,22 +497,30 @@ export class Bridge {
             ? this.#pinsFor(providerId, providerThreadId).filter(pin => pin.id !== threadId)
             : [];
         if (archivable && providerThreadId && others.every(pin => pin.resolved)) {
-            const provider = this.#providerOf(thread);
             if (resolved) {
-                // Unwatched first, so the provider's own archived event doesn't mark the pins gone.
-                this.#unwatch(providerId, providerThreadId);
-                try {
-                    await provider.archive?.(providerThreadId);
-                } catch (error) {
-                    this.#watch(providerId, providerThreadId);
-                    throw error;
-                }
+                await this.#archive(thread);
             } else {
-                await provider.reopen?.(providerThreadId);
+                await this.#providerOf(thread).reopen?.(providerThreadId);
                 this.#watch(providerId, providerThreadId, true);
             }
         }
         this.#update(threadId, current => ({ ...current, resolved }));
+    }
+
+    /** Archive the pin's provider thread, which its other pins, if any, are done with. */
+    async #archive(thread: Thread): Promise<void> {
+        const { id: providerId, threadId: providerThreadId } = thread.provider;
+        if (!providerThreadId) return;
+        // Unwatched first, so the provider's own archived event doesn't mark the pins gone.
+        this.#unwatch(providerId, providerThreadId);
+        try {
+            await this.#providerOf(thread).archive?.(providerThreadId);
+        } catch (error) {
+            if (this.#pinsFor(providerId, providerThreadId).length > 0) {
+                this.#watch(providerId, providerThreadId);
+            }
+            throw error;
+        }
     }
 
     /** Whether the provider thread is archived: started for its pins, which are all resolved. */
