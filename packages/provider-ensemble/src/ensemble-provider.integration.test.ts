@@ -347,6 +347,26 @@ describe('pages served from a folder', () => {
         expect(a.gone()).toBe(false);
     });
 
+    it('leaves a thread it started open once someone adds a chat to it', async () => {
+        const { provider, server, repo } = await setupFolder(repo => repo);
+        server.projects.push({ id: 'web', name: 'web', source: { kind: 'local', path: repo } });
+        await provider.pair();
+        const created = await provider.createThread(pin);
+        const threadId = String(created.providerThreadId.split('/')[0]);
+        const thread = server.threads.get(threadId);
+        await waitFor(() => thread?.chats[0]?.status === 'idle');
+        thread?.chats.push({
+            id: 'theirs',
+            title: 'Mine',
+            status: 'idle',
+            messages: [],
+            steps: [],
+        });
+        await provider.archive(created.providerThreadId);
+        expect(thread?.state).not.toBe('archived');
+        expect(server.callsOf('POST', `threads/${threadId}/archive`)).toHaveLength(0);
+    });
+
     it("sends pins to the thread whose workspace is on the folder's branch", async () => {
         const { provider, server } = await setupFolder(repo => {
             git(repo, 'checkout', '-q', '-b', 'ensemble/landing');

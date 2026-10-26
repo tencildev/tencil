@@ -161,8 +161,13 @@ export class EnsembleProvider implements Provider {
     }
 
     async archive(providerThreadId: string): Promise<void> {
-        const { threadId } = parseChatThreadId(providerThreadId);
-        await this.#call(client => client.archiveThread(threadId));
+        const { threadId, chatId } = parseChatThreadId(providerThreadId);
+        await this.#call(async client => {
+            // A chat someone added since holds more than the pins' work, so the thread stays open.
+            const thread = await client.thread(threadId);
+            if (thread.chats.some(chat => chat.id !== chatId)) return;
+            await client.archiveThread(threadId);
+        });
     }
 
     async reopen(providerThreadId: string): Promise<void> {
