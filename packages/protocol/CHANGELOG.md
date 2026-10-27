@@ -1,5 +1,13 @@
 # @tencildev/protocol
 
+## 0.5.0
+
+### Minor Changes
+
+- [#13](https://github.com/tencildev/tencil/pull/13) [`f128982`](https://github.com/tencildev/tencil/commit/f12898249a42cbe715799e023d32b7dc505297ea) Thanks [@arjendevos](https://github.com/arjendevos)! - Providers can mark a thread they start for a pin `archivable` and implement `archive`
+  and `reopen`. The bridge archives such a thread once all its pins are resolved or deleted, and
+  reopens it when one is reopened or replied to.
+
 ## 0.4.0
 
 ### Minor Changes
