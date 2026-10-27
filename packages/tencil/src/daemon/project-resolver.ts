@@ -14,10 +14,12 @@ const defaultExec: Exec = async (command, args) =>
 
 /**
  * Works out which project folder a page belongs to:
- *   1. what the user picked for this address before,
- *   2. the repository root the Vite or Next loader sent, if it's a git checkout,
- *   3. the dev server's working directory, found from the port it listens on.
- * Returns undefined when neither works; the overlay then asks.
+ *   1. the repository root the Vite or Next loader sent, if it's a git checkout,
+ *   2. the dev server's working directory, found from the port it listens on,
+ *   3. what the user picked for this address before.
+ * Picks come last: ports get reused (5173 is every Vite app's default), so a pick
+ * only stands in for what can't be detected. Returns undefined when nothing works;
+ * the overlay then asks.
  */
 export class ProjectResolver {
     readonly #memory: OriginMemory;
@@ -33,13 +35,12 @@ export class ProjectResolver {
     async resolve(pageUrl: string, claimedRoot?: string): Promise<string | undefined> {
         const origin = safeOrigin(pageUrl);
         if (!origin) return undefined;
-        const remembered = await this.#memory.get(origin);
-        if (remembered && existsSync(remembered)) return remembered;
         if (claimedRoot && isGitRoot(claimedRoot)) return resolve(claimedRoot);
         const port = portOf(origin);
-        if (!port) return undefined;
-        const folder = await this.folderForPort(port).catch(() => undefined);
-        return folder ? projectRoot(folder) : undefined;
+        const folder = port ? await this.folderForPort(port).catch(() => undefined) : undefined;
+        if (folder) return projectRoot(folder);
+        const remembered = await this.#memory.get(origin);
+        return remembered && existsSync(remembered) ? remembered : undefined;
     }
 
     /** Remember the user's choice for an address (from the overlay's project picker). */
@@ -82,7 +83,8 @@ export class ProjectResolver {
 
     async #listeners(port: number): Promise<number[]> {
         if (this.#platform === 'win32') {
-            return parseNetstat(await this.#exec('netstat', ['-ano', '-p', 'TCP']), port);
+            // No `-p TCP`: it lists IPv4 only, and Vite on localhost listens on [::1].
+            return parseNetstat(await this.#exec('netstat', ['-ano']), port);
         }
         try {
             return parsePids(

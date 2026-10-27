@@ -278,13 +278,49 @@ describe('ProjectResolver', () => {
         expect(await resolver.resolve('http://localhost:8130/', worktree)).toBe(worktree);
     });
 
-    it('still prefers what the user picked for the address', async () => {
+    it('prefers the dev server on the port over an earlier pick for the address', async () => {
+        const { app } = monorepo();
+        const earlier = monorepo().app;
+        const dataDir = tmp('tencil-data-');
+        const resolver = new ProjectResolver({ dataDir, exec: fakeExec(app), platform: 'darwin' });
+        await resolver.remember('http://localhost:5173/', earlier);
+        expect(await resolver.resolve('http://localhost:5173/')).toBe(app);
+    });
+
+    it('prefers the repository root from the loader over an earlier pick', async () => {
         const { root } = monorepo();
         mkdirSync(join(root, '.git'));
+        const earlier = monorepo().app;
+        const dataDir = tmp('tencil-data-');
+        const resolver = new ProjectResolver({ dataDir, exec: docker, platform: 'darwin' });
+        await resolver.remember('http://localhost:8130/', earlier);
+        expect(await resolver.resolve('http://localhost:8130/', root)).toBe(root);
+    });
+
+    it("falls back to the pick when the port can't be traced to a project", async () => {
         const picked = monorepo().app;
         const dataDir = tmp('tencil-data-');
         const resolver = new ProjectResolver({ dataDir, exec: docker, platform: 'darwin' });
         await resolver.remember('http://localhost:8130/', picked);
-        expect(await resolver.resolve('http://localhost:8130/', root)).toBe(picked);
+        expect(await resolver.resolve('http://localhost:8130/')).toBe(picked);
+    });
+
+    it('sees IPv6 listeners on Windows', async () => {
+        const { app } = monorepo();
+        const exec: Exec = async (bin, args) => {
+            if (bin === 'netstat') {
+                expect(args).toEqual(['-ano']);
+                return '  TCP    [::1]:5173             [::]:0                 LISTENING       4242\n';
+            }
+            if (bin === 'powershell')
+                return `node ${join(app, 'node_modules', 'vite', 'bin', 'vite.js')}`;
+            throw new Error(`unexpected ${bin}`);
+        };
+        const resolver = new ProjectResolver({
+            dataDir: tmp('tencil-data-'),
+            exec,
+            platform: 'win32',
+        });
+        expect(await resolver.resolve('http://localhost:5173/')).toBe(app);
     });
 });
