@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ensembleRoot } from '@tencildev/provider-ensemble';
 import { describe, expect, it } from 'vitest';
 import {
     type Exec,
@@ -303,6 +304,22 @@ describe('ProjectResolver', () => {
         const resolver = new ProjectResolver({ dataDir, exec: docker, platform: 'darwin' });
         await resolver.remember('http://localhost:8130/', picked);
         expect(await resolver.resolve('http://localhost:8130/')).toBe(picked);
+    });
+
+    it('prefers the dev server on the port over an earlier Ensemble thread pick', async () => {
+        const { app } = monorepo();
+        const dataDir = tmp('tencil-data-');
+        const resolver = new ProjectResolver({ dataDir, exec: fakeExec(app), platform: 'darwin' });
+        await resolver.remember('http://localhost:5173/', ensembleRoot('t-earlier'));
+        expect(await resolver.resolve('http://localhost:5173/')).toBe(app);
+    });
+
+    it("falls back to an Ensemble thread pick when the port can't be traced", async () => {
+        const thread = ensembleRoot('t-picked');
+        const dataDir = tmp('tencil-data-');
+        const resolver = new ProjectResolver({ dataDir, exec: docker, platform: 'darwin' });
+        await resolver.remember('http://localhost:8130/', thread);
+        expect(await resolver.resolve('http://localhost:8130/')).toBe(thread);
     });
 
     it('sees IPv6 listeners on Windows', async () => {
