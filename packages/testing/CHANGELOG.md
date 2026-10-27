@@ -1,5 +1,20 @@
 # @tencildev/testing
 
+## 0.3.0
+
+### Minor Changes
+
+- [#14](https://github.com/tencildev/tencil/pull/14) [`8491e40`](https://github.com/tencildev/tencil/commit/8491e4036f2fe7020d26d00df7b0a59b66630c99) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Add Ensemble as an agent provider through its public local API. Keep the Ensemble
+  app running and allow Tencil once when pairing. Pages map to Ensemble threads by
+  dev server port, including forwarded ports; each pin creates a separate chat on
+  the same checkout. Pages served from an Ensemble project's own folder start a new
+  thread per pin, archived when the pin is resolved and reopened with it. Stream messages and tool steps over a shared, resumable feed.
+
+### Patch Changes
+
+- Updated dependencies [[`f128982`](https://github.com/tencildev/tencil/commit/f12898249a42cbe715799e023d32b7dc505297ea)]:
+  - @tencildev/protocol@0.5.0
+
 ## 0.2.0
 
 ### Minor Changes

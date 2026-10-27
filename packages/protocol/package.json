@@ -1,6 +1,6 @@
 {
     "name": "@tencildev/protocol",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "Tencil's wire schemas (zod) and the Provider interface agents implement.",
     "license": "Apache-2.0",
     "author": "Pixel Perfect Agency",
