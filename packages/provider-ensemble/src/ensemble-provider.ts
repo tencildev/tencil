@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { basename } from 'node:path';
+import { basename, sep } from 'node:path';
 import type {
     CreatedThread,
     CreateThreadInput,
@@ -334,7 +334,7 @@ function parseChatThreadId(providerThreadId: string): { threadId: string; chatId
 
 function tildify(path: string): string {
     const home = homedir();
-    return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+    return path === home || path.startsWith(`${home}${sep}`) ? `~${path.slice(home.length)}` : path;
 }
 
 function toEnsembleImage(image: ImageAttachment): EnsembleImage {

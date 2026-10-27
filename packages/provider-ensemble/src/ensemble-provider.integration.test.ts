@@ -68,7 +68,10 @@ describe('Ensemble public API', () => {
         await pairing;
         expect(provider.info()).toMatchObject({ state: 'ready', target: 'Landing' });
         expect(await credentials.get(server.url)).toMatch(/^ens_/);
-        expect((await stat(credentials.path)).mode & 0o777).toBe(0o600);
+        // Windows has no POSIX file modes.
+        if (process.platform !== 'win32') {
+            expect((await stat(credentials.path)).mode & 0o777).toBe(0o600);
+        }
         expect(server.callsOf('POST', 'connect')).toEqual([{ name: 'Tencil', access: 'work' }]);
     });
     it.each([403, 408])('allows pairing again after connect returns %s', async status => {
