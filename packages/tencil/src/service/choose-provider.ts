@@ -41,18 +41,21 @@ export async function chooseProvider(options: {
     }
     if (options.yes || !process.stdin.isTTY) return 't3code';
 
-    const provider = await ask(installed.length === 0, options.log);
+    const provider = await ask(installed, options.log);
     await saveProvider(provider);
     options.log(`  ${pc.green('✓')} Pins go to ${providerLabel(provider)}.`);
     hint();
     return provider;
 }
 
-async function ask(noneFound: boolean, log: (message: string) => void): Promise<ProviderName> {
+async function ask(
+    installed: ProviderName[],
+    log: (message: string) => void,
+): Promise<ProviderName> {
     log(
-        noneFound
-            ? '  Neither T3 Code nor Claude Code was found. Which one will you use?'
-            : '  T3 Code and Claude Code are both here. Which agent should pins go to?',
+        installed.length === 0
+            ? `  None of ${listOf(PROVIDERS)} was found. Which one will you use?`
+            : `  ${listOf(installed)} are here. Which agent should pins go to?`,
     );
     PROVIDERS.forEach((id, index) => {
         log(`    ${pc.cyan(String(index + 1))}  ${providerLabel(id)}`);
@@ -62,4 +65,11 @@ async function ask(noneFound: boolean, log: (message: string) => void): Promise<
     rl.close();
     const index = Number.parseInt(answer.trim(), 10) - 1;
     return PROVIDERS[index] ?? PROVIDERS[0];
+}
+
+function listOf(ids: readonly ProviderName[]): string {
+    const labels = ids.map(providerLabel);
+    return labels.length > 1
+        ? `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
+        : (labels[0] ?? '');
 }

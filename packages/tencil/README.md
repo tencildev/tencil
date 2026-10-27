@@ -22,15 +22,17 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
                                                                                    └─────────────┘
 ```
 
-Tencil works with two agents. With **T3 Code**, every pin is a real T3 Code thread
+Tencil works with three agents. With **T3 Code**, every pin is a real T3 Code thread
 in the project that matches your dev site's folder, so you can continue any
 conversation there. With **Claude Code**, the daemon runs Claude Code itself and
-every pin is a Claude Code session you can resume in a terminal.
+every pin is a Claude Code session you can resume in a terminal. With **Ensemble**,
+every pin is a chat on the Ensemble thread serving your page.
 
 ## Quick start
 
-You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running) or
-[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in).
+You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running),
+[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in) or
+[Ensemble](https://tryensemble.co) (the desktop app, running).
 
 ```sh
 cd your-app
@@ -121,6 +123,22 @@ repository root. Each pin is a Claude Code session you can also pick up in a
 terminal with `claude --resume <id>`. The first time, Tencil installs the Claude
 Agent SDK into its config folder (it brings Claude Code along, about 250 MB).
 
+### Ensemble
+
+With `--provider ensemble` (or Ensemble picked in a project's settings), keep the
+[Ensemble](https://tryensemble.co) app running. Pair from the overlay or during
+setup and allow “Tencil” once in Ensemble. Tencil stores the token privately;
+if you remove Tencil in Ensemble › Settings › Ensemble API, pair again.
+
+Tencil uses the page's dev server port to find its Ensemble thread, including ports
+forwarded from another machine. Each pin creates a separate chat on that thread's
+checkout, so changes reload in the page. A dev server you run yourself, from a folder
+of an Ensemble project (or a worktree of its repository), starts a new Ensemble
+thread per pin instead; that thread works on its own branch, so its changes don't
+reach your page until you merge them. Resolving or deleting the pin archives that
+thread, and reopening the pin or replying to it brings it back. Threads you started
+yourself stay open, and so does one you've added a chat to. If the folder isn't in Ensemble, the overlay names the repository to add.
+
 Nobody is at a terminal to approve tool calls, so `--runtime-mode` decides up front:
 `full-access` (the default) lets Claude Code run anything; with the stricter modes,
 tools that would need approval are refused and Claude Code is told why. A turn that
@@ -159,7 +177,7 @@ tencil service uninstall      Remove the login service
 tencil connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 --port <n>              Port (default 4747, env TENCIL_PORT)
---provider <name>       Agent for projects without their own: t3code (default) | claude-code
+--provider <name>       Agent for projects without their own: t3code (default) | claude-code | ensemble
 --t3-url <url>          T3 Code server (default: last paired, then http://127.0.0.1:3773)
 --model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
                         Claude Code: a model, e.g. claude-opus-5-5 (default: its default)

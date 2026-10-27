@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { settleInterrupted, type ThreadStore } from '@tencildev/bridge';
 import { Thread } from '@tencildev/protocol';
 import { z } from 'zod';
+import { projectKey } from './project-resolver.ts';
 
 const StoreFile = z.object({
     version: z.literal(1),
@@ -24,7 +25,7 @@ export function defaultDataDir(): string {
  * shared between two bridges.
  */
 export function projectStorePath(projectRoot: string, dataDir = defaultDataDir()): string {
-    const root = resolve(projectRoot);
+    const root = projectKey(projectRoot);
     const hash = createHash('sha256').update(root).digest('hex').slice(0, 10);
     const slug =
         basename(root)
@@ -45,7 +46,7 @@ export class FileThreadStore implements ThreadStore {
     #writing: Promise<void> = Promise.resolve();
 
     constructor(projectRoot: string, dataDir?: string) {
-        this.#root = resolve(projectRoot);
+        this.#root = projectKey(projectRoot);
         this.path = projectStorePath(this.#root, dataDir);
     }
 

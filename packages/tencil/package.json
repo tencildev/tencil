@@ -1,6 +1,6 @@
 {
     "name": "tencil",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "description": "Point at any element of your running app and tell your coding agent what to fix.",
     "license": "Apache-2.0",
     "author": "Pixel Perfect Agency",
@@ -75,7 +75,7 @@
         "oxc-parser": "^0.153.0",
         "picocolors": "^1.1.1",
         "ws": "^8.22.0",
-        "zod": "^4.6.5"
+        "zod": "^4.6.6"
     },
     "peerDependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.3.293",
@@ -99,6 +99,7 @@
         "@tencildev/overlay": "workspace:*",
         "@tencildev/protocol": "workspace:*",
         "@tencildev/provider-claude-code": "workspace:*",
+        "@tencildev/provider-ensemble": "workspace:*",
         "@tencildev/provider-t3code": "workspace:*",
         "@tencildev/testing": "workspace:*",
         "@tencildev/tsconfig": "workspace:*",

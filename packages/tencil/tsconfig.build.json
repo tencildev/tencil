@@ -7,7 +7,8 @@
         "../bridge/src",
         "../protocol/src",
         "../provider-t3code/src",
-        "../provider-claude-code/src"
+        "../provider-claude-code/src",
+        "../provider-ensemble/src"
     ],
     "exclude": ["**/*.test.ts"]
 }

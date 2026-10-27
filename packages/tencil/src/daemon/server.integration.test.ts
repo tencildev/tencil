@@ -3,8 +3,9 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerMessage, Thread } from '@tencildev/protocol';
+import { EnsembleCredentialStore, ensembleRoot } from '@tencildev/provider-ensemble';
 import { CredentialStore } from '@tencildev/provider-t3code';
-import { FakeRegistry, FakeT3Server, waitFor } from '@tencildev/testing';
+import { FakeEnsembleServer, FakeRegistry, FakeT3Server, waitFor } from '@tencildev/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { cliIn } from '../service/autostart.ts';
@@ -71,6 +72,8 @@ async function setup(
             autoPair: false,
             createPairingCode: async () => t3.issuePairingCode(),
         },
+        // Keep this machine's Ensemble app out of these tests.
+        ensemble: { url: 'http://127.0.0.1:1' },
         resolveProject: async pageUrl => byPort[new URL(pageUrl).port],
         // No registry requests unless a test brings its own.
         updates: { check: false },
@@ -423,6 +426,8 @@ describe('updates', () => {
         await waitFor(() => updates(page.received).some(update => update.latest === '999.0.0'));
         page.send({ type: 'update.start' });
         await waitFor(() => plans.length === 1);
+        // The states are sent just before the hand-off; they can still be on the way.
+        await waitFor(() => updates(page.received).some(update => update.state === 'restarting'));
         expect(updates(page.received).map(update => update.state)).toEqual(
             expect.arrayContaining(['installing', 'restarting']),
         );
@@ -492,5 +497,50 @@ describe('updates', () => {
             error: 'npm install failed (1): E404 tencil@999.0.0',
         });
         expect((await httpGet(`${daemon.url}/health`)).status).toBe(200);
+    });
+});
+
+describe('Ensemble', () => {
+    it('sends pins on a page Ensemble serves for a thread to that thread', async () => {
+        const ensemble = await FakeEnsembleServer.start();
+        cleanup.push(() => ensemble.close());
+        const credentials = new EnsembleCredentialStore(
+            join(tmp('tencil-ensemble-'), 'credentials.json'),
+        );
+        const token = 'ens_test';
+        ensemble.tokens.add(token);
+        await credentials.set(ensemble.url, token);
+        const thread = ensemble.addThread({ projectId: 'p1', title: 'Landing' });
+        ensemble.ports.set(4174, thread.id);
+        const { daemon } = await setup({
+            ensemble: { url: ensemble.url, credentials },
+            resolveProject: undefined,
+            exec: async () => '',
+        });
+        const page = await connectPage(daemon, 'http://localhost:4174/');
+        await ready(page.received);
+        const hello = page.received.find(
+            (m): m is Extract<ServerMessage, { type: 'ready' }> => m.type === 'ready',
+        );
+        expect(hello?.settings.provider).toBe('ensemble');
+
+        page.send(pin('pin-1', 'Tighten the hero', 'http://localhost:4174/'));
+        const done = await waitFor(
+            () => {
+                const latest = page.latest('pin-1');
+                return latest?.messages.some(m => m.role === 'assistant') && latest;
+            },
+            { message: 'Ensemble reply on the pin' },
+        );
+        expect(done.provider).toMatchObject({
+            id: 'ensemble',
+            threadId: expect.stringMatching(new RegExp(`^${thread.id}/`)),
+        });
+        const health = JSON.parse((await httpGet(`${daemon.url}/health`)).body);
+        expect(health.projects[0]?.root).toBe(ensembleRoot(thread.id));
+        expect(ensemble.callsOf('POST', 'threads')).toEqual([]);
+        expect(ensemble.callsOf('POST', `threads/${thread.id}/chats`)).toEqual([
+            expect.objectContaining({ prompt: expect.stringContaining('Tighten the hero') }),
+        ]);
     });
 });

@@ -12,8 +12,9 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
 
 ## Install and use
 
-You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running) or
-[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in).
+You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running),
+[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in) or
+[Ensemble](https://tryensemble.co) (the desktop app, running).
 
 ```sh
 cd your-app
@@ -47,6 +48,11 @@ so every provider receives identical input: text and images.
   through the Claude Agent SDK, one process per active session. Threads are Claude
   Code sessions, replayed from the transcripts Claude Code saves. The SDK is installed
   on first use, not bundled.
+- **Ensemble** (`@tencildev/provider-ensemble`): uses the app's public local API.
+  Keep Ensemble running and allow Tencil once when pairing. The page's dev server
+  port identifies its Ensemble thread (including forwarded ports); each pin creates
+  a chat on that thread's checkout. A page served from an Ensemble project's own folder
+  starts a new thread per pin, archived when the pin is resolved or deleted. A shared feed streams chat messages and tool steps.
 
 A new provider is a workspace package that implements `Provider`, with tests against
 a fake of the agent in `packages/testing`. The daemon picks the provider per project in
@@ -61,7 +67,8 @@ a fake of the agent in `packages/testing`. The daemon picks the provider per pro
 | `packages/protocol` | Wire schemas (zod) and the `Provider` interface |
 | `packages/provider-t3code` | T3 Code provider (orchestration V1 and V2) |
 | `packages/provider-claude-code` | Claude Code provider (Claude Agent SDK) |
-| `packages/testing` | Fake T3 Code server and fake Agent SDK used by the tests |
+| `packages/provider-ensemble` | Ensemble provider (public local API and SSE feed) |
+| `packages/testing` | Fake T3 Code and Ensemble servers and fake Agent SDK used by the tests |
 | `packages/tsconfig` | Shared TypeScript configs |
 | `apps/playground` | Vite + React app with the plugin, also the e2e test target |
 

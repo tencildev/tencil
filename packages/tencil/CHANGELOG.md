@@ -1,5 +1,23 @@
 # tencil
 
+## 0.9.0
+
+### Minor Changes
+
+- [#14](https://github.com/tencildev/tencil/pull/14) [`8491e40`](https://github.com/tencildev/tencil/commit/8491e4036f2fe7020d26d00df7b0a59b66630c99) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Add Ensemble as an agent provider through its public local API. Keep the Ensemble
+  app running and allow Tencil once when pairing. Pages map to Ensemble threads by
+  dev server port, including forwarded ports; each pin creates a separate chat on
+  the same checkout. Pages served from an Ensemble project's own folder start a new
+  thread per pin, archived when the pin is resolved and reopened with it. Stream messages and tool steps over a shared, resumable feed.
+
+### Patch Changes
+
+- [#15](https://github.com/tencildev/tencil/pull/15) [`f3b0a31`](https://github.com/tencildev/tencil/commit/f3b0a31482ab9be4ed4698b9057796851572a517) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Send a page to the project actually running on its port. A folder picked
+  for an address no longer wins over the dev server found there now, so a
+  second Vite app on port 5173 stops going to the first one's folder. On
+  Windows the port lookup now sees dev servers listening on IPv6 (`[::1]`),
+  which Vite does for `localhost`.
+
 ## 0.8.0
 
 ### Minor Changes

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { basename, join, resolve } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { Bridge, type BridgeClient, ProjectProviders } from '@tencildev/bridge';
@@ -11,6 +11,13 @@ import {
     listClaudeCodeProjects,
     type PermissionMode,
 } from '@tencildev/provider-claude-code';
+import {
+    type EnsembleCredentialStore,
+    EnsembleProvider,
+    ensembleProjectForPort,
+    ensembleThreadId,
+    listEnsembleProjects,
+} from '@tencildev/provider-ensemble';
 import {
     type CredentialStore,
     listT3Projects,
@@ -24,7 +31,7 @@ import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
 import { AllowedOrigins, approvableOrigin } from './allowed-origins.ts';
 import { APPROVAL_HEADERS, allowedPage, confirmPage, errorPage } from './approval-page.ts';
-import { type Exec, ProjectResolver } from './project-resolver.ts';
+import { type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
 import { defaultDataDir, FileThreadStore } from './thread-store.ts';
@@ -50,6 +57,8 @@ export interface DaemonOptions {
      */
     provider?: ProviderName;
     claudeCode?: { model?: string; permissionMode?: PermissionMode };
+    /** Ensemble's public local API. */
+    ensemble?: { url?: string; credentials?: EnsembleCredentialStore };
     t3?: Pick<T3CodeProviderOptions, 'autoPair' | 'createPairingCode' | 'timeouts'> & {
         url?: string;
         token?: string;
@@ -115,7 +124,15 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         options.allowedOrigins,
     );
     const log = options.log ?? (() => {});
-    const resolver = new ProjectResolver({ dataDir, exec: options.exec });
+    const ensembleOptions = {
+        baseUrl: options.ensemble?.url,
+        credentials: options.ensemble?.credentials,
+    };
+    const resolver = new ProjectResolver({
+        dataDir,
+        exec: options.exec,
+        ensembleForPort: port => ensembleProjectForPort(port, ensembleOptions),
+    });
     const resolveProject =
         options.resolveProject ?? ((pageUrl, root) => resolver.resolve(pageUrl, root));
     const sessions = new Map<string, Promise<Session>>();
@@ -137,6 +154,13 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     log: providerLog,
                 });
             }
+            if (id === 'ensemble') {
+                return new EnsembleProvider({
+                    projectRoot: root,
+                    ...ensembleOptions,
+                    log: providerLog,
+                });
+            }
             const { url, token, ...t3 } = options.t3 ?? {};
             return new T3CodeProvider({
                 ...t3,
@@ -149,14 +173,19 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         });
 
     const session = (root: string): Promise<Session> => {
-        const key = resolve(root);
+        const key = projectKey(root);
         let pending = sessions.get(key);
         if (!pending) {
             pending = (async () => {
                 const providers = new ProjectProviders({
                     choices: PROVIDER_OPTIONS,
-                    // Read per project, so a new choice in setup applies without a restart.
-                    fallback: options.provider ?? (await machineProvider({ dataDir, t3Url })),
+                    // An Ensemble thread's pins go to Ensemble. Otherwise the machine's agent,
+                    // read per project so a new choice in setup applies without a restart.
+                    fallback:
+                        options.provider ??
+                        (ensembleThreadId(key) === undefined
+                            ? await machineProvider({ dataDir, t3Url })
+                            : 'ensemble'),
                     create: id => createProvider(key, id),
                     settings: new FileProjectSettings(projectSettingsPath(key, dataDir)),
                 });
@@ -178,18 +207,19 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         return pending;
     };
 
-    /** Projects either agent knows, offered when a page's project can't be worked out. */
+    /** Projects any agent knows, offered when a page's project can't be worked out. */
     const choices = async () => {
-        const [t3, claude] = await Promise.all([
+        const [t3, claude, ensemble] = await Promise.all([
             listT3Projects({
                 baseUrl: t3Url,
                 token: options.t3?.token ?? process.env.TENCIL_T3_TOKEN,
                 credentials: options.t3?.credentials,
             }).catch(() => []),
             listClaudeCodeProjects({ installDir: claudeCodeDir }).catch(() => []),
+            listEnsembleProjects(ensembleOptions).catch(() => []),
         ]);
         const byRoot = new Map<string, { root: string; title: string }>();
-        for (const project of [...t3, ...claude]) {
+        for (const project of [...t3, ...claude, ...ensemble]) {
             if (!byRoot.has(project.workspaceRoot)) {
                 byRoot.set(project.workspaceRoot, {
                     root: project.workspaceRoot,
@@ -200,7 +230,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         return [...byRoot.values()];
     };
     const noChoicesHint =
-        "No projects found. Open this page's project in T3 Code, or run claude in it once.";
+        "No projects found. Open this page's project in T3 Code or Ensemble, or run claude in it once.";
 
     const settled = async () =>
         (await Promise.allSettled(sessions.values()))
