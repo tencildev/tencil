@@ -111,15 +111,17 @@ export const SettingsIcon = () => (
     </Icon>
 );
 
-/** Tencil's mark: the overlay's pin with a cursor in it (as on tencil.dev). */
+/**
+ * Tencil's mark, as on tencil.dev: the overlay's pin with a cursor cut out of it, so
+ * the background shows through. Drawn on a 128 grid with a 3/24 margin.
+ */
 export const TencilLogo = ({ size = 16 }: { size?: number }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" class="tencil-logo">
-        <path d="M3 21V9a6 6 0 0 1 6-6h6a6 6 0 0 1 6 6v6a6 6 0 0 1-6 6Z" fill="#3b8dff" />
         <path
-            d="M9.25 7.5 16.5 12.6l-3.55.75-1.75 3.4Z"
-            fill="#fff"
-            stroke="#fff"
-            stroke-linejoin="round"
+            d="M80 0C106.51 0 128 21.4903 128 48V80C128 106.51 106.51 128 80 128H4C1.79086 128 0 126.209 0 124V48C0 21.4903 21.4903 0 48 0H80ZM102.06 31.19A4 4 0 0 0 96.81 25.94L17.67 59.86A4 4 0 0 0 17.98 67.33L48.1 77.37A4 4 0 0 1 50.63 79.9L60.67 110.02A4 4 0 0 0 68.14 110.33Z"
+            transform="translate(3 3) scale(0.140625)"
+            fill="#3b62ff"
+            fill-rule="evenodd"
         />
     </svg>
 );

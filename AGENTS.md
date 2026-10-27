@@ -30,6 +30,7 @@ packages/
 ├── testing/            # Fake provider, fake T3 Code and Ensemble servers, fake Agent SDK, helpers
 └── tsconfig/           # Shared tsconfig: base, node, browser
 apps/
+├── extension/          # Chrome extension that loads the daemon's overlay into any tab
 └── playground/         # Vite + React app; the browser-test (Playwright) target
 ```
 
@@ -84,7 +85,7 @@ apps/
 
 [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`,
 imperative and lowercase. Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`, `claude-code`,
-`ensemble`, `protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
+`ensemble`, `protocol`, `testing`, `playground`, `extension`. Add a changeset (`pnpm changeset`) for changes
 users of the `tencil` package will notice.
 
 ## Commands

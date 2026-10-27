@@ -5,6 +5,7 @@ import {
     cloudUrl,
     isCloud,
     lastError,
+    originBlocked,
     project,
     projectChoices,
     provider,
@@ -205,6 +206,18 @@ function connectionStatus(): ConnectionStatus {
                     bridgeState.value === 'connecting'
                         ? undefined
                         : "Can't reach Tencil Cloud. Retrying…",
+            };
+        }
+        const blocked = originBlocked.value;
+        if (blocked) {
+            return {
+                tone: 'warn',
+                title: 'Site not allowed yet',
+                hint: `Tencil only talks to sites you allow. Allow ${new URL(blocked.origin).host}?`,
+                action: {
+                    label: 'Allow',
+                    run: () => window.open(blocked.approveUrl, 'tencil-allow'),
+                },
             };
         }
         return {

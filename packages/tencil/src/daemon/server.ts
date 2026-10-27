@@ -29,6 +29,8 @@ import {
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
+import { AllowedOrigins, approvableOrigin } from './allowed-origins.ts';
+import { APPROVAL_HEADERS, allowedPage, confirmPage, errorPage } from './approval-page.ts';
 import { type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
@@ -45,7 +47,7 @@ export interface DaemonOptions {
     host?: string;
     /** Extra addresses to listen on, e.g. a Tailscale IP for a remote browser. */
     listen?: string[];
-    /** Extra origins allowed to connect, besides loopback ones. */
+    /** Extra origins allowed to connect, besides loopback ones and those allowed from the overlay. */
     allowedOrigins?: string[];
     /** Pins, credentials and remembered projects; defaults to ~/.config/tencil. */
     dataDir?: string;
@@ -115,9 +117,12 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const port = options.port ?? DEFAULT_PORT;
     const host = options.host ?? '127.0.0.1';
     const addresses = [host, ...(options.listen ?? []).filter(address => address !== host)];
-    const allowedOrigins = options.allowedOrigins ?? [];
-    const knownHosts = knownHostsFor(addresses, allowedOrigins);
+    const knownHosts = knownHostsFor(addresses, options.allowedOrigins ?? []);
     const dataDir = options.dataDir ?? defaultDataDir();
+    const allowedOrigins = new AllowedOrigins(
+        join(dataDir, 'allowed-origins.json'),
+        options.allowedOrigins,
+    );
     const log = options.log ?? (() => {});
     const ensembleOptions = {
         baseUrl: options.ensemble?.url,
@@ -262,6 +267,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
             }
             return;
         }
+        if (url.pathname === '/allow') return handleAllow(request, response, url);
         if (url.pathname === '/health') {
             await refreshStatuses();
             response.writeHead(200, { 'content-type': 'application/json' });
@@ -280,16 +286,62 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         response.end('Not found');
     };
 
+    /**
+     * Letting a site in (`/allow?origin=…`). The overlay opens the page; only a form
+     * posted from the daemon's own page counts, so a site can't approve itself.
+     */
+    const handleAllow = async (request: IncomingMessage, response: ServerResponse, url: URL) => {
+        const reply = (status: number, html: string) => {
+            response.writeHead(status, APPROVAL_HEADERS);
+            response.end(html);
+        };
+        if (request.method === 'GET') {
+            const origin = approvableOrigin(url.searchParams.get('origin'));
+            if (!origin) return reply(400, errorPage('That is not a site Tencil can allow.'));
+            if (allowedOrigins.all().includes(origin)) return reply(200, allowedPage(origin));
+            return reply(200, confirmPage(origin));
+        }
+        if (request.method !== 'POST') return reply(405, errorPage('Method not allowed.'));
+        const fetchSite = request.headers['sec-fetch-site'];
+        if (
+            request.headers.origin !== `http://${request.headers.host}` ||
+            (fetchSite !== undefined && fetchSite !== 'same-origin')
+        ) {
+            return reply(403, errorPage('Allow sites from the Tencil page itself.'));
+        }
+        const body = await readBody(request, 4096).catch(() => undefined);
+        if (body === undefined) return;
+        const form = new URLSearchParams(body);
+        const origin = approvableOrigin(form.get('origin'));
+        if (!origin) return reply(400, errorPage('That is not a site Tencil can allow.'));
+        allowedOrigins.add(origin);
+        log(`Allowed ${origin} to connect`);
+        reply(200, allowedPage(origin));
+    };
+
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
     const handleUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
         const url = new URL(request.url ?? '/', 'http://localhost');
-        if (
-            url.pathname !== '/ws' ||
-            !isAllowedHost(request, knownHosts) ||
-            !isAllowedOrigin(request, allowedOrigins)
-        ) {
+        const refuse = () => {
             socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-            return void socket.destroy();
+            socket.destroy();
+        };
+        if (url.pathname !== '/ws' || !isAllowedHost(request, knownHosts)) return refuse();
+        if (!isAllowedOrigin(request, allowedOrigins.all())) {
+            const origin = approvableOrigin(request.headers.origin);
+            if (!origin) return refuse();
+            // A bare 403 only reaches the page as "closed". Say why, and where to allow it.
+            return wss.handleUpgrade(request, socket, head, ws => {
+                const approveUrl = `http://${request.headers.host}/allow?origin=${encodeURIComponent(origin)}`;
+                ws.send(
+                    JSON.stringify({
+                        type: 'origin.blocked',
+                        origin,
+                        approveUrl,
+                    } satisfies ServerMessage),
+                );
+                ws.close(4003, 'Origin not allowed');
+            });
         }
         wss.handleUpgrade(request, socket, head, ws => serveClient(ws));
     };
@@ -471,4 +523,21 @@ function resolveOverlayPath(): string {
         fileURLToPath(new URL('../../../overlay/dist/tencil.global.js', import.meta.url)),
     ];
     return candidates.find(candidate => existsSync(candidate)) ?? candidates[0]!;
+}
+
+/** A small request body, refused past `limit` bytes. */
+function readBody(request: IncomingMessage, limit: number): Promise<string> {
+    return new Promise((resolveBody, reject) => {
+        let body = '';
+        request.setEncoding('utf8');
+        request.on('data', (chunk: string) => {
+            body += chunk;
+            if (body.length > limit) {
+                reject(new Error('Request body too large'));
+                request.destroy();
+            }
+        });
+        request.on('end', () => resolveBody(body));
+        request.on('error', reject);
+    });
 }
