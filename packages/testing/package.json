@@ -1,7 +1,7 @@
 {
     "name": "@tencildev/testing",
     "version": "0.2.0",
-    "description": "Test doubles for Tencil: a fake provider, a fake T3 Code server and a fake Claude Agent SDK.",
+    "description": "Test doubles for Tencil: a fake provider, fake T3 Code and Ensemble servers and a fake Claude Agent SDK.",
     "license": "Apache-2.0",
     "author": "Pixel Perfect Agency",
     "homepage": "https://tencil.dev",

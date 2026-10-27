@@ -18,6 +18,8 @@ export interface FakeAgentProviderOptions {
     threads?: ProviderThreadSummary[];
     /** Deep links into the provider; none by default. */
     threadUrl?: (providerThreadId: string) => string | undefined;
+    /** Mark every thread it starts `archivable`, as a provider that starts one per pin. */
+    archivable?: boolean;
 }
 
 /**
@@ -33,6 +35,8 @@ export class FakeAgentProvider implements Provider {
     /** Every `sendMessage` input, in order. */
     readonly sent: SendMessageInput[] = [];
     readonly interrupted: string[] = [];
+    readonly archived: string[] = [];
+    readonly reopened: string[] = [];
     /** The sink of each watched provider thread. */
     readonly sinks = new Map<string, ThreadSink>();
     watchCount = 0;
@@ -83,7 +87,10 @@ export class FakeAgentProvider implements Provider {
     async createThread(input: CreateThreadInput) {
         if (this.failCreate) throw new Error('Agent offline');
         this.created.push(input);
-        return { providerThreadId: `${this.id}-${this.created.length}` };
+        return {
+            providerThreadId: `${this.id}-${this.created.length}`,
+            archivable: this.#options.archivable,
+        };
     }
 
     async sendMessage(input: SendMessageInput): Promise<void> {
@@ -92,6 +99,14 @@ export class FakeAgentProvider implements Provider {
 
     async interrupt(providerThreadId: string): Promise<void> {
         this.interrupted.push(providerThreadId);
+    }
+
+    async archive(providerThreadId: string): Promise<void> {
+        this.archived.push(providerThreadId);
+    }
+
+    async reopen(providerThreadId: string): Promise<void> {
+        this.reopened.push(providerThreadId);
     }
 
     watch(providerThreadId: string, sink: ThreadSink): () => void {

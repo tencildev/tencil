@@ -137,6 +137,19 @@ importers:
         specifier: workspace:*
         version: link:../tsconfig
 
+  packages/provider-ensemble:
+    dependencies:
+      '@tencildev/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@tencildev/testing':
+        specifier: workspace:*
+        version: link:../testing
+      '@tencildev/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+
   packages/provider-t3code:
     dependencies:
       '@tencildev/protocol':
@@ -186,6 +199,9 @@ importers:
       '@tencildev/provider-claude-code':
         specifier: workspace:*
         version: link:../provider-claude-code
+      '@tencildev/provider-ensemble':
+        specifier: workspace:*
+        version: link:../provider-ensemble
       '@tencildev/provider-t3code':
         specifier: workspace:*
         version: link:../provider-t3code

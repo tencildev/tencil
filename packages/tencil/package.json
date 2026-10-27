@@ -99,6 +99,7 @@
         "@tencildev/overlay": "workspace:*",
         "@tencildev/protocol": "workspace:*",
         "@tencildev/provider-claude-code": "workspace:*",
+        "@tencildev/provider-ensemble": "workspace:*",
         "@tencildev/provider-t3code": "workspace:*",
         "@tencildev/testing": "workspace:*",
         "@tencildev/tsconfig": "workspace:*",

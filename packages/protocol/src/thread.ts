@@ -105,6 +105,8 @@ export const Thread = z.object({
         threadId: z.string().optional(),
         /** Deep link into the provider UI, when it has one. */
         url: z.string().optional(),
+        /** Started for these pins: archived once they're all resolved (`Provider.archive`). */
+        archivable: z.boolean().optional(),
     }),
     /** Tencil Cloud only: the run's commit, pull request and preview. */
     delivery: Delivery.optional(),

@@ -26,7 +26,8 @@ packages/
 ├── protocol/           # Wire schemas (zod) and the Provider interface
 ├── provider-t3code/    # T3 Code provider: Effect RPC socket, auth, protocols/{v1,v2}
 ├── provider-claude-code/  # Claude Code provider: Agent SDK sessions, loaded on first use
-├── testing/            # Fake provider, fake T3 Code server, fake Agent SDK and test helpers
+├── provider-ensemble/  # Ensemble provider: public local API, bearer auth and shared SSE feed
+├── testing/            # Fake provider, fake T3 Code and Ensemble servers, fake Agent SDK, helpers
 └── tsconfig/           # Shared tsconfig: base, node, browser
 apps/
 └── playground/         # Vite + React app; the browser-test (Playwright) target
@@ -51,6 +52,13 @@ apps/
   inside the daemon through the Agent SDK. The SDK carries a ~250 MB binary, so it's
   an optional peer, never bundled: loaded from next to Tencil or installed into
   `~/.config/tencil/claude-code` on first use.
+- **Ensemble requires the running app and one-time approval.** Pair asks the user
+  to allow Tencil and saves a private token. Resolve pages by dev server port through
+  the public API (including forwarded ports), using `ensemble://thread/<id>` as the
+  project identity. Each pin is a chat on that checkout; pins share its SSE feed.
+  A page served from a folder maps by path (`provider-ensemble/src/folders.ts`): an
+  Ensemble project's folder or a worktree of it starts a thread per pin, and a
+  thread's workspace is found by its branch.
 - **Published: `tencil`, `@tencildev/protocol`, `@tencildev/bridge` and `@tencildev/testing`.** The
   three libraries resolve to `src` in the workspace (`exports`) and to `dist` when packed
   (`publishConfig.exports`); verify with `pnpm --filter <name> pack`. `tencil` still bundles
@@ -76,7 +84,7 @@ apps/
 
 [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`,
 imperative and lowercase. Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`, `claude-code`,
-`protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
+`ensemble`, `protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
 users of the `tencil` package will notice.
 
 ## Commands

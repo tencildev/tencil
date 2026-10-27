@@ -3,11 +3,15 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
+import { ensembleThreadId } from '@tencildev/provider-ensemble';
 
 const run = promisify(execFile);
 
 /** Runs a command and returns stdout; injectable so tests don't depend on the OS. */
 export type Exec = (command: string, args: string[]) => Promise<string>;
+
+/** The `ensemble://thread/<id>` root of the Ensemble thread whose dev server listens on `port`. */
+export type EnsembleForPort = (port: number) => Promise<string | undefined>;
 
 const defaultExec: Exec = async (command, args) =>
     (await run(command, args, { timeout: 3_000, windowsHide: true })).stdout;
@@ -23,20 +27,34 @@ export class ProjectResolver {
     readonly #memory: OriginMemory;
     readonly #exec: Exec;
     readonly #platform: NodeJS.Platform;
+    readonly #ensembleForPort?: EnsembleForPort;
 
-    constructor(options: { dataDir: string; exec?: Exec; platform?: NodeJS.Platform }) {
+    constructor(options: {
+        dataDir: string;
+        exec?: Exec;
+        platform?: NodeJS.Platform;
+        ensembleForPort?: EnsembleForPort;
+    }) {
         this.#memory = new OriginMemory(join(options.dataDir, 'origins.json'));
         this.#exec = options.exec ?? defaultExec;
         this.#platform = options.platform ?? process.platform;
+        this.#ensembleForPort = options.ensembleForPort;
     }
 
     async resolve(pageUrl: string, claimedRoot?: string): Promise<string | undefined> {
         const origin = safeOrigin(pageUrl);
         if (!origin) return undefined;
-        const remembered = await this.#memory.get(origin);
-        if (remembered && existsSync(remembered)) return remembered;
-        if (claimedRoot && isGitRoot(claimedRoot)) return resolve(claimedRoot);
         const port = portOf(origin);
+        // A dev server an Ensemble thread runs belongs to that thread, whichever folder it runs in.
+        const thread = port
+            ? await this.#ensembleForPort?.(port).catch(() => undefined)
+            : undefined;
+        if (thread) return thread;
+        const remembered = await this.#memory.get(origin);
+        if (remembered && (ensembleThreadId(remembered) || existsSync(remembered))) {
+            return remembered;
+        }
+        if (claimedRoot && isGitRoot(claimedRoot)) return resolve(claimedRoot);
         if (!port) return undefined;
         const folder = await this.folderForPort(port).catch(() => undefined);
         return folder ? projectRoot(folder) : undefined;
@@ -45,7 +63,7 @@ export class ProjectResolver {
     /** Remember the user's choice for an address (from the overlay's project picker). */
     remember(pageUrl: string, root: string): Promise<void> {
         const origin = safeOrigin(pageUrl);
-        return origin ? this.#memory.set(origin, resolve(root)) : Promise.resolve();
+        return origin ? this.#memory.set(origin, projectKey(root)) : Promise.resolve();
     }
 
     /**
@@ -122,6 +140,11 @@ export class ProjectResolver {
  */
 export function isGitRoot(folder: string): boolean {
     return isAbsolute(folder) && existsSync(join(folder, '.git'));
+}
+
+/** How the daemon keys a project: an `ensemble://thread/<id>` root as is, a folder by its absolute path. */
+export function projectKey(root: string): string {
+    return ensembleThreadId(root) === undefined ? resolve(root) : root;
 }
 
 /** Closest folder with a package.json at or above `folder`, or `folder` itself. */
