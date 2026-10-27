@@ -46,6 +46,7 @@ export interface FakeEnsembleOptions {
     reply?: (text: string) => string;
 }
 export class FakeEnsembleServer {
+    readonly options: FakeEnsembleOptions;
     readonly projects: FakeEnsembleProject[];
     readonly threads = new Map<string, FakeEnsembleThread>();
     readonly ports = new Map<number, string>();
@@ -81,7 +82,8 @@ export class FakeEnsembleServer {
     get feedCount() {
         return this.#feeds.size;
     }
-    private constructor(readonly options: FakeEnsembleOptions) {
+    private constructor(options: FakeEnsembleOptions) {
+        this.options = options;
         this.projects = options.projects ?? [];
         this.#http.on('connection', socket => {
             this.#sockets.add(socket);
