@@ -56,7 +56,7 @@ people too). The short version:
 [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`,
 imperative and lowercase, e.g. `fix(daemon): refuse unknown host names`.
 
-Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`, `claude-code`, `protocol`,
+Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`, `claude-code`, `ensemble`, `protocol`,
 `testing`, `playground`. Leave the scope out when none fits
 (`docs: ...`, `ci: ...`).
 

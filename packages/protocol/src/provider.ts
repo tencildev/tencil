@@ -38,6 +38,10 @@ export interface Provider {
     createThread(input: CreateThreadInput): Promise<CreatedThread>;
     sendMessage(input: SendMessageInput): Promise<void>;
     interrupt(providerThreadId: string): Promise<void>;
+    /** Archive a thread `createThread` marked `archivable`, once its pins are resolved. Optional. */
+    archive?(providerThreadId: string): Promise<void>;
+    /** Bring an archived thread back, for a pin reopened or replied to. */
+    reopen?(providerThreadId: string): Promise<void>;
 
     /**
      * Stream updates for a thread. Called right after `createThread` and again
@@ -66,6 +70,8 @@ export interface ProviderModels {
 export interface CreatedThread {
     providerThreadId: string;
     url?: string;
+    /** The provider started this thread for the pin alone, so resolving the pin may archive it. */
+    archivable?: boolean;
 }
 
 export interface SendMessageInput {

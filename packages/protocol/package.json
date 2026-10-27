@@ -41,7 +41,7 @@
         "prepack": "turbo run build --filter=@tencildev/protocol"
     },
     "dependencies": {
-        "zod": "^4.6.5"
+        "zod": "^4.6.6"
     },
     "devDependencies": {
         "@tencildev/tsconfig": "workspace:*",
