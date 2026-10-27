@@ -354,6 +354,8 @@ describe('updates', () => {
         await waitFor(() => updates(page.received).some(update => update.latest === '999.0.0'));
         page.send({ type: 'update.start' });
         await waitFor(() => plans.length === 1);
+        // The states are sent just before the hand-off; they can still be on the way.
+        await waitFor(() => updates(page.received).some(update => update.state === 'restarting'));
         expect(updates(page.received).map(update => update.state)).toEqual(
             expect.arrayContaining(['installing', 'restarting']),
         );
