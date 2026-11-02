@@ -2,8 +2,10 @@ import type { Anchor } from '@tencildev/protocol';
 import { threads } from './connection.ts';
 import { captureContext, quickLabel } from './element-context.ts';
 import { offsetsIn } from './position.ts';
+import { holding, matches, recording, shortcuts } from './shortcuts.ts';
 import {
     currentPage,
+    dockHidden,
     draft,
     hidden,
     hovered,
@@ -16,6 +18,7 @@ import {
     rulerAnchor,
     rulerAvailable,
     rulerOn,
+    setDockHidden,
     settingsOpen,
     startPicking,
     stopPicking,
@@ -33,8 +36,9 @@ const BLOCKED_WHILE_PICKING = [
 ] as const;
 
 /**
- * Global listeners: hover tracking + click capture in comment mode, the `C`
- * and `R` (ruler) shortcuts, Alt to measure (with the ruler on, anywhere on the page), and
+ * Global listeners: hover tracking + click capture in comment mode, the
+ * shortcuts from `shortcuts.ts` (comment, ruler, hide pins, hide the dock),
+ * the held key to measure (with the ruler on, anywhere on the page), and
  * layout invalidation for anchored UI. Everything is attached in the capture
  * phase so the page never sees comment-mode or measuring clicks.
  */
@@ -50,7 +54,7 @@ export function installPicker(host: HTMLElement): () => void {
         return null;
     };
 
-    // With the ruler on, Alt-hovering the page measures, comment open or not.
+    // With the ruler on, hovering with the measure key held measures, comment open or not.
     const capturing = () => mode.value === 'picking' || (measuring.value && rulerOn.value);
 
     let pointer: { x: number; y: number; ours: boolean } | null = null;
@@ -92,13 +96,13 @@ export function installPicker(host: HTMLElement): () => void {
 
     const onPointerMove = (event: PointerEvent) => {
         pointer = { x: event.clientX, y: event.clientY, ours: isOurs(event) };
-        measuring.value = event.altKey;
+        measuring.value = holding(shortcuts.value.measure, event);
         track();
     };
 
-    // Pressing or releasing Alt redraws right away, without moving the mouse.
-    const onAlt = (event: KeyboardEvent) => {
-        if (event.key !== 'Alt') return;
+    // Pressing or releasing the measure key redraws right away, without moving the mouse.
+    const onMeasureKey = (event: KeyboardEvent) => {
+        if (recording.value || event.key !== shortcuts.value.measure) return;
         measuring.value = event.type === 'keydown';
         // Windows browsers focus their menu bar when Alt is released.
         if (rulerOn.value) event.preventDefault();
@@ -133,7 +137,7 @@ export function installPicker(host: HTMLElement): () => void {
         if (mode.value !== 'picking') {
             const open = draft.value;
             if (open) {
-                // Alt-click: measure the open comment's element against this one.
+                // Measure-click: measure the open comment's element against this one.
                 draft.value = {
                     ...open,
                     measuredTo:
@@ -142,7 +146,7 @@ export function installPicker(host: HTMLElement): () => void {
                             : { element, label: quickLabel(element), parent: false },
                 };
             } else {
-                // Alt-click: measure from this element; again to let go of it.
+                // Measure-click: measure from this element; again to let go of it.
                 const same = rulerAnchor.value?.element === element;
                 rulerAnchor.value = same ? null : { element, offsets };
                 measuredFromAnchor = null;
@@ -153,14 +157,26 @@ export function installPicker(host: HTMLElement): () => void {
             return;
         }
         const parent = element.parentElement;
-        // Alt-click while picking: measure against the parent, as the guides showed.
+        // Measure-click while picking: measure against the parent, as the guides showed.
         const measureParent =
-            event.altKey && rulerOn.value && parent && parent !== document.documentElement;
+            holding(shortcuts.value.measure, event) &&
+            rulerOn.value &&
+            parent &&
+            parent !== document.documentElement;
         openDraft(element, offsets, measureParent ? { element: parent, parent: true } : undefined);
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-        if (isOurs(event)) return;
+        if (recording.value) return;
+        const keys = shortcuts.value;
+        if (matches(keys.hideDock, event) && !isTyping(event)) {
+            event.preventDefault();
+            setDockHidden(!dockHidden.value);
+            return;
+        }
+        // Panels handle their own keys; a focused toolbar button (after a click, or
+        // closing settings) shouldn't turn the shortcuts off.
+        if ((isOurs(event) && !onToolbar(event)) || dockHidden.value) return;
         if (event.key === 'Escape') {
             if (mode.value === 'picking') stopPicking();
             else if (draft.value) draft.value = null;
@@ -172,13 +188,18 @@ export function installPicker(host: HTMLElement): () => void {
             return;
         }
         if (isTyping(event)) return;
-        const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
-        if (event.key.toLowerCase() === 'r' && plain && rulerAvailable.value) {
+        if (matches(keys.ruler, event) && rulerAvailable.value) {
             event.preventDefault();
             toggleRuler();
             return;
         }
-        if (event.key.toLowerCase() === 'c' && plain) {
+        if (matches(keys.hidePins, event)) {
+            event.preventDefault();
+            hidden.value = !hidden.value;
+            if (hidden.value) stopPicking();
+            return;
+        }
+        if (matches(keys.comment, event)) {
             event.preventDefault();
             hidden.value = false;
             const anchor = rulerAnchor.value;
@@ -224,8 +245,8 @@ export function installPicker(host: HTMLElement): () => void {
     for (const type of BLOCKED_WHILE_PICKING) window.addEventListener(type, block, true);
     window.addEventListener('click', onClick, true);
     window.addEventListener('keydown', onKeyDown, true);
-    window.addEventListener('keydown', onAlt, true);
-    window.addEventListener('keyup', onAlt, true);
+    window.addEventListener('keydown', onMeasureKey, true);
+    window.addEventListener('keyup', onMeasureKey, true);
     window.addEventListener('blur', onBlur);
     window.addEventListener('scroll', invalidate, { capture: true, passive: true });
     window.addEventListener('resize', invalidate, { passive: true });
@@ -235,8 +256,8 @@ export function installPicker(host: HTMLElement): () => void {
         for (const type of BLOCKED_WHILE_PICKING) window.removeEventListener(type, block, true);
         window.removeEventListener('click', onClick, true);
         window.removeEventListener('keydown', onKeyDown, true);
-        window.removeEventListener('keydown', onAlt, true);
-        window.removeEventListener('keyup', onAlt, true);
+        window.removeEventListener('keydown', onMeasureKey, true);
+        window.removeEventListener('keyup', onMeasureKey, true);
         window.removeEventListener('blur', onBlur);
         window.removeEventListener('scroll', invalidate, true);
         window.removeEventListener('resize', invalidate);
@@ -244,6 +265,11 @@ export function installPicker(host: HTMLElement): () => void {
         clearInterval(navigation);
         cancelAnimationFrame(frame);
     };
+}
+
+function onToolbar(event: KeyboardEvent): boolean {
+    const target = event.composedPath()[0];
+    return target instanceof Element && target.closest('.toolbar') !== null;
 }
 
 function isTyping(event: KeyboardEvent): boolean {

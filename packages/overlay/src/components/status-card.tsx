@@ -1,4 +1,3 @@
-import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { viewer } from '../lib/cloud-auth.ts';
 import {
@@ -59,10 +58,6 @@ export function StatusDot({ tone, label }: { tone: Tone; label: string }) {
 }
 
 function StatusCard({ tone }: { tone: Tone }) {
-    const info = provider.value;
-    const state = bridgeState.value;
-    const queued = queuedThreads.value.length;
-    const working = activeCount.value;
     return (
         <div class="status-card" role="tooltip" id="tencil-status-card">
             <div class="status-card-head">
@@ -72,67 +67,97 @@ function StatusCard({ tone }: { tone: Tone }) {
                     <span class="status-card-muted">v{daemonVersion.value}</span>
                 )}
             </div>
-            <dl class="status-card-rows">
-                <Row label={isCloud() ? 'Tencil Cloud' : 'Daemon'}>
-                    <span class={`status-card-tone tone-${state === 'open' ? 'ok' : tone}`} />
-                    {state === 'open'
-                        ? 'Connected'
-                        : state === 'connecting'
-                          ? 'Connecting…'
-                          : 'Offline'}
-                </Row>
-                <Row label="Address">{daemonHost()}</Row>
-                <Row label="Project">
-                    {projectChoices.value ? (
-                        'Not picked yet'
-                    ) : project.value ? (
-                        <span title={project.value.root}>{project.value.name}</span>
-                    ) : (
-                        '…'
-                    )}
-                </Row>
-                <Row label="Agent">
-                    {info ? (
-                        <>
-                            <span
-                                class={`status-card-tone tone-${info.state === 'ready' ? 'ok' : tone}`}
-                            />
-                            {info.label}
-                            <span class="status-card-muted">{stateLabel(info)}</span>
-                        </>
-                    ) : (
-                        '…'
-                    )}
-                </Row>
-                {info?.target && <Row label="Workspace">{info.target}</Row>}
-                {viewer.value && (
-                    <Row label="Signed in">
-                        {viewer.value.login ? `@${viewer.value.login}` : viewer.value.name}
-                        {viewer.value.access === 'read' && (
-                            <span class="status-card-muted">view only</span>
-                        )}
-                    </Row>
-                )}
-                {(working > 0 || queued > 0) && (
-                    <Row label="Pins">
-                        {[working > 0 && `${working} working`, queued > 0 && `${queued} queued`]
-                            .filter(Boolean)
-                            .join(' · ')}
-                    </Row>
-                )}
-            </dl>
-            {info && info.state !== 'ready' && info.detail && (
-                <p class="status-card-detail">{info.detail}</p>
-            )}
+            <StatusRows tone={tone} />
         </div>
     );
 }
 
-function Row({ label, children }: { label: string; children: ComponentChildren }) {
+interface StatusRow {
+    label: string;
+    value: string;
+    /** A dot before the value: green when fine, the toolbar's tone when not. */
+    tone?: Tone;
+    /** After the value, dimmed. */
+    note?: string;
+    title?: string;
+}
+
+/**
+ * What the status card says about the connection: the daemon, the project
+ * this page belongs to, its agent. The About page's debug section shows the
+ * same rows, and copies them as text.
+ */
+export function statusRows(tone: Tone = defaultTone()): StatusRow[] {
+    const info = provider.value;
+    const state = bridgeState.value;
+    const queued = queuedThreads.value.length;
+    const working = activeCount.value;
+    const account = viewer.value;
+    const rows: StatusRow[] = [
+        {
+            label: isCloud() ? 'Tencil Cloud' : 'Daemon',
+            tone: state === 'open' ? 'ok' : tone,
+            value:
+                state === 'open' ? 'Connected' : state === 'connecting' ? 'Connecting…' : 'Offline',
+        },
+        { label: 'Address', value: daemonHost() },
+        {
+            label: 'Project',
+            value: projectChoices.value ? 'Not picked yet' : (project.value?.name ?? '…'),
+            title: project.value?.root,
+        },
+        info
+            ? {
+                  label: 'Agent',
+                  tone: info.state === 'ready' ? 'ok' : tone,
+                  value: info.label,
+                  note: stateLabel(info),
+              }
+            : { label: 'Agent', value: '…' },
+    ];
+    if (info?.target) rows.push({ label: 'Workspace', value: info.target });
+    if (account) {
+        rows.push({
+            label: 'Signed in',
+            value: account.login ? `@${account.login}` : account.name,
+            note: account.access === 'read' ? 'view only' : undefined,
+        });
+    }
+    if (working > 0 || queued > 0) {
+        rows.push({
+            label: 'Pins',
+            value: [working > 0 && `${working} working`, queued > 0 && `${queued} queued`]
+                .filter(Boolean)
+                .join(' · '),
+        });
+    }
+    return rows;
+}
+
+/** Outside the toolbar there's no status tone at hand: offline is an error, the rest a warning. */
+function defaultTone(): Tone {
+    return bridgeState.value === 'open' ? 'warn' : 'error';
+}
+
+export function StatusRows({ tone }: { tone?: Tone }) {
+    const info = provider.value;
     return (
-        <div class="status-card-row">
-            <dt>{label}</dt>
-            <dd>{children}</dd>
-        </div>
+        <>
+            <dl class="status-card-rows">
+                {statusRows(tone).map(row => (
+                    <div key={row.label} class="status-card-row">
+                        <dt>{row.label}</dt>
+                        <dd title={row.title}>
+                            {row.tone && <span class={`status-card-tone tone-${row.tone}`} />}
+                            {row.value}
+                            {row.note && <span class="status-card-muted">{row.note}</span>}
+                        </dd>
+                    </div>
+                ))}
+            </dl>
+            {info && info.state !== 'ready' && info.detail && (
+                <p class="status-card-detail">{info.detail}</p>
+            )}
+        </>
     );
 }

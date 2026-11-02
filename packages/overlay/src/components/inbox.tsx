@@ -9,6 +9,7 @@ import {
     refreshProviderThreads,
     threads,
 } from '../lib/connection.ts';
+import { labels } from '../lib/shortcuts.ts';
 import {
     currentPage,
     inboxOpen,
@@ -108,7 +109,14 @@ function PinList({ scope }: { scope: 'page' | 'all' }) {
             <div class="inbox-list">
                 {list.length === 0 ? (
                     <p class="empty">
-                        No pins yet. Press <kbd>C</kbd> and click anything on the page.
+                        {labels.value.comment ? (
+                            <>
+                                No pins yet. Press <kbd>{labels.value.comment}</kbd> and click
+                                anything on the page.
+                            </>
+                        ) : (
+                            'No pins yet. Click Comment, then anything on the page.'
+                        )}
                     </p>
                 ) : (
                     list.map(thread => <InboxItem key={thread.id} thread={thread} />)
