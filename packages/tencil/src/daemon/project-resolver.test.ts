@@ -164,6 +164,10 @@ describe('ProjectResolver', () => {
             platform: 'darwin',
         });
         expect(await resolver.resolve('http://localhost:8130/')).toBe(app);
+        expect((await resolver.detect('http://localhost:8130/'))?.source).toEqual({
+            via: 'docker',
+            port: 8130,
+        });
     });
 
     it('maps a port published through docker-proxy to the compose project', async () => {
@@ -236,7 +240,10 @@ describe('ProjectResolver', () => {
 
         await resolver.remember('http://localhost:8080/some/page', app);
         const later = new ProjectResolver({ dataDir, exec: none, platform: 'darwin' });
-        expect(await later.resolve('http://localhost:8080/other')).toBe(app);
+        expect(await later.detect('http://localhost:8080/other')).toEqual({
+            root: app,
+            source: { via: 'picked' },
+        });
     });
 
     // A Laravel app on Sail: Docker listens on the page's port, not a process in the project.
@@ -250,7 +257,14 @@ describe('ProjectResolver', () => {
             exec: fakeExec(app),
             platform: 'darwin',
         });
-        expect(await resolver.resolve('http://localhost:8130/', root)).toBe(root);
+        expect(await resolver.detect('http://localhost:8130/', root)).toEqual({
+            root,
+            source: { via: 'plugin' },
+        });
+        expect((await resolver.detect('http://localhost:8130/'))?.source).toEqual({
+            via: 'port',
+            port: 8130,
+        });
     });
 
     it('refuses a claimed root without .git and falls back to the port', async () => {
@@ -277,6 +291,30 @@ describe('ProjectResolver', () => {
         });
         expect(isGitRoot(worktree)).toBe(true);
         expect(await resolver.resolve('http://localhost:8130/', worktree)).toBe(worktree);
+    });
+
+    it('keeps a pick over a detected project only while that project is detected', async () => {
+        const { app } = monorepo();
+        const other = monorepo().app;
+        const later = monorepo().app;
+        const dataDir = tmp('tencil-data-');
+        const resolver = new ProjectResolver({ dataDir, exec: fakeExec(app), platform: 'darwin' });
+        await resolver.pick('http://localhost:5173/', app, other);
+        expect(await resolver.detect('http://localhost:5173/')).toEqual({
+            root: other,
+            source: { via: 'picked', detected: { root: app, via: 'port', port: 5173 } },
+        });
+
+        // Another app on the same port: detection wins again.
+        const reused = new ProjectResolver({ dataDir, exec: fakeExec(later), platform: 'darwin' });
+        expect(await reused.detect('http://localhost:5173/')).toEqual({
+            root: later,
+            source: { via: 'port', port: 5173 },
+        });
+
+        // Picking the detected project goes back to automatic.
+        await resolver.pick('http://localhost:5173/', app, app);
+        expect((await resolver.detect('http://localhost:5173/'))?.source.via).toBe('port');
     });
 
     it('prefers the dev server on the port over an earlier pick for the address', async () => {
