@@ -189,7 +189,10 @@ export function ProjectIcon({ project }: { project: ProviderProject }) {
 function InboxItem({ thread }: { thread: Thread }) {
     const pinned = Boolean(thread.anchor && thread.pageUrl);
     const samePage = !pinned || pageKey(thread.pageUrl!) === currentPage.value;
-    const last = [...thread.messages].reverse().find(message => message.role === 'assistant');
+    // The agent's latest answer, or the latest comment when people talk on the pin.
+    const last = [...thread.messages]
+        .reverse()
+        .find(message => message.role === 'assistant' || message.role === 'comment');
     const open = () => {
         if (!samePage) {
             sessionStorage.setItem(PENDING_OPEN_KEY, thread.id);
@@ -219,7 +222,12 @@ function InboxItem({ thread }: { thread: Thread }) {
                     {pinned && !samePage && <span>{new URL(thread.pageUrl!).pathname} · </span>}
                     {statusLabel(thread)} · {timeAgo(thread.updatedAt)}
                 </span>
-                {last && <span class="inbox-item-preview">{last.text.slice(0, 140)}</span>}
+                {last && (
+                    <span class="inbox-item-preview">
+                        {last.role === 'comment' && last.author ? `${last.author.name}: ` : ''}
+                        {last.text.slice(0, 140)}
+                    </span>
+                )}
             </span>
         </button>
     );
@@ -249,6 +257,8 @@ function statusLabel(thread: Thread): string {
             return 'Needs input';
         case 'error':
             return 'Error';
+        case 'discussion':
+            return 'Discussion';
         default:
             return 'Done';
     }

@@ -177,6 +177,8 @@ kbd {
 .pin-waiting { --pin: #e69a10; }
 .pin-error { --pin: #e5484d; }
 .pin-resolved { --pin: #7b7d7a; }
+/* People are talking, the agent isn't on it: neutral until someone tags @tencil. */
+.pin-discussion { --pin: hsl(220 7% 34%); }
 .pin-resolved .pin-body { opacity: 0.8; }
 .pin-draft .pin-body { background: white; border-color: var(--accent); color: var(--accent); }
 /* Queued for a batch: not sent yet, so outlined rather than filled. */
@@ -343,6 +345,7 @@ kbd {
 .thread-dot-waiting { background: var(--warn); }
 .thread-dot-error { background: var(--error); }
 .thread-dot-idle { background: var(--done); }
+.thread-dot-discussion { background: var(--n-600); }
 
 /* Provider thread rows, after T3 Code's sidebar. */
 .inbox-item.provider-item {
@@ -379,6 +382,7 @@ kbd {
 }
 
 .prompt-input {
+  position: relative;
   display: grid; gap: 6px;
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--n-200);
@@ -396,6 +400,21 @@ kbd {
 .prompt-input textarea::placeholder { color: var(--n-500); }
 .prompt-input textarea:disabled { opacity: 0.6; }
 .prompt-actions { display: flex; align-items: center; justify-content: space-between; }
+.prompt-hint { padding: 0; }
+/* The @ popup floats over what's above the box, like the composer's menus but anchored. */
+.mention-menu {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 1;
+  box-shadow: var(--shadow); transform-origin: bottom left;
+}
+.avatar {
+  width: 18px; height: 18px; border-radius: 999px; flex: none;
+  object-fit: cover; background: var(--n-200);
+}
+.avatar-initials {
+  display: grid; place-items: center;
+  color: var(--n-700); font-size: 8px; font-weight: 600; letter-spacing: 0;
+}
+.avatar-agent { display: grid; place-items: center; background: none; }
 .prompt-extras { display: flex; gap: 4px; }
 .send {
   width: 26px; height: 26px; border-radius: 999px;
@@ -450,6 +469,26 @@ kbd {
   @starting-style { opacity: 0; transform: translateY(8px); filter: blur(4px); }
 }
 .message-assistant { color: var(--n-950); }
+/* People on the pin: a name over their messages; comments are neutral bubbles on the left. */
+.message-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.message-group-user { align-items: flex-end; }
+.message-group-comment { align-items: flex-start; }
+.message-author {
+  display: flex; align-items: center; gap: 6px; padding: 0 4px;
+  color: var(--n-600); font-size: 12px; font-weight: 500;
+}
+.message-author-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.message-comment {
+  align-self: flex-start; max-width: 85%;
+  background: var(--surface); color: var(--n-950);
+  box-shadow: 0 0 0 1px var(--n-200);
+  padding: 0.625rem 0.875rem; border-radius: 1.125rem; border-top-left-radius: 0.375rem;
+  line-height: 1.5rem; white-space: pre-wrap;
+  transition: opacity 350ms var(--ease-text), transform 350ms var(--ease-text), filter 350ms var(--ease-text);
+  @starting-style { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+}
+.mention { font-weight: 500; color: var(--primary); }
+.mention-agent { background: var(--accent-soft); border-radius: 5px; padding: 0 3px; }
 
 /* Markdown, after the Eyes assistant: quiet weight, generous leading. */
 .md { font-size: 13px; }
@@ -828,7 +867,7 @@ kbd {
 
 /* Reduced motion keeps fades (they aid comprehension) but drops movement. */
 @media (prefers-reduced-motion: reduce) {
-  .popover, .inbox, .toast, .toolbar-hint, .message-user, .pin-body,
+  .popover, .inbox, .toast, .toolbar-hint, .message-user, .message-comment, .pin-body,
   .tool, .icon-button, .toggle, .stop, .send, .segmented button, .inbox-item {
     transition-property: opacity, background-color, color;
   }

@@ -6,8 +6,11 @@ import type {
     ProviderThreadSummary,
     Thread,
 } from '@tencildev/protocol';
+import { mentionsAgent } from '@tencildev/protocol/mentions';
 import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { viewer } from '../lib/cloud-auth.ts';
+import { COMMENT_PLACEHOLDER, commentsOn } from '../lib/comments.ts';
 import {
     provider,
     providerModels,
@@ -85,6 +88,7 @@ export function Composer() {
     const existing = batching ? null : composerTarget.value;
     // A continued thread keeps its own model; only new threads can pick one.
     const models = existing ? undefined : modelChoices(target?.id);
+    const comments = commentsOn.value;
 
     const submit = async (prompt: string) => {
         setBusy(true);
@@ -110,21 +114,35 @@ export function Composer() {
             });
             if (!ok) return;
             const now = new Date().toISOString();
+            // As the bridge does: without `@tencil`, a new pin is a discussion among people.
+            const discussion = comments && !batching && !existing && !mentionsAgent(prompt);
+            const author = viewer.value && {
+                name: viewer.value.name,
+                login: viewer.value.login,
+                avatarUrl: viewer.value.avatarUrl,
+            };
             const optimistic: Thread = {
                 id,
                 title: prompt,
                 pageUrl: location.href,
                 anchor,
                 context,
-                status: batching ? 'draft' : existing ? 'working' : 'starting',
+                status: batching
+                    ? 'draft'
+                    : existing
+                      ? 'working'
+                      : discussion
+                        ? 'discussion'
+                        : 'starting',
                 resolved: false,
                 messages: [
                     {
                         id: `local:${id}`,
-                        role: 'user',
+                        role: discussion ? 'comment' : 'user',
                         text: prompt,
                         streaming: false,
                         createdAt: now,
+                        ...(author && { author }),
                     },
                 ],
                 provider: {
@@ -201,16 +219,18 @@ export function Composer() {
                 placeholder={
                     batching
                         ? 'Add a comment to the batch…'
-                        : !ready
+                        : !ready && !comments
                           ? 'Waiting for the agent connection…'
                           : existing
                             ? 'Continue the thread with this element…'
-                            : 'What should change here?'
+                            : comments
+                              ? COMMENT_PLACEHOLDER
+                              : 'What should change here?'
                 }
                 autoFocus
                 busy={busy}
-                // Queued comments don't need the agent until the batch is sent.
-                disabled={!ready && !batching}
+                // Queued comments and discussions don't need the agent until it's tagged.
+                disabled={!ready && !batching && !comments}
                 onSubmit={submit}
                 onCancel={() => {
                     draft.value = null;

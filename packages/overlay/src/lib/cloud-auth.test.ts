@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     challengeFor,
     forgetToken,
+    handOffBlocked,
     pinBlocked,
     signInRequired,
     storedToken,
     viewer,
 } from './cloud-auth.ts';
+import { commentsOn } from './comments.ts';
 
 const CLOUD = 'https://cloud.tencil.dev';
 
@@ -23,6 +25,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
     signInRequired.value = null;
     viewer.value = null;
+    commentsOn.value = false;
 });
 
 describe('PKCE', () => {
@@ -79,5 +82,22 @@ describe('pinBlocked', () => {
         expect(pinBlocked.value).toMatch(/View only/);
         viewer.value = { name: 'Ada', login: 'ada', access: 'write' };
         expect(pinBlocked.value).toBeNull();
+    });
+});
+
+describe('with comments', () => {
+    it('lets read-only viewers pin and comment, not hand work to the agent', () => {
+        commentsOn.value = true;
+        viewer.value = { name: 'Ada', login: 'ada', access: 'read' };
+        expect(pinBlocked.value).toBeNull();
+        expect(handOffBlocked('Typo here, @bob')).toBeNull();
+        expect(handOffBlocked('@tencil fix the typo')).toMatch(/write access/);
+        viewer.value = { name: 'Ada', login: 'ada', access: 'write' };
+        expect(handOffBlocked('@tencil fix the typo')).toBeNull();
+    });
+
+    it('never blocks a hand-off without comments', () => {
+        viewer.value = { name: 'Ada', login: 'ada', access: 'read' };
+        expect(handOffBlocked('@tencil fix the typo')).toBeNull();
     });
 });

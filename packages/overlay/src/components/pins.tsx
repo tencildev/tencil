@@ -297,6 +297,8 @@ export function pinVariant(thread: Thread): string {
             return 'waiting';
         case 'error':
             return 'error';
+        case 'discussion':
+            return 'discussion';
         default:
             return 'done';
     }

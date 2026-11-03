@@ -1,5 +1,7 @@
 import { computed, signal } from '@preact/signals';
 import type { CloudSignIn, Viewer } from '@tencildev/protocol';
+import { mentionsAgent } from '@tencildev/protocol/mentions';
+import { commentsOn } from './comments.ts';
 
 /** Set while Tencil Cloud wants a sign-in before it serves this page. */
 export const signInRequired = signal<{ signIn: CloudSignIn; reason?: string } | null>(null);
@@ -10,11 +12,20 @@ export const signingIn = signal(false);
 /** Why this viewer can't pin or reply right now, if they can't. */
 export const pinBlocked = computed(() => {
     if (signInRequired.value) return 'Sign in to Tencil Cloud to pin';
-    if (viewer.value?.access === 'read') {
+    // With comments, read access is enough to talk; handing work to the agent isn't.
+    if (viewer.value?.access === 'read' && !commentsOn.value) {
         return 'View only: you need write access to the repository to pin';
     }
     return null;
 });
+
+/** Why this message can't be sent, if it hands work to the agent and the viewer may not. */
+export function handOffBlocked(text: string): string | null {
+    if (commentsOn.value && viewer.value?.access === 'read' && mentionsAgent(text)) {
+        return 'Only people with write access to the repository can hand work to the agent';
+    }
+    return null;
+}
 
 interface StoredToken {
     token: string;

@@ -2,9 +2,11 @@ import type { Delivery, Thread, ThreadMessage, ThreadStep } from '@tencildev/pro
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
+import { COMMENT_PLACEHOLDER, commentsOn, members, mentionParts } from '../lib/comments.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
+import { Avatar } from './avatar.tsx';
 import {
     CheckIcon,
     ChevronIcon,
@@ -33,6 +35,8 @@ export function ThreadPanel() {
     });
 
     if (!thread) return null;
+    // With comments, people can always talk on a pin; `@tencil` brings the agent in.
+    const canReply = commentsOn.value || thread.provider.threadId !== undefined;
     // Pinned threads float beside their pin (also mid-drag); unpinned ones dock to the right edge.
     const drag = pinDrag.value;
     const point =
@@ -71,9 +75,13 @@ export function ThreadPanel() {
                     <PromptInput
                         placeholder={
                             pinBlocked.value ??
-                            (thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…')
+                            (commentsOn.value
+                                ? COMMENT_PLACEHOLDER
+                                : canReply
+                                  ? 'Reply…'
+                                  : 'Waiting for the agent…')
                         }
-                        disabled={!thread.provider.threadId || pinBlocked.value !== null}
+                        disabled={!canReply || pinBlocked.value !== null}
                         onSubmit={text => {
                             send({ type: 'thread.reply', threadId: thread.id, text });
                         }}
@@ -213,7 +221,7 @@ function Messages({ thread }: { thread: Thread }) {
 
     // Sending a reply brings the conversation back to the bottom.
     useLayoutEffect(() => {
-        if (last?.role === 'user') following.current = true;
+        if (last?.role === 'user' || last?.role === 'comment') following.current = true;
     }, [last?.id]);
 
     // Open at the latest message and stay there while answers stream, render and animate in.
@@ -244,11 +252,14 @@ function Messages({ thread }: { thread: Thread }) {
             }}
         >
             <div ref={listRef} class="messages-list">
-                {thread.messages.map(message =>
-                    message.role === 'user' ? (
-                        <div key={message.id} class="message message-user">
-                            {message.text}
-                        </div>
+                {thread.messages.map((message, index) =>
+                    message.role === 'user' || message.role === 'comment' ? (
+                        <PersonMessage
+                            key={message.id}
+                            message={message}
+                            // One name over consecutive messages by the same person.
+                            showAuthor={!sameAuthor(thread.messages[index - 1], message)}
+                        />
                     ) : (
                         <AssistantMessage key={message.id} message={message} />
                     ),
@@ -256,6 +267,56 @@ function Messages({ thread }: { thread: Thread }) {
             </div>
         </div>
     );
+}
+
+/**
+ * What a person wrote: to the agent (`user`, a bubble on the right) or to the
+ * team (`comment`, a neutral bubble on the left), under their name when known.
+ */
+function PersonMessage({ message, showAuthor }: { message: ThreadMessage; showAuthor: boolean }) {
+    const { author } = message;
+    const bubble = (
+        <div class={`message message-${message.role}`}>
+            <MessageText text={message.text} />
+        </div>
+    );
+    if (!author) return bubble;
+    return (
+        <div class={`message-group message-group-${message.role}`}>
+            {showAuthor && (
+                <div class="message-author">
+                    <Avatar name={author.name} avatarUrl={author.avatarUrl} />
+                    <span class="message-author-name">{author.name}</span>
+                </div>
+            )}
+            {bubble}
+        </div>
+    );
+}
+
+/** Plain text, with `@tencil` and members' handles marked when comments are on. */
+function MessageText({ text }: { text: string }) {
+    if (!commentsOn.value) return <>{text}</>;
+    const handles = new Set(members.value.map(member => member.handle.toLowerCase()));
+    return (
+        <>
+            {mentionParts(text, handles).map((part, index) =>
+                part.mention ? (
+                    <span key={index} class={`mention mention-${part.mention}`}>
+                        {part.text}
+                    </span>
+                ) : (
+                    part.text
+                ),
+            )}
+        </>
+    );
+}
+
+function sameAuthor(previous: ThreadMessage | undefined, message: ThreadMessage): boolean {
+    if (!previous?.author || !message.author || previous.role !== message.role) return false;
+    const key = (author: NonNullable<ThreadMessage['author']>) => author.login ?? author.name;
+    return key(previous.author) === key(message.author);
 }
 
 /** Only messages that were streaming when they mounted animate; history renders still. */

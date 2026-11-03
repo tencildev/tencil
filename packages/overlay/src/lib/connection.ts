@@ -12,6 +12,7 @@ import type {
     UpdateStatus,
 } from '@tencildev/protocol';
 import { forgetToken, signInRequired, storedToken, viewer } from './cloud-auth.ts';
+import { commentsOn, members } from './comments.ts';
 import { newId } from './id.ts';
 
 export type BridgeState = 'connecting' | 'open' | 'closed';
@@ -149,6 +150,8 @@ function handle(message: ServerMessage): void {
                 bridgeState.value = 'open';
                 signInRequired.value = null;
                 viewer.value = message.viewer ?? null;
+                commentsOn.value = message.comments ?? false;
+                members.value = message.members ?? [];
                 projectChoices.value = null;
                 provider.value = message.provider;
                 settings.value = message.settings;
