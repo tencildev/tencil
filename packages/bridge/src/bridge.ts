@@ -545,6 +545,8 @@ export class Bridge {
         }
         if (comments) this.#mayHandOff(client, message.text);
         if (comments && !thread.provider.threadId) {
+            if (thread.status === 'starting')
+                throw new Error('The agent is already starting on this pin');
             await this.#handOff(client, thread, message);
             return;
         }

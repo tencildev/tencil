@@ -167,6 +167,19 @@ describe('comments', () => {
         expect(store.get('pin1')?.provider.threadId).toBe('fake-1');
     });
 
+    it("doesn't start a second agent thread while one is starting", async () => {
+        const { bridge, client, provider, store, received } = setup();
+        await pin(bridge, client(ada), 'Too small');
+        store.upsert({ ...store.get('pin1')!, status: 'starting' });
+        await bridge.handle(client(ada), {
+            type: 'thread.reply',
+            threadId: 'pin1',
+            text: '@tencil',
+        });
+        expect(provider.created).toHaveLength(0);
+        expect(received.at(-1)).toMatchObject({ type: 'error', threadId: 'pin1' });
+    });
+
     it('creates an agent thread right away when the first comment tags it', async () => {
         const { bridge, client, provider, store } = setup();
         await pin(bridge, client(ada), '@tencil make it red');
