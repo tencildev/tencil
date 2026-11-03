@@ -16,6 +16,7 @@
     "type": "module",
     "exports": {
         ".": "./src/index.ts",
+        "./mentions": "./src/mentions.ts",
         "./package.json": "./package.json"
     },
     "files": [
@@ -28,6 +29,10 @@
             ".": {
                 "types": "./dist/index.d.mts",
                 "default": "./dist/index.mjs"
+            },
+            "./mentions": {
+                "types": "./dist/mentions.d.mts",
+                "default": "./dist/mentions.mjs"
             },
             "./package.json": "./package.json"
         }

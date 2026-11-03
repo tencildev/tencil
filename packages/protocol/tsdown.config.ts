@@ -1,7 +1,8 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-    entry: { index: 'src/index.ts' },
+    // `mentions` on its own too: the overlay uses it without pulling in zod.
+    entry: { index: 'src/index.ts', mentions: 'src/mentions.ts' },
     format: 'esm',
     // Shared by the daemon and the browser overlay.
     platform: 'neutral',
