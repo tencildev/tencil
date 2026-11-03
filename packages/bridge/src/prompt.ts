@@ -3,22 +3,41 @@ import type { BoxModel, ElementContext, Sides, Spacing } from '@tencildev/protoc
 const CONTEXT_OPEN = '<tencil-context>';
 const CONTEXT_CLOSE = '</tencil-context>';
 
+/** A message people left on a pin, for the agent: who said what. */
+export interface TeamComment {
+    name: string;
+    text: string;
+}
+
 /**
  * Renders the text sent to the agent: the user's words first, then a fenced
  * block of element context. The block is stripped again before messages are
- * shown in the overlay (`stripContext`).
+ * shown in the overlay (`stripContext`). A pin handed over from a discussion
+ * (`@tencil`) brings what the team said in the block, so the user's words stay
+ * the message they tagged.
  */
 export function renderPrompt(input: {
     prompt: string;
     pageUrl: string;
     context: ElementContext;
     hasScreenshot: boolean;
+    discussion?: TeamComment[];
 }): string {
-    const lines = [
-        'The user pinned this comment on an element of their running app (via Tencil). Use the context below to locate the code, then make the change in this workspace.',
-        '',
-        ...contextLines(input.pageUrl, input.context),
-    ];
+    const discussion = input.discussion ?? [];
+    const lines =
+        discussion.length > 0
+            ? [
+                  'The user handed you a discussion their team had on an element of their running app (via Tencil). Their message above is what to do; use the discussion and the context below to locate the code, then make the change in this workspace.',
+                  '',
+                  'Your team discussed this element:',
+                  ...transcriptLines(discussion),
+                  '',
+              ]
+            : [
+                  'The user pinned this comment on an element of their running app (via Tencil). Use the context below to locate the code, then make the change in this workspace.',
+                  '',
+              ];
+    lines.push(...contextLines(input.pageUrl, input.context));
     if (input.hasScreenshot) lines.push('- A screenshot of the element is attached.');
     return `${input.prompt.trim()}\n\n${CONTEXT_OPEN}\n${lines.join('\n')}\n${CONTEXT_CLOSE}`;
 }
@@ -49,6 +68,23 @@ export function renderBatchPrompt(
     }
     const text = comments.map(comment => `#${comment.number} ${comment.prompt.trim()}`);
     return `${text.join('\n\n')}\n\n${CONTEXT_OPEN}\n${lines.join('\n')}\n${CONTEXT_CLOSE}`;
+}
+
+/**
+ * A follow-up on a pin with comments: the user's words, then what the team said
+ * since the agent's last turn, in the block so the overlay shows only the former.
+ */
+export function renderFollowUp(text: string, comments: TeamComment[]): string {
+    if (comments.length === 0) return text;
+    const lines = ['Since your last turn the team said:', ...transcriptLines(comments)];
+    return `${text.trim()}\n\n${CONTEXT_OPEN}\n${lines.join('\n')}\n${CONTEXT_CLOSE}`;
+}
+
+/** One line per comment, its own lines indented under the name. */
+function transcriptLines(comments: TeamComment[]): string[] {
+    return comments.map(
+        ({ name, text }) => `${page(oneLine(name))}: ${page(text.trim()).replace(/\n/g, '\n  ')}`,
+    );
 }
 
 function contextLines(pageUrl: string, context: ElementContext): string[] {

@@ -35,6 +35,12 @@ socket.on('message', data => bridge.handle(client, JSON.parse(String(data))));
   the project's picks (provider, model, batching); without it they live in memory.
 - **`renderPrompt`, `stripContext`**: the prompt format agents receive, and the
   inverse used to show their messages.
+- **Comments** (`comments: true`, off by default): pins become conversations among
+  people. A message is a `comment` (never sent to the agent) unless it mentions
+  `@tencil` (`mentionsAgent` from `@tencildev/protocol`); a pin nobody tagged yet is a
+  `discussion`, and tagging it starts the agent with what the team said. Set
+  `viewer` on a client to sign its messages (`author`) and `members` to list who it
+  can mention; both are sent in `ready`. A `read` viewer may comment, not tag the agent.
 
 ## License
 

@@ -1,6 +1,9 @@
 import {
     ClientMessage,
     type ImageAttachment,
+    type Member,
+    type MessageAuthor,
+    mentionsAgent,
     PROTOCOL_VERSION,
     type ProjectSettings,
     type Provider,
@@ -13,13 +16,22 @@ import {
     type Viewer,
 } from '@tencildev/protocol';
 import type { ProjectProviders } from './project-providers.ts';
-import { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
+import {
+    batchTitle,
+    renderBatchPrompt,
+    renderFollowUp,
+    renderPrompt,
+    stripContext,
+    titleFor,
+} from './prompt.ts';
 import type { ThreadStore } from './thread-store.ts';
 
 export interface BridgeClient {
     send(message: ServerMessage): void;
     /** Tencil Cloud: who this connection signed in as, echoed in `ready`. */
     viewer?: Viewer;
+    /** Who this connection can mention, sent in `ready` (with `comments`). */
+    members?: Member[];
 }
 
 export interface BridgeOptions {
@@ -32,11 +44,22 @@ export interface BridgeOptions {
      * handles `update.start` itself); Tencil Cloud doesn't.
      */
     update?: () => UpdateStatus;
+    /**
+     * Pins are conversations among people (Tencil Cloud): a message is a comment
+     * unless it mentions `@tencil`, which hands the pin to the agent. Off by default.
+     */
+    comments?: boolean;
     log?: (message: string) => void;
 }
 
 /** Local echo ids, replaced once the provider reports the real user message. */
 const LOCAL_PREFIX = 'local:';
+/** Comments are the bridge's own: no provider copy ever replaces them. */
+const COMMENT_PREFIX = 'comment:';
+/** Most screenshots a pin holds for its handoff to the agent. */
+const MAX_HELD_ATTACHMENTS = 4;
+const READ_ONLY_HANDOFF =
+    'Only people with write access to the repository can hand work to the agent';
 const BROADCAST_THROTTLE_MS = 80;
 
 /**
@@ -49,7 +72,10 @@ export class Bridge {
     /** One provider subscription per provider thread, shared by every pin bound to it. */
     readonly #watches = new Map<string, () => void>();
     readonly #pendingBroadcast = new Map<string, ReturnType<typeof setTimeout>>();
-    /** Screenshots of queued comments, kept in memory until the batch is sent. */
+    /**
+     * Screenshots of queued comments and of discussions, kept in memory until
+     * the batch is sent or the discussion is handed to the agent.
+     */
     readonly #draftAttachments = new Map<string, ImageAttachment[]>();
     #offInfo: () => void = () => {};
     readonly #offDefault: () => void;
@@ -104,13 +130,20 @@ export class Bridge {
                         settings: this.#settings(),
                         threads: this.#options.store.list(),
                         ...(client.viewer && { viewer: client.viewer }),
+                        ...(this.#options.comments && { comments: true }),
+                        ...(client.members && { members: client.members }),
                         ...(this.#options.update && { update: this.#options.update() }),
                     });
                     return;
                 case 'thread.create':
-                    if (message.draft) this.#queue(message);
-                    else if (message.providerThreadId) await this.#continue(message);
-                    else await this.#create(message);
+                    if (message.draft) this.#queue(client, message);
+                    else if (message.providerThreadId) await this.#continue(client, message);
+                    else if (this.#options.comments && !mentionsAgent(message.prompt)) {
+                        this.#discuss(client, message);
+                    } else {
+                        this.#mayHandOff(client, message.prompt);
+                        await this.#create(client, message);
+                    }
                     return;
                 case 'thread.edit': {
                     const draft = this.#require(message.threadId);
@@ -163,7 +196,7 @@ export class Bridge {
                     return;
                 }
                 case 'thread.reply':
-                    await this.#reply(message);
+                    await this.#reply(client, message);
                     return;
                 case 'thread.interrupt': {
                     const thread = this.#require(message.threadId);
@@ -223,7 +256,10 @@ export class Bridge {
 
     /* --------------------------------- actions --------------------------------- */
 
-    async #create(message: Extract<ClientMessage, { type: 'thread.create' }>): Promise<void> {
+    async #create(
+        client: BridgeClient,
+        message: Extract<ClientMessage, { type: 'thread.create' }>,
+    ): Promise<void> {
         const { store } = this.#options;
         const provider = this.#provider();
         if (store.get(message.id)) throw new Error(`Thread ${message.id} already exists`);
@@ -236,7 +272,7 @@ export class Bridge {
             context: message.context,
             status: 'starting',
             resolved: false,
-            messages: [localMessage(message.prompt, now)],
+            messages: [localMessage(message.prompt, now, authorOf(client))],
             provider: { id: provider.id },
             createdAt: now,
             updatedAt: now,
@@ -277,8 +313,33 @@ export class Bridge {
         }
     }
 
+    /** Comments on: a pin nobody handed to the agent yet, with its first comment. */
+    #discuss(
+        client: BridgeClient,
+        message: Extract<ClientMessage, { type: 'thread.create' }>,
+    ): void {
+        const { store } = this.#options;
+        if (store.get(message.id)) throw new Error(`Thread ${message.id} already exists`);
+        const now = new Date().toISOString();
+        store.upsert({
+            id: message.id,
+            title: titleFor(message.prompt, message.context),
+            pageUrl: message.pageUrl,
+            anchor: message.anchor,
+            context: message.context,
+            status: 'discussion',
+            resolved: false,
+            messages: [commentMessage(message.prompt, now, authorOf(client))],
+            provider: { id: this.#provider().id },
+            createdAt: now,
+            updatedAt: now,
+        });
+        this.#hold(message.id, message.attachments);
+        this.#broadcastThread(store.get(message.id)!, true);
+    }
+
     /** Pin a comment without sending it: it waits for `drafts.send`. */
-    #queue(message: Extract<ClientMessage, { type: 'thread.create' }>): void {
+    #queue(client: BridgeClient, message: Extract<ClientMessage, { type: 'thread.create' }>): void {
         const { store } = this.#options;
         if (store.get(message.id)) throw new Error(`Thread ${message.id} already exists`);
         const now = new Date().toISOString();
@@ -290,7 +351,7 @@ export class Bridge {
             context: message.context,
             status: 'draft',
             resolved: false,
-            messages: [localMessage(message.prompt, now)],
+            messages: [localMessage(message.prompt, now, authorOf(client))],
             provider: { id: this.#provider().id },
             createdAt: now,
             updatedAt: now,
@@ -382,7 +443,10 @@ export class Bridge {
     }
 
     /** Pin an element onto an existing provider thread: the prompt becomes its next message. */
-    async #continue(message: Extract<ClientMessage, { type: 'thread.create' }>): Promise<void> {
+    async #continue(
+        client: BridgeClient,
+        message: Extract<ClientMessage, { type: 'thread.create' }>,
+    ): Promise<void> {
         const { store } = this.#options;
         // The thread comes from the default provider's list.
         const provider = this.#provider();
@@ -399,7 +463,10 @@ export class Bridge {
             status: 'working',
             resolved: false,
             // Show the conversation so far; the provider snapshot replaces it when it arrives.
-            messages: [...(sibling?.messages ?? []), localMessage(message.prompt, now)],
+            messages: [
+                ...(sibling?.messages ?? []),
+                localMessage(message.prompt, now, authorOf(client)),
+            ],
             provider: {
                 id: provider.id,
                 threadId: providerThreadId,
@@ -466,9 +533,28 @@ export class Bridge {
         this.#watch(provider.id, message.providerThreadId, true);
     }
 
-    async #reply(message: Extract<ClientMessage, { type: 'thread.reply' }>): Promise<void> {
+    async #reply(
+        client: BridgeClient,
+        message: Extract<ClientMessage, { type: 'thread.reply' }>,
+    ): Promise<void> {
         const thread = this.#require(message.threadId);
+        const { comments } = this.#options;
+        if (comments && !mentionsAgent(message.text)) {
+            this.#comment(client, thread, message);
+            return;
+        }
+        if (comments) this.#mayHandOff(client, message.text);
+        if (comments && !thread.provider.threadId) {
+            await this.#handOff(client, thread, message);
+            return;
+        }
         if (!thread.provider.threadId) throw new Error('This pin has no agent thread yet');
+        const text = comments
+            ? renderFollowUp(message.text, commentsSinceAgent(thread))
+            : message.text;
+        const attachments = comments
+            ? [...(this.#draftAttachments.get(thread.id) ?? []), ...message.attachments]
+            : message.attachments;
         await this.#resolve(thread.id, false);
         this.#update(thread.id, current => ({
             ...current,
@@ -476,13 +562,111 @@ export class Bridge {
             statusDetail: undefined,
             // Steps are per turn; the provider reports this one's afresh.
             steps: undefined,
-            messages: [...current.messages, localMessage(message.text, new Date().toISOString())],
+            messages: [
+                ...current.messages,
+                localMessage(message.text, new Date().toISOString(), authorOf(client)),
+            ],
         }));
+        this.#draftAttachments.delete(thread.id);
         await this.#providerOf(thread).sendMessage({
             providerThreadId: thread.provider.threadId,
-            text: message.text,
-            attachments: message.attachments,
+            text,
+            attachments,
         });
+    }
+
+    /** A message among people on the pin; the agent hears of it once someone mentions it. */
+    #comment(
+        client: BridgeClient,
+        thread: Thread,
+        message: Extract<ClientMessage, { type: 'thread.reply' }>,
+    ): void {
+        this.#hold(thread.id, message.attachments);
+        this.#update(thread.id, current => ({
+            ...current,
+            messages: [
+                ...current.messages,
+                commentMessage(message.text, new Date().toISOString(), authorOf(client)),
+            ],
+        }));
+    }
+
+    /** Hand a discussion to the agent: a new provider thread with what the team said. */
+    async #handOff(
+        client: BridgeClient,
+        thread: Thread,
+        message: Extract<ClientMessage, { type: 'thread.reply' }>,
+    ): Promise<void> {
+        const { context, pageUrl } = thread;
+        if (!context || !pageUrl) throw new Error('This pin has no element to work on');
+        const provider = this.#provider();
+        const attachments = [
+            ...(this.#draftAttachments.get(thread.id) ?? []),
+            ...message.attachments,
+        ];
+        const discussion = thread.messages
+            .filter(m => m.role === 'comment' || m.role === 'user')
+            .map(m => ({ name: m.author?.name ?? 'Someone', text: m.text }));
+        await this.#resolve(thread.id, false);
+        this.#update(thread.id, current => ({
+            ...current,
+            status: 'starting',
+            statusDetail: undefined,
+            steps: undefined,
+            messages: [
+                ...current.messages,
+                localMessage(message.text, new Date().toISOString(), authorOf(client)),
+            ],
+            provider: { id: provider.id },
+        }));
+
+        try {
+            const created = await provider.createThread({
+                title: thread.title,
+                text: renderPrompt({
+                    prompt: message.text,
+                    pageUrl,
+                    context,
+                    hasScreenshot: attachments.length > 0,
+                    discussion,
+                }),
+                attachments,
+                model: this.#options.providers.modelFor(provider.id),
+            });
+            this.#draftAttachments.delete(thread.id);
+            this.#update(thread.id, current => ({
+                ...current,
+                status: 'working',
+                provider: {
+                    id: provider.id,
+                    threadId: created.providerThreadId,
+                    url: created.url,
+                    archivable: created.archivable,
+                },
+            }));
+            this.#watch(provider.id, created.providerThreadId);
+            this.#options.log?.(`Discussion "${thread.title}" → ${provider.label}`);
+        } catch (error) {
+            this.#update(thread.id, current => ({
+                ...current,
+                status: 'error',
+                statusDetail: error instanceof Error ? error.message : String(error),
+            }));
+        }
+    }
+
+    /** Comments on: a read-only viewer may talk, not put the agent to work. */
+    #mayHandOff(client: BridgeClient, text: string): void {
+        if (this.#options.comments && client.viewer?.access === 'read' && mentionsAgent(text)) {
+            throw new Error(READ_ONLY_HANDOFF);
+        }
+    }
+
+    /** Keep screenshots for the agent until the pin is handed to it (the latest few). */
+    #hold(threadId: string, attachments: ImageAttachment[]): void {
+        if (attachments.length === 0) return;
+        const held = [...(this.#draftAttachments.get(threadId) ?? []), ...attachments];
+        this.#draftAttachments.set(threadId, held.slice(-MAX_HELD_ATTACHMENTS));
     }
 
     /**
@@ -662,14 +846,46 @@ function watchKey(providerId: string, providerThreadId: string): string {
     return `${providerId}:${providerThreadId}`;
 }
 
-function localMessage(text: string, createdAt: string): ThreadMessage {
+function localMessage(text: string, createdAt: string, author?: MessageAuthor): ThreadMessage {
     return {
         id: `${LOCAL_PREFIX}${crypto.randomUUID()}`,
         role: 'user',
         text,
         streaming: false,
         createdAt,
+        ...(author && { author }),
     };
+}
+
+function commentMessage(text: string, createdAt: string, author?: MessageAuthor): ThreadMessage {
+    return {
+        id: `${COMMENT_PREFIX}${crypto.randomUUID()}`,
+        role: 'comment',
+        text,
+        streaming: false,
+        createdAt,
+        ...(author && { author }),
+    };
+}
+
+/** The viewer as a message's author: who they are, not what they may do. */
+function authorOf(client: BridgeClient): MessageAuthor | undefined {
+    const { viewer } = client;
+    if (!viewer) return undefined;
+    return {
+        name: viewer.name,
+        ...(viewer.login && { login: viewer.login }),
+        ...(viewer.avatarUrl && { avatarUrl: viewer.avatarUrl }),
+    };
+}
+
+/** Comments the agent hasn't heard of: those after its last answer or the last message it got. */
+function commentsSinceAgent(thread: Thread): Array<{ name: string; text: string }> {
+    const last = thread.messages.findLastIndex(m => m.role === 'assistant' || m.role === 'user');
+    return thread.messages
+        .slice(last + 1)
+        .filter(m => m.role === 'comment')
+        .map(m => ({ name: m.author?.name ?? 'Someone', text: m.text }));
 }
 
 export function mergeMessage(thread: Thread, incoming: ProviderMessage): Thread {
@@ -678,14 +894,21 @@ export function mergeMessage(thread: Thread, incoming: ProviderMessage): Thread 
         text: incoming.role === 'user' ? stripContext(incoming.text) : incoming.text,
     };
     let messages = thread.messages;
+    // Providers don't know who wrote a message; the bridge's copy does.
+    let author: MessageAuthor | undefined;
     if (message.role === 'user') {
         // Swap the optimistic echo for the provider's copy.
         const echo = messages.findIndex(
             m => m.id.startsWith(LOCAL_PREFIX) && m.text.trim() === message.text.trim(),
         );
-        if (echo !== -1) messages = messages.filter((_, index) => index !== echo);
+        if (echo !== -1) {
+            author = messages[echo]!.author;
+            messages = messages.filter((_, index) => index !== echo);
+        }
     }
     const index = messages.findIndex(m => m.id === message.id);
+    author ??= messages[index]?.author;
+    if (author && !message.author) message.author = author;
     if (index === -1) {
         messages = [...messages, message].sort(
             (a, b) =>

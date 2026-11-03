@@ -5,5 +5,13 @@ export {
     type ProjectSettingsStore,
     type SavedProjectSettings,
 } from './project-providers.ts';
-export { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
+export {
+    batchTitle,
+    renderBatchPrompt,
+    renderFollowUp,
+    renderPrompt,
+    stripContext,
+    type TeamComment,
+    titleFor,
+} from './prompt.ts';
 export { MemoryThreadStore, settleInterrupted, type ThreadStore } from './thread-store.ts';
