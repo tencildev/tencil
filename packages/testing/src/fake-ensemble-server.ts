@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { Socket } from 'node:net';
 import type { ProviderMessage, ThreadStatus } from '@tencildev/protocol';
 
-type Status = Exclude<ThreadStatus, 'draft' | 'starting'>;
+type Status = Exclude<ThreadStatus, 'draft' | 'starting' | 'discussion'>;
 type Message = Omit<ProviderMessage, 'createdAt'>;
 interface Step {
     id: string;

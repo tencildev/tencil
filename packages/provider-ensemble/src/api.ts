@@ -8,7 +8,7 @@ export function ensembleUrl(): string {
     return process.env.TENCIL_ENSEMBLE_URL ?? DEFAULT_ENSEMBLE_URL;
 }
 
-export type EnsembleStatus = Exclude<ThreadStatus, 'draft' | 'starting'>;
+export type EnsembleStatus = Exclude<ThreadStatus, 'draft' | 'starting' | 'discussion'>;
 
 export interface EnsembleChat {
     id: string;

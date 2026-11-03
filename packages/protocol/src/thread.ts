@@ -9,12 +9,35 @@ import { Anchor, ElementContext } from './context.ts';
  * - `waiting`: the agent needs approval/input inside the provider UI
  * - `idle`: last turn finished, ready for a follow-up
  * - `error`: last turn or the thread itself failed
+ * - `discussion`: people commented, nobody handed it to the agent yet (no `provider.threadId`)
  */
-export const ThreadStatus = z.enum(['draft', 'starting', 'working', 'waiting', 'idle', 'error']);
+export const ThreadStatus = z.enum([
+    'draft',
+    'starting',
+    'working',
+    'waiting',
+    'idle',
+    'error',
+    'discussion',
+]);
 export type ThreadStatus = z.infer<typeof ThreadStatus>;
 
-export const MessageRole = z.enum(['user', 'assistant', 'system']);
+/**
+ * - `user`: sent to the agent
+ * - `assistant` / `system`: from the agent or the provider
+ * - `comment`: among people on the pin (Tencil Cloud), never sent to the agent
+ */
+export const MessageRole = z.enum(['user', 'assistant', 'system', 'comment']);
 export type MessageRole = z.infer<typeof MessageRole>;
+
+/** Who wrote a message, when the host knows (Tencil Cloud's signed-in viewer). */
+export const MessageAuthor = z.object({
+    name: z.string(),
+    /** GitHub login. */
+    login: z.string().optional(),
+    avatarUrl: z.string().optional(),
+});
+export type MessageAuthor = z.infer<typeof MessageAuthor>;
 
 export const ThreadMessage = z.object({
     id: z.string(),
@@ -23,6 +46,7 @@ export const ThreadMessage = z.object({
     text: z.string(),
     streaming: z.boolean().default(false),
     createdAt: z.string(),
+    author: MessageAuthor.optional(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessage>;
 

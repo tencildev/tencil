@@ -12,14 +12,20 @@ export interface ModelSelection {
 
 export interface TrackerUpdate {
     messages: ProviderMessage[];
-    status?: { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
+    status?: {
+        status: Exclude<ThreadStatus, 'starting' | 'draft' | 'discussion'>;
+        detail?: string;
+    };
     gone?: boolean;
 }
 
 /** Folds one protocol's thread stream into Tencil messages + status. */
 export interface ThreadTracker {
     apply(item: unknown): TrackerUpdate;
-    status(): { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
+    status(): {
+        status: Exclude<ThreadStatus, 'starting' | 'draft' | 'discussion'>;
+        detail?: string;
+    };
     /** What an interrupt should target (run id in V2, turn id in V1). */
     activeTurnId(): string | undefined;
 }

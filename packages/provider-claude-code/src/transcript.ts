@@ -1,7 +1,10 @@
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ProviderMessage, ThreadStatus } from '@tencildev/protocol';
 
-export type RunStatus = { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
+export type RunStatus = {
+    status: Exclude<ThreadStatus, 'starting' | 'draft' | 'discussion'>;
+    detail?: string;
+};
 
 export interface TrackerUpdate {
     messages: ProviderMessage[];

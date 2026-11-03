@@ -38,6 +38,16 @@ export interface Viewer {
     access: 'write' | 'read';
 }
 
+/** Someone who can be mentioned in a pin's comments (`@handle`). */
+export interface Member {
+    /** What follows the `@`, e.g. the GitHub login. */
+    handle: string;
+    name: string;
+    /** GitHub login. */
+    login?: string;
+    avatarUrl?: string;
+}
+
 /**
  * The daemon's own updates (local only; Tencil Cloud leaves it out). `latest`
  * is set when a newer Tencil is published. `state` walks through an update
@@ -178,6 +188,13 @@ export type ServerMessage =
           threads: Thread[];
           /** Tencil Cloud only: who is signed in. */
           viewer?: Viewer;
+          /**
+           * Pins are conversations among people: messages are comments until one
+           * mentions `@tencil`, which hands the pin to the agent. Off (absent) locally.
+           */
+          comments?: boolean;
+          /** Who can be mentioned, when `comments` is on. */
+          members?: Member[];
           /** Local daemon only: the latest version and any update in progress. */
           update?: UpdateStatus;
       }
