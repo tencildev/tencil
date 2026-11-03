@@ -1,5 +1,18 @@
 # @tencildev/bridge
 
+## 0.5.1
+
+### Patch Changes
+
+- [#21](https://github.com/tencildev/tencil/pull/21) [`0844fdc`](https://github.com/tencildev/tencil/commit/0844fdcc5232e7481c763207ef85f51c080d5842) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Add the person's preferences (theme and shortcuts):
+  `preferences.update` from the overlay, `preferences` from the host. Add
+  `project.source` (how the page's project was found) and `project.choices`
+  (projects to switch to). The bridge refuses `preferences.update` and
+  `project.choices`; a host that supports them handles them first, as the
+  local daemon does.
+- Updated dependencies [[`0844fdc`](https://github.com/tencildev/tencil/commit/0844fdcc5232e7481c763207ef85f51c080d5842)]:
+  - @tencildev/protocol@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes
