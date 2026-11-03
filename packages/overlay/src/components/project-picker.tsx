@@ -1,6 +1,9 @@
 import { useState } from 'preact/hooks';
 import { projectChoices, projectChoicesHint, send } from '../lib/connection.ts';
 
+/** Keeps a path's leading slash in place in a right-to-left box (cut from the start). */
+const LTR = '\u200e';
+
 /** Shown when the daemon couldn't match this page to a project. */
 export function ProjectPicker() {
     const [query, setQuery] = useState('');
@@ -50,7 +53,7 @@ export function ProjectPicker() {
                                 onClick={() => select(choice.root)}
                             >
                                 <span class="project-picker-name">{choice.title}</span>
-                                <span class="project-picker-root">{choice.root}</span>
+                                <span class="project-picker-root">{LTR + choice.root}</span>
                             </button>
                         ))}
                     </div>

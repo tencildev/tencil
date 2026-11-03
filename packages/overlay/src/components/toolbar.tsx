@@ -12,8 +12,8 @@ import {
     send,
 } from '../lib/connection.ts';
 import { dock, moveDockBy, startDrag } from '../lib/dock.ts';
-import { ALT_KEY } from '../lib/measure.ts';
 import { besideIndicator, nextIndicator } from '../lib/next-devtools.ts';
+import { labels } from '../lib/shortcuts.ts';
 import {
     draft,
     hidden,
@@ -25,6 +25,7 @@ import {
     rulerOn,
     rulerToggle,
     settingsOpen,
+    settingsSection,
     startPicking,
     stopPicking,
     toggleRuler,
@@ -43,11 +44,11 @@ import {
 } from './icons.tsx';
 import { sendQueued } from './pins.tsx';
 import { ProjectPicker } from './project-picker.tsx';
-import { SettingsPanel } from './settings-panel.tsx';
 import { StatusDot, type Tone } from './status-card.tsx';
 
 export function Toolbar() {
     const status = connectionStatus();
+    const keys = labels.value;
     const picking = mode.value === 'picking';
     const ref = useRef<HTMLDivElement>(null);
     return (
@@ -60,11 +61,10 @@ export function Toolbar() {
             {picking && (
                 <div class="toolbar-hint">
                     Click any element to pin a prompt
-                    {rulerOn.value && ` · ${ALT_KEY} to measure`} · Esc to cancel
+                    {rulerOn.value && keys.measure && ` · ${keys.measure} to measure`} · Esc to
+                    cancel
                 </div>
             )}
-            {/* Sits on the toolbar's open side, so it follows the toolbar to any corner. */}
-            {!picking && <SettingsPanel />}
             {!picking && projectChoices.value && <ProjectPicker />}
             {!picking && !projectChoices.value && status.hint && (
                 <div class={`toolbar-hint hint-${status.tone}`}>
@@ -78,7 +78,8 @@ export function Toolbar() {
             )}
             {!picking && !status.hint && rulerAnchor.value && !draft.value && (
                 <div class="toolbar-hint">
-                    Hold {ALT_KEY} and hover to measure · C to comment · Esc to clear
+                    Hold {keys.measure} and hover to measure
+                    {keys.comment && ` · ${keys.comment} to comment`} · Esc to clear
                 </div>
             )}
             <div class="toolbar">
@@ -97,13 +98,13 @@ export function Toolbar() {
                 <button
                     type="button"
                     class={`tool${picking ? ' tool-active' : ''}`}
-                    title={pinBlocked.value ?? 'Comment (C)'}
+                    title={pinBlocked.value ?? withKey('Comment', keys.comment)}
                     disabled={pinBlocked.value !== null}
                     onClick={() => (picking ? stopPicking() : startPicking())}
                 >
                     <CommentIcon />
                     <span class="tool-label">Comment</span>
-                    <kbd>C</kbd>
+                    {keys.comment && <kbd>{keys.comment}</kbd>}
                 </button>
                 {rulerAvailable.value && (
                     <button
@@ -111,8 +112,8 @@ export function Toolbar() {
                         class={`tool${rulerToggle.value ? '' : ' tool-off'}`}
                         title={
                             rulerToggle.value
-                                ? `Ruler on (R): hold ${ALT_KEY} to measure`
-                                : 'Ruler off (R)'
+                                ? `${withKey('Ruler on', keys.ruler)}${keys.measure ? `: hold ${keys.measure} to measure` : ''}`
+                                : withKey('Ruler off', keys.ruler)
                         }
                         aria-label="Ruler"
                         aria-pressed={rulerToggle.value}
@@ -150,7 +151,7 @@ export function Toolbar() {
                 <button
                     type="button"
                     class="tool"
-                    title={hidden.value ? 'Show pins' : 'Hide pins'}
+                    title={withKey(hidden.value ? 'Show pins' : 'Hide pins', keys.hidePins)}
                     onClick={() => {
                         hidden.value = !hidden.value;
                         if (hidden.value) stopPicking();
@@ -161,10 +162,8 @@ export function Toolbar() {
                 <button
                     type="button"
                     class={`tool${settingsOpen.value ? ' tool-active' : ''}`}
-                    title="Project settings"
-                    aria-label={
-                        updateAvailable.value ? 'Project settings (update available)' : undefined
-                    }
+                    title="Settings"
+                    aria-label={updateAvailable.value ? 'Settings (update available)' : undefined}
                     disabled={!project.value}
                     onClick={() => {
                         settingsOpen.value = !settingsOpen.value;
@@ -179,6 +178,11 @@ export function Toolbar() {
     );
 }
 
+/** `Comment (C)`, or just `Comment` when its shortcut is cleared. */
+function withKey(label: string, key: string | null): string {
+    return key ? `${label} (${key})` : label;
+}
+
 interface ConnectionStatus {
     tone: Tone;
     title: string;
@@ -190,6 +194,7 @@ interface ConnectionStatus {
 const switchAgent = {
     label: 'Switch agent',
     run: () => {
+        settingsSection.value = 'agent';
         settingsOpen.value = true;
         inboxOpen.value = false;
     },

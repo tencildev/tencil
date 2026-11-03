@@ -188,7 +188,8 @@ test('closes the thread once it is resolved', async ({ page }) => {
 test("switches the project's agent in settings and remembers it", async ({ page }) => {
     await openPlayground(page);
     const settings = overlay(page).locator('.settings-panel');
-    await overlay(page).locator('.tool[title="Project settings"]').click();
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await settings.getByRole('button', { name: 'Agent', exact: true }).click();
     await expect(settings.getByRole('radio', { name: 'T3 Code' })).toBeChecked();
 
     await settings.getByText('Claude Code').click();
@@ -201,7 +202,8 @@ test("switches the project's agent in settings and remembers it", async ({ page 
     );
 
     await page.reload();
-    await overlay(page).locator('.tool[title="Project settings"]').click();
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await settings.getByRole('button', { name: 'Agent', exact: true }).click();
     await expect(settings.getByRole('radio', { name: 'Claude Code' })).toBeChecked();
 
     await settings.getByText('T3 Code').click();
@@ -296,7 +298,8 @@ test('queues several comments and sends them as one thread', async ({ page }) =>
     await expect(overlay(page).getByRole('button', { name: /^Send \d/ })).toHaveCount(0);
 
     // Turning batch mode off in the settings takes the toggle away again.
-    await overlay(page).locator('.tool[title="Project settings"]').click();
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await overlay(page).getByRole('button', { name: 'Tools' }).click();
     await expect(batchMode).toBeChecked();
     await batchMode.click();
     await expect(batchMode).not.toBeChecked();
@@ -304,6 +307,133 @@ test('queues several comments and sends them as one thread', async ({ page }) =>
     await page.keyboard.press('c');
     await page.getByRole('heading', { level: 1 }).click();
     await expect(batchToggle).toHaveCount(0);
+});
+
+test("opens settings on the project's page, with how it was detected", async ({ page }) => {
+    await openPlayground(page);
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    const panel = overlay(page).locator('.settings-panel');
+    const nav = panel.locator('.settings-nav-project');
+    await expect(nav).toHaveText('Project');
+    await expect(nav).toHaveAttribute('aria-current', 'page');
+
+    // The playground loads Tencil through the Vite plugin, which passes its git root.
+    const detection = panel.locator('.detection');
+    await expect(detection.locator('.detection-badge')).toHaveText('Automatic');
+    await expect(detection).toContainText('the Vite or Next.js plugin passed along');
+    await detection.getByRole('button', { name: 'Change' }).click();
+    await expect(panel.locator('.detection-search')).toBeFocused();
+    await expect(panel.locator('.detection-list')).toContainText(/No other projects|\//);
+    await detection.getByRole('button', { name: 'Cancel' }).click();
+    await expect(panel.locator('.detection-picker')).toHaveCount(0);
+});
+
+test('hides the whole dock from settings and brings it back with Alt+T', async ({ page }) => {
+    await openPlayground(page);
+    await pinElement(page, 'Choose Pro', 'Round the corners');
+    const toolbar = overlay(page).locator('.toolbar');
+    // Earlier tests leave pins in the shared store: count from here.
+    const pins = overlay(page).locator('.pin');
+    await expect(overlay(page).locator('.pin[title$="Round the corners"]')).toHaveCount(1);
+    const count = await pins.count();
+
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await overlay(page).getByRole('button', { name: 'Dock' }).click();
+    await overlay(page)
+        .getByRole('switch', { name: /Hide the dock/ })
+        .click();
+    await expect(toolbar).toHaveCount(0);
+    await expect(pins).toHaveCount(0);
+    await expect(overlay(page).getByRole('status')).toContainText('Tencil is hidden');
+
+    // Hidden, the other shortcuts leave the page alone, and it stays hidden across reloads.
+    await page.keyboard.press('c');
+    await expect(overlay(page).locator('.toolbar-hint')).toHaveCount(0);
+    const mounted = page.waitForEvent('console', message =>
+        message.text().startsWith('Tencil is hidden'),
+    );
+    await page.reload();
+    await mounted;
+    await expect(toolbar).toHaveCount(0);
+
+    await page.keyboard.press('Alt+t');
+    await expect(toolbar).toBeVisible({ timeout: 15_000 });
+    await expect(pins).toHaveCount(count);
+    await page.keyboard.press('Alt+t');
+    await expect(toolbar).toHaveCount(0);
+    await overlay(page).getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect(toolbar).toBeVisible();
+});
+
+test('records a new Comment shortcut, uses it, swaps and resets', async ({ page }) => {
+    await openPlayground(page);
+    const panel = overlay(page).locator('.settings-panel');
+    const hint = overlay(page).locator('.toolbar-hint');
+    const commentKey = panel.getByRole('button', { name: 'Comment', exact: true });
+    const rulerKey = panel.getByRole('button', { name: 'Ruler', exact: true });
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await panel.getByRole('button', { name: 'Shortcuts' }).click();
+    await expect(commentKey).toHaveText('C');
+
+    // Shortcuts the browser needs are refused, with the reason.
+    await commentKey.click();
+    await page.keyboard.press('Control+w');
+    await expect(panel.getByRole('alert')).toContainText('already uses');
+
+    await page.keyboard.press('Shift+K');
+    await expect(commentKey).toHaveText(/^(⇧K|Shift\+K)$/);
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+
+    // The new key works straight away, and the old one leaves the page alone.
+    await expect(overlay(page).locator('.tool[title^="Comment"] kbd')).toHaveText(/K$/);
+    await page.keyboard.press('c');
+    await expect(hint).toHaveCount(0);
+    await page.keyboard.press('Shift+K');
+    await expect(hint).toContainText('Click any element');
+    await page.keyboard.press('Escape');
+
+    // Taking a key another action has asks first, then swaps them.
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await rulerKey.click();
+    await page.keyboard.press('Shift+K');
+    await expect(panel.getByRole('alert')).toContainText('already used for Comment');
+    await panel.getByRole('button', { name: 'Swap' }).click();
+    await expect(rulerKey).toHaveText(/K$/);
+    await expect(commentKey).toHaveText('R');
+
+    await panel.getByRole('button', { name: 'Reset to defaults' }).click();
+    await expect(commentKey).toHaveText('C');
+    await expect(rulerKey).toHaveText('R');
+});
+
+test('starts dark and saves the theme on the machine, not just the browser', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await openPlayground(page);
+    const root = overlay(page).locator('.root');
+    await expect(root).toHaveClass(/\bdark\b/);
+
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await overlay(page).getByRole('button', { name: 'Appearance' }).click();
+    await overlay(page).locator('.settings-segmented label', { hasText: 'Light' }).click();
+    await expect(root).not.toHaveClass(/\bdark\b/);
+
+    // With the browser's copy gone, the daemon still has it: it applies once connected.
+    await page.evaluate(() => localStorage.removeItem('tencil:theme'));
+    await page.reload();
+    await expect(overlay(page).locator('.status-dot.status-ok')).toBeVisible({ timeout: 15_000 });
+    await expect(root).not.toHaveClass(/\bdark\b/);
+
+    // System follows the browser, live.
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await overlay(page).getByRole('button', { name: 'Appearance' }).click();
+    await overlay(page).locator('.settings-segmented label', { hasText: 'System' }).click();
+    await expect(root).not.toHaveClass(/\bdark\b/);
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(root).toHaveClass(/\bdark\b/);
+
+    // The daemon is shared by the tests that follow.
+    await overlay(page).locator('.settings-segmented label', { hasText: 'Dark' }).click();
 });
 
 test("stands beside Next.js's dev tools button in its corner", async ({ page }) => {
@@ -415,7 +545,8 @@ test('starts with the ruler off and hides it in settings', async ({ page }) => {
     await expect(ruler).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
 
     // The project setting takes the button away altogether.
-    await overlay(page).locator('.tool[title="Project settings"]').click();
+    await overlay(page).locator('.tool[title="Settings"]').click();
+    await overlay(page).getByRole('button', { name: 'Tools' }).click();
     const setting = overlay(page).getByRole('switch', { name: /Ruler/ });
     await expect(setting).toBeChecked();
     await setting.click();
@@ -473,9 +604,10 @@ test('shows the version in settings and offers the update, with a fallback when 
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await openPlayground(page);
     // The fake registry says 99.0.0 is out: the settings button gets a dot.
-    const button = overlay(page).locator('.tool[title="Project settings"]');
+    const button = overlay(page).locator('.tool[title="Settings"]');
     await expect(button.locator('.tool-dot')).toBeVisible();
     await button.click();
+    await overlay(page).getByRole('button', { name: 'About (update available)' }).click();
 
     const about = overlay(page).getByRole('region', { name: 'About Tencil' });
     await expect(about.locator('.settings-version')).toHaveText(/^v\d+\.\d+\.\d+/);

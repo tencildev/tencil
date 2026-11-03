@@ -1,9 +1,11 @@
 import { computed, signal } from '@preact/signals';
 import type { UpdateStatus } from '@tencildev/protocol';
-import { daemonVersion, isCloud, send, update, updatedFrom } from '../lib/connection.ts';
+import { daemonVersion, isCloud, provider, send, update, updatedFrom } from '../lib/connection.ts';
+import { ChevronIcon, GitHubIcon, StarIcon } from './icons.tsx';
+import { StatusRows, statusRows } from './status-card.tsx';
 
-const CHANGELOG_URL =
-    'https://github.com/tencildev/tencil/blob/master/packages/tencil/CHANGELOG.md';
+const REPO_URL = 'https://github.com/tencildev/tencil';
+const CHANGELOG_URL = `${REPO_URL}/blob/master/packages/tencil/CHANGELOG.md`;
 const MANUAL_UPDATE = 'npx tencil@latest setup';
 
 /** A newer Tencil is out and nothing is being done about it yet: the settings button shows a dot. */
@@ -12,6 +14,7 @@ export const updateAvailable = computed(
 );
 
 const copied = signal(false);
+const debugCopied = signal(false);
 
 /**
  * The running Tencil version and its updates: "x.y.z is available", the
@@ -56,6 +59,24 @@ export function AboutSection() {
                     </button>
                 </div>
             )}
+            <div class="settings-links">
+                <a class="settings-link" href={REPO_URL} target="_blank" rel="noreferrer">
+                    <GitHubIcon />
+                    tencildev/tencil
+                </a>
+                <a class="settings-link" href={CHANGELOG_URL} target="_blank" rel="noreferrer">
+                    Changelog
+                </a>
+                <a
+                    class="settings-link settings-star"
+                    href={REPO_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    <StarIcon />
+                    Give us a star
+                </a>
+            </div>
             {status?.state === 'failed' && (
                 <div class="settings-update-error" role="alert">
                     <p class="settings-help">
@@ -81,8 +102,46 @@ export function AboutSection() {
                     </div>
                 </div>
             )}
+            <details class="settings-debug">
+                <summary>
+                    <ChevronIcon />
+                    Debug
+                </summary>
+                <div class="settings-debug-body">
+                    <StatusRows />
+                    <button
+                        type="button"
+                        class="settings-copy"
+                        onClick={() => {
+                            void navigator.clipboard?.writeText(debugText()).then(() => {
+                                debugCopied.value = true;
+                                setTimeout(() => {
+                                    debugCopied.value = false;
+                                }, 1_500);
+                            });
+                        }}
+                    >
+                        {debugCopied.value ? 'Copied' : 'Copy for a bug report'}
+                    </button>
+                </div>
+            </details>
         </section>
     );
+}
+
+/** The debug rows as text, with what a bug report also needs: the page and browser. */
+function debugText(): string {
+    const info = provider.value;
+    return [
+        `Tencil v${daemonVersion.value ?? '?'}`,
+        ...statusRows().map(
+            row =>
+                `${row.label}: ${row.value}${row.note ? ` (${row.note})` : ''}${row.title ? ` [${row.title}]` : ''}`,
+        ),
+        ...(info && info.state !== 'ready' && info.detail ? [`Detail: ${info.detail}`] : []),
+        `Page: ${location.origin}${location.pathname}`,
+        `Browser: ${navigator.userAgent}`,
+    ].join('\n');
 }
 
 function progress(status: UpdateStatus): string {

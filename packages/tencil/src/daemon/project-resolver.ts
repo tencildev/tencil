@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
+import type { ProjectSource } from '@tencildev/protocol';
 import { ensembleThreadId } from '@tencildev/provider-ensemble';
 
 const run = promisify(execFile);
@@ -26,8 +27,22 @@ const defaultExec: Exec = async (command, args) =>
  * only stands in for what can't be detected. Returns undefined when nothing works;
  * the overlay then asks.
  */
+/** A page's project, and how it was found. */
+export interface Detected {
+    root: string;
+    source: ProjectSource;
+}
+
+type AutoDetected = Detected & { source: { via: 'ensemble' | 'plugin' | 'port' | 'docker' } };
+
+function pickKey(origin: string, detected: string): string {
+    return `${origin} ${detected}`;
+}
+
 export class ProjectResolver {
     readonly #memory: OriginMemory;
+    /** Picks made over a detected project, by address and that project. */
+    readonly #picks: OriginMemory;
     readonly #exec: Exec;
     readonly #platform: NodeJS.Platform;
     readonly #ensembleForPort?: EnsembleForPort;
@@ -39,27 +54,69 @@ export class ProjectResolver {
         ensembleForPort?: EnsembleForPort;
     }) {
         this.#memory = new OriginMemory(join(options.dataDir, 'origins.json'));
+        this.#picks = new OriginMemory(join(options.dataDir, 'project-picks.json'));
         this.#exec = options.exec ?? defaultExec;
         this.#platform = options.platform ?? process.platform;
         this.#ensembleForPort = options.ensembleForPort;
     }
 
     async resolve(pageUrl: string, claimedRoot?: string): Promise<string | undefined> {
+        return (await this.detect(pageUrl, claimedRoot))?.root;
+    }
+
+    /**
+     * The page's project and how it was found. A pick made over a detected
+     * project only holds while that same project is detected on the address:
+     * when another app takes the port, detection wins again.
+     */
+    async detect(pageUrl: string, claimedRoot?: string): Promise<Detected | undefined> {
         const origin = safeOrigin(pageUrl);
         if (!origin) return undefined;
+        const found = await this.#automatic(origin, claimedRoot);
+        if (found) {
+            const picked = await this.#picks.get(pickKey(origin, found.root));
+            const usable = picked && (ensembleThreadId(picked) || existsSync(picked));
+            if (!usable || picked === found.root) return found;
+            return {
+                root: picked,
+                source: { via: 'picked', detected: { root: found.root, ...found.source } },
+            };
+        }
+        const remembered = await this.#memory.get(origin);
+        return remembered && (ensembleThreadId(remembered) || existsSync(remembered))
+            ? { root: remembered, source: { via: 'picked' } }
+            : undefined;
+    }
+
+    /** Detection alone: Ensemble thread, the plugin's git root, then the port. */
+    async #automatic(origin: string, claimedRoot?: string): Promise<AutoDetected | undefined> {
         const port = portOf(origin);
         // A dev server an Ensemble thread runs belongs to that thread, whichever folder it runs in.
         const thread = port
             ? await this.#ensembleForPort?.(port).catch(() => undefined)
             : undefined;
-        if (thread) return thread;
-        if (claimedRoot && isGitRoot(claimedRoot)) return resolve(claimedRoot);
-        const folder = port ? await this.folderForPort(port).catch(() => undefined) : undefined;
-        if (folder) return projectRoot(folder);
-        const remembered = await this.#memory.get(origin);
-        return remembered && (ensembleThreadId(remembered) || existsSync(remembered))
-            ? remembered
-            : undefined;
+        if (thread) return { root: thread, source: { via: 'ensemble', port } };
+        if (claimedRoot && isGitRoot(claimedRoot)) {
+            return { root: resolve(claimedRoot), source: { via: 'plugin' } };
+        }
+        const found = port ? await this.#portFolder(port).catch(() => undefined) : undefined;
+        if (!found || !port) return undefined;
+        return {
+            root: projectRoot(found.folder),
+            source: { via: found.docker ? 'docker' : 'port', port },
+        };
+    }
+
+    /**
+     * Use `root` for this address while `detected` is what Tencil finds there
+     * (the overlay's Change). Picking the detected project itself undoes it.
+     */
+    async pick(pageUrl: string, detected: string, root: string): Promise<void> {
+        const origin = safeOrigin(pageUrl);
+        if (!origin) return;
+        const key = pickKey(origin, detected);
+        if (projectKey(root) === detected) await this.#picks.delete(key);
+        else await this.#picks.set(key, projectKey(root));
     }
 
     /** Remember the user's choice for an address (from the overlay's project picker). */
@@ -73,17 +130,27 @@ export class ProjectResolver {
      * package. When Docker publishes the port, the compose project of the container.
      */
     async folderForPort(port: number): Promise<string | undefined> {
+        return (await this.#portFolder(port))?.folder;
+    }
+
+    async #portFolder(port: number): Promise<{ folder: string; docker: boolean } | undefined> {
+        const docker = async () => {
+            const folder = await this.#composeFolder(port);
+            return folder ? { folder, docker: true } : undefined;
+        };
         const pids = await this.#listeners(port);
         // Linux hides root's sockets (docker-proxy) from other users, and Docker without
         // its userland proxy has no listener at all.
-        if (pids.length === 0 && this.#platform === 'linux') return this.#composeFolder(port);
+        if (pids.length === 0 && this.#platform === 'linux') return docker();
         for (const pid of pids) {
             const cwd = await this.#cwd(pid).catch(() => undefined);
-            if (cwd && cwd !== sep && existsSync(join(cwd, 'package.json'))) return cwd;
+            if (cwd && cwd !== sep && existsSync(join(cwd, 'package.json'))) {
+                return { folder: cwd, docker: false };
+            }
             const commandLine = await this.#commandLine(pid).catch(() => '');
-            if (isDockerForwarder(commandLine)) return this.#composeFolder(port);
+            if (isDockerForwarder(commandLine)) return docker();
             const fromCommand = projectFromCommandLine(commandLine);
-            if (fromCommand) return fromCommand;
+            if (fromCommand) return { folder: fromCommand, docker: false };
         }
         return undefined;
     }
@@ -248,6 +315,17 @@ class OriginMemory {
     async set(origin: string, root: string): Promise<void> {
         const all = await this.#read();
         all[origin] = root;
+        await this.#write(all);
+    }
+
+    async delete(origin: string): Promise<void> {
+        const all = await this.#read();
+        if (!(origin in all)) return;
+        delete all[origin];
+        await this.#write(all);
+    }
+
+    async #write(all: Record<string, string>): Promise<void> {
         await mkdir(dirname(this.path), { recursive: true });
         await writeFile(this.path, `${JSON.stringify(all, null, 2)}\n`);
     }

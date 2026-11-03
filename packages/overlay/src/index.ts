@@ -5,6 +5,8 @@ import { connect } from './lib/connection.ts';
 import { installPicker } from './lib/element-picker.ts';
 import { watchNextIndicator } from './lib/next-devtools.ts';
 import { setHost } from './lib/overlay-host.ts';
+import { labels } from './lib/shortcuts.ts';
+import { dockHidden } from './lib/state.ts';
 import { styles } from './styles.ts';
 
 declare global {
@@ -90,6 +92,8 @@ function mount(bridgeUrl: string, build: BuildInfo | undefined, root: string | u
     const unwatchNext = watchNextIndicator();
     render(h(App, {}), container);
     connect(bridgeUrl, build, root);
+    if (dockHidden.value)
+        console.info(`Tencil is hidden. Press ${labels.value.hideDock} to show it.`);
 
     window.__TENCIL__ = {
         version: 1,

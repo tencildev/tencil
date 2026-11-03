@@ -33,6 +33,17 @@ export const draft = signal<Draft | null>(null);
 export const openThreadId = signal<string | null>(null);
 export const inboxOpen = signal(false);
 export const settingsOpen = signal(false);
+export type SettingsSection =
+    | 'overview'
+    | 'agent'
+    | 'tools'
+    | 'appearance'
+    | 'shortcuts'
+    | 'dock'
+    | 'account'
+    | 'about';
+/** The settings page last looked at; settings reopen on it. */
+export const settingsSection = signal<SettingsSection>('overview');
 export const showResolved = signal(false);
 export const hidden = signal(false);
 /** The project allows batching: the comment box then offers a batch toggle. */
@@ -50,6 +61,28 @@ export function setBatchAvailable(on: boolean): void {
 }
 
 const RULER_KEY = 'tencil:ruler';
+const DOCK_HIDDEN_KEY = 'tencil:dock-hidden';
+
+/**
+ * Tencil is hidden on this site: no toolbar, pins or panels, and no shortcuts
+ * but the hide-the-dock one, which brings it back. Remembered per browser.
+ */
+export const dockHidden = signal(readSwitch(DOCK_HIDDEN_KEY));
+/** When the dock was just hidden, to say briefly how to bring it back. */
+export const dockHiddenAt = signal(0);
+
+export function setDockHidden(on: boolean): void {
+    dockHidden.value = on;
+    dockHiddenAt.value = on ? Date.now() : 0;
+    writeSwitch(DOCK_HIDDEN_KEY, on);
+    if (!on) return;
+    stopPicking();
+    draft.value = null;
+    rulerAnchor.value = null;
+    openThreadId.value = null;
+    inboxOpen.value = false;
+    settingsOpen.value = false;
+}
 
 /** The project offers the ruler: the toolbar then has a ruler toggle. */
 export const rulerAvailable = computed(() => {
@@ -58,9 +91,11 @@ export const rulerAvailable = computed(() => {
     return current !== null && current.ruler !== false;
 });
 /** The toolbar's ruler toggle. Remembered per browser, off until turned on. */
-export const rulerToggle = signal(readRuler());
+export const rulerToggle = signal(readSwitch(RULER_KEY));
 /** Picking shows the box model, and Alt measures distances. */
-export const rulerOn = computed(() => rulerAvailable.value && rulerToggle.value);
+export const rulerOn = computed(
+    () => rulerAvailable.value && rulerToggle.value && !dockHidden.value,
+);
 
 export function setRulerAvailable(on: boolean): void {
     const current = settings.value;
@@ -71,18 +106,22 @@ export function setRulerAvailable(on: boolean): void {
 export function toggleRuler(): void {
     rulerToggle.value = !rulerToggle.value;
     rulerAnchor.value = null;
+    writeSwitch(RULER_KEY, rulerToggle.value);
+}
+
+function readSwitch(key: string): boolean {
     try {
-        localStorage.setItem(RULER_KEY, rulerToggle.value ? 'on' : 'off');
+        return localStorage.getItem(key) === 'on';
     } catch {
-        // Storage can be blocked; the choice just won't persist.
+        return false;
     }
 }
 
-function readRuler(): boolean {
+function writeSwitch(key: string, on: boolean): void {
     try {
-        return localStorage.getItem(RULER_KEY) === 'on';
+        localStorage.setItem(key, on ? 'on' : 'off');
     } catch {
-        return false;
+        // Storage can be blocked; the choice just won't persist.
     }
 }
 /** A pin being dragged: where its tip is now, so its open thread can follow. */

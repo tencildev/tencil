@@ -2,7 +2,9 @@ import { batch, signal } from '@preact/signals';
 import type {
     BuildInfo,
     ClientMessageInput,
+    Preferences,
     ProjectSettings,
+    ProjectSource,
     ProviderInfo,
     ProviderModel,
     ProviderProject,
@@ -21,10 +23,19 @@ export const bridgeState = signal<BridgeState>('connecting');
 export const provider = signal<ProviderInfo | null>(null);
 export const settings = signal<ProjectSettings | null>(null);
 export const project = signal<{ name: string; root: string } | null>(null);
+/** Projects to switch this page to, once asked for with `project.choices`. */
+export const switchChoices = signal<Array<{ root: string; title: string }> | null>(null);
+/** How the daemon found this page's project (local daemon only). */
+export const projectSource = signal<ProjectSource | null>(null);
 /** The daemon's Tencil version, from its `ready`. */
 export const daemonVersion = signal<string | null>(null);
 /** The daemon's updates: a newer version, an update in progress (null on Tencil Cloud). */
 export const update = signal<UpdateStatus | null>(null);
+/**
+ * The theme and shortcuts the daemon saved for this machine. Null until it
+ * sends them, and on Tencil Cloud, which doesn't: the browser's copy is used then.
+ */
+export const preferences = signal<Preferences | null>(null);
 /** The version the daemon ran before an update from this page restarted it. */
 export const updatedFrom = signal<string | null>(null);
 export const threads = signal<ReadonlyMap<string, Thread>>(new Map());
@@ -177,6 +188,15 @@ function handle(message: ServerMessage): void {
             return;
         case 'provider.status':
             provider.value = message.provider;
+            return;
+        case 'project.choices':
+            switchChoices.value = message.choices;
+            return;
+        case 'project.source':
+            projectSource.value = message.source;
+            return;
+        case 'preferences':
+            preferences.value = message.preferences;
             return;
         case 'update':
             update.value = message.update;
