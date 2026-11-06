@@ -2,16 +2,18 @@ import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import type { ProviderOption } from '@tencildev/protocol';
+import { findCodex } from '@tencildev/provider-codex';
 import { EnsembleClient } from '@tencildev/provider-ensemble';
 import { CredentialStore, DEFAULT_T3_URL } from '@tencildev/provider-t3code';
 import { z } from 'zod';
 import { defaultDataDir } from './thread-store.ts';
 
-export const PROVIDERS = ['t3code', 'claude-code', 'ensemble'] as const;
+export const PROVIDERS = ['t3code', 'claude-code', 'codex', 'ensemble'] as const;
 export type ProviderName = (typeof PROVIDERS)[number];
 export const PROVIDER_OPTIONS: ProviderOption[] = [
     { id: 't3code', label: 'T3 Code' },
     { id: 'claude-code', label: 'Claude Code' },
+    { id: 'codex', label: 'Codex' },
     { id: 'ensemble', label: 'Ensemble' },
 ];
 
@@ -47,7 +49,7 @@ export async function saveProvider(provider: ProviderName, dataDir = defaultData
 
 /**
  * Which agents this machine has: a paired or running T3 Code, an installed
- * Claude Code, a running Ensemble app.
+ * Claude Code, Codex's CLI or desktop app, a running Ensemble app.
  */
 export async function detectAgents(
     options: { t3Url?: string } = {},
@@ -57,12 +59,12 @@ export async function detectAgents(
         hasClaudeCode(),
         hasEnsemble(),
     ]);
-    return { t3code, 'claude-code': claudeCode, ensemble };
+    return { t3code, 'claude-code': claudeCode, codex: findCodex() !== undefined, ensemble };
 }
 
 /**
  * The agent for projects that haven't picked one: the saved choice, else the
- * first agent found (T3 Code, Claude Code, Ensemble), else T3 Code.
+ * first agent found (T3 Code, Claude Code, Codex, Ensemble), else T3 Code.
  */
 export async function machineProvider(
     options: { dataDir?: string; t3Url?: string } = {},
@@ -72,6 +74,7 @@ export async function machineProvider(
     const found = await detectAgents(options);
     if (found.t3code) return 't3code';
     if (found['claude-code']) return 'claude-code';
+    if (found.codex) return 'codex';
     return found.ensemble ? 'ensemble' : 't3code';
 }
 

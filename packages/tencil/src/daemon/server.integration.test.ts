@@ -3,9 +3,16 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerMessage, Thread } from '@tencildev/protocol';
+import type { AppServerProcess } from '@tencildev/provider-codex';
 import { EnsembleCredentialStore, ensembleRoot } from '@tencildev/provider-ensemble';
 import { CredentialStore } from '@tencildev/provider-t3code';
-import { FakeEnsembleServer, FakeRegistry, FakeT3Server, waitFor } from '@tencildev/testing';
+import {
+    FakeCodexAppServer,
+    FakeEnsembleServer,
+    FakeRegistry,
+    FakeT3Server,
+    waitFor,
+} from '@tencildev/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { cliIn } from '../service/autostart.ts';
@@ -72,8 +79,9 @@ async function setup(
             autoPair: false,
             createPairingCode: async () => t3.issuePairingCode(),
         },
-        // Keep this machine's Ensemble app out of these tests.
+        // Keep this machine's Ensemble app and Codex out of these tests.
         ensemble: { url: 'http://127.0.0.1:1' },
+        codex: { command: join(tmp('tencil-no-codex-'), 'codex') },
         resolveProject: async pageUrl => byPort[new URL(pageUrl).port],
         // No registry requests unless a test brings its own.
         updates: { check: false },
@@ -425,6 +433,44 @@ describe('updates', () => {
             error: 'npm install failed (1): E404 tencil@999.0.0',
         });
         expect((await httpGet(`${daemon.url}/health`)).status).toBe(200);
+    });
+});
+
+describe('Codex', () => {
+    it('sends pins to Codex in the project, and lists its models and threads', async () => {
+        const codex = new FakeCodexAppServer();
+        const { daemon, projectA } = await setup({
+            provider: 'codex',
+            codex: { spawn: () => codex.spawn() as unknown as AppServerProcess },
+        });
+        const page = await connectPage(daemon, 'http://localhost:3001/');
+        await ready(page.received);
+        const hello = page.received.find(
+            (m): m is Extract<ServerMessage, { type: 'ready' }> => m.type === 'ready',
+        );
+        expect(hello?.settings.provider).toBe('codex');
+        expect(hello?.settings.providers.map(option => option.id)).toContain('codex');
+
+        page.send(pin('pin-1', 'Tighten the hero', 'http://localhost:3001/'));
+        const done = await waitFor(
+            () => {
+                const latest = page.latest('pin-1');
+                return (
+                    latest?.status === 'idle' &&
+                    latest.messages.some(m => m.role === 'assistant' && !m.streaming) &&
+                    latest
+                );
+            },
+            { message: 'Codex reply on the pin' },
+        );
+        expect(done.provider.id).toBe('codex');
+        const thread = codex.threads.get(done.provider.threadId ?? '');
+        expect(thread?.cwd).toBe(realpathSync.native(projectA));
+        expect(codex.requestsOf('turn/start')[0]?.input?.at(-1)?.text).toContain(
+            'Tighten the hero',
+        );
+        // The element context stays in the prompt; the pin shows what was typed.
+        expect(done.messages.find(m => m.role === 'user')?.text).toBe('Tighten the hero');
     });
 });
 

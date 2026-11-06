@@ -17,6 +17,11 @@ import {
     type PermissionMode,
 } from '@tencildev/provider-claude-code';
 import {
+    CodexProvider,
+    type CodexProviderOptions,
+    listCodexProjects,
+} from '@tencildev/provider-codex';
+import {
     type EnsembleCredentialStore,
     EnsembleProvider,
     ensembleProjectForPort,
@@ -61,6 +66,7 @@ export interface DaemonOptions {
      */
     provider?: ProviderName;
     claudeCode?: { model?: string; permissionMode?: PermissionMode };
+    codex?: Pick<CodexProviderOptions, 'model' | 'permissions' | 'command' | 'spawn'>;
     /** Ensemble's public local API. */
     ensemble?: { url?: string; credentials?: EnsembleCredentialStore };
     t3?: Pick<T3CodeProviderOptions, 'autoPair' | 'createPairingCode' | 'timeouts'> & {
@@ -170,6 +176,14 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     log: providerLog,
                 });
             }
+            if (id === 'codex') {
+                return new CodexProvider({
+                    ...options.codex,
+                    projectRoot: root,
+                    version: VERSION,
+                    log: providerLog,
+                });
+            }
             if (id === 'ensemble') {
                 return new EnsembleProvider({
                     projectRoot: root,
@@ -225,17 +239,18 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
 
     /** Projects any agent knows, offered when a page's project can't be worked out. */
     const choices = async () => {
-        const [t3, claude, ensemble] = await Promise.all([
+        const [t3, claude, codex, ensemble] = await Promise.all([
             listT3Projects({
                 baseUrl: t3Url,
                 token: options.t3?.token ?? process.env.TENCIL_T3_TOKEN,
                 credentials: options.t3?.credentials,
             }).catch(() => []),
             listClaudeCodeProjects({ installDir: claudeCodeDir }).catch(() => []),
+            listCodexProjects(options.codex).catch(() => []),
             listEnsembleProjects(ensembleOptions).catch(() => []),
         ]);
         const byRoot = new Map<string, { root: string; title: string }>();
-        for (const project of [...t3, ...claude, ...ensemble]) {
+        for (const project of [...t3, ...claude, ...codex, ...ensemble]) {
             if (!byRoot.has(project.workspaceRoot)) {
                 byRoot.set(project.workspaceRoot, {
                     root: project.workspaceRoot,
@@ -246,7 +261,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         return [...byRoot.values()];
     };
     const noChoicesHint =
-        "No projects found. Open this page's project in T3 Code or Ensemble, or run claude in it once.";
+        "No projects found. Open this page's project in T3 Code or Ensemble, or run claude or codex in it once.";
 
     const settled = async () =>
         (await Promise.allSettled(sessions.values()))

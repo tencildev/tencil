@@ -59,3 +59,6 @@ The [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-
 is an optional peer dependency. Tencil neither bundles nor ships it: it is loaded
 from next to Tencil, or installed into Tencil's config folder on first use of the
 Claude Code provider, under Anthropic's own terms.
+
+[Codex](https://github.com/openai/codex) is neither bundled nor installed by Tencil:
+the Codex provider runs the copy already on your machine.
