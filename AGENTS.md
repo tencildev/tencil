@@ -26,8 +26,9 @@ packages/
 ├── protocol/           # Wire schemas (zod) and the Provider interface
 ├── provider-t3code/    # T3 Code provider: Effect RPC socket, auth, protocols/{v1,v2}
 ├── provider-claude-code/  # Claude Code provider: Agent SDK sessions, loaded on first use
+├── provider-codex/     # Codex provider: `codex app-server` over stdio, under the user's own install
 ├── provider-ensemble/  # Ensemble provider: public local API, bearer auth and shared SSE feed
-├── testing/            # Fake provider, fake T3 Code and Ensemble servers, fake Agent SDK, helpers
+├── testing/            # Fake provider, fake T3 Code, Ensemble and Codex servers, fake Agent SDK, helpers
 └── tsconfig/           # Shared tsconfig: base, node, browser
 apps/
 └── playground/         # Vite + React app; the browser-test (Playwright) target
@@ -52,6 +53,10 @@ apps/
   inside the daemon through the Agent SDK. The SDK carries a ~250 MB binary, so it's
   an optional peer, never bundled: loaded from next to Tencil or installed into
   `~/.config/tencil/claude-code` on first use.
+- **Codex runs under the user's own install and login.** The daemon starts `codex app-server`
+  (the CLI on the PATH, or the copy in the desktop app) when a project needs it and closes it
+  when idle. Threads are Codex's own, so `codex resume <id>` and the app see them. At ~400 MB
+  it's never installed for the user: setup and the overlay say what's missing instead.
 - **Ensemble requires the running app and one-time approval.** Pair asks the user
   to allow Tencil and saves a private token. Resolve pages by dev server port through
   the public API (including forwarded ports), using `ensemble://thread/<id>` as the
@@ -84,7 +89,7 @@ apps/
 
 [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`,
 imperative and lowercase. Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`, `claude-code`,
-`ensemble`, `protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
+`codex`, `ensemble`, `protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
 users of the `tencil` package will notice.
 
 ## Commands
