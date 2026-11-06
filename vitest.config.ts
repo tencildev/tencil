@@ -7,7 +7,10 @@ export default defineConfig({
     test: {
         include: ['packages/*/src/**/*.test.ts'],
         environment: 'node',
-        // An empty Claude Code home, so tests never see the developer's sessions.
-        env: { CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'tencil-claude-home-')) },
+        // Empty Claude Code and Codex homes, so tests never see the developer's sessions.
+        env: {
+            CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'tencil-claude-home-')),
+            CODEX_HOME: mkdtempSync(join(tmpdir(), 'tencil-codex-home-')),
+        },
     },
 });
