@@ -47,8 +47,8 @@ export interface UpdaterOptions extends UpdateOptions {
  * update started from the overlay: install it, wait until no thread is
  * running, then hand over to the helper that restarts the daemon on it.
  *
- * It waits rather than carrying threads across: Claude Code runs inside
- * the daemon, so a restart would end its running turns.
+ * It waits rather than carrying threads across: Claude Code and Codex run
+ * inside the daemon, so a restart would end their running turns.
  */
 export class Updater {
     readonly #options: UpdaterOptions;

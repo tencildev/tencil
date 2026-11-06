@@ -212,6 +212,9 @@ importers:
       '@tencildev/provider-claude-code':
         specifier: workspace:*
         version: link:../provider-claude-code
+      '@tencildev/provider-codex':
+        specifier: workspace:*
+        version: link:../provider-codex
       '@tencildev/provider-ensemble':
         specifier: workspace:*
         version: link:../provider-ensemble
