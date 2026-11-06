@@ -1,5 +1,15 @@
 # tencil
 
+## 0.11.0
+
+### Minor Changes
+
+- [#24](https://github.com/tencildev/tencil/pull/24) [`5989fc4`](https://github.com/tencildev/tencil/commit/5989fc4058f6b339d31dfd2a9b5c0998af2439b8) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Send pins to Codex directly, next to T3 Code, Claude Code and Ensemble. The daemon runs
+  `codex app-server` under your own Codex install and login, the CLI or the desktop app's
+  copy, and each pin is a Codex thread you can continue with `codex resume <id>`. Pick it
+  with `--provider codex` or in a project's settings; `--model`, the model picker and
+  `--runtime-mode` all apply. `@tencildev/testing` gains `FakeCodexAppServer`.
+
 ## 0.10.0
 
 ### Minor Changes
