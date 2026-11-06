@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { ProviderInfo, ProviderMessage, ThreadSink, ThreadStep } from '@tencildev/protocol';
 import { FakeCodexAppServer, type FakeCodexItem, waitFor } from '@tencildev/testing';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -78,7 +78,7 @@ describe('Codex provider', () => {
         expect(provider.info()).toMatchObject({
             id: 'codex',
             state: 'ready',
-            target: root.split('/').pop(),
+            target: basename(root),
         });
     });
 
@@ -443,10 +443,16 @@ describe('Codex provider', () => {
 
         it('reports why a Codex too old to serve this fails to start', async () => {
             const { root } = repository();
-            const old = join(root, 'codex');
+            const windows = process.platform === 'win32';
+            // A space in the path, as under C:\Users\First Last, and on Windows npm's kind of shim.
+            const folder = join(root, 'old codex');
+            mkdirSync(folder);
+            const old = join(folder, windows ? 'codex.cmd' : 'codex');
             writeFileSync(
                 old,
-                `#!/bin/sh\necho "error: unrecognized subcommand 'app-server'" >&2\nexit 2\n`,
+                windows
+                    ? `@echo error: unrecognized subcommand 'app-server' 1>&2\r\n@exit /b 2\r\n`
+                    : `#!/bin/sh\necho "error: unrecognized subcommand 'app-server'" >&2\nexit 2\n`,
             );
             chmodSync(old, 0o755);
             const { provider } = setup({ spawn: undefined, command: old, recheckMs: 60_000 });
@@ -493,7 +499,7 @@ describe('Codex provider', () => {
             codex.addThread({ cwd: '/elsewhere', name: 'Other project', updatedAt: 300 });
 
             const { project, threads } = await provider.listThreads();
-            expect(project.name).toBe(root.split('/').pop());
+            expect(project.name).toBe(basename(root));
             expect(threads).toMatchObject([
                 { title: 'Named', branch: 'main', agent: 'codex', status: 'idle' },
                 { title: 'First line', agent: 'codex' },
@@ -556,7 +562,7 @@ describe('Codex provider', () => {
             codex.addThread({ cwd: folder, name: 'Two', updatedAt: 2 });
             codex.addThread({ cwd: join(folder, 'deleted'), name: 'Three', updatedAt: 1 });
             expect(await listCodexProjects({ spawn: spawnOf(codex) })).toEqual([
-                { workspaceRoot: folder, title: folder.split('/').pop() },
+                { workspaceRoot: folder, title: basename(folder) },
             ]);
             await waitFor(() => codex.alive === 0, { message: 'closed after use' });
         });

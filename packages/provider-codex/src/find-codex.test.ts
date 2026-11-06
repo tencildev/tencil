@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { appServerSpawner, findCodex, NOT_INSTALLED } from './find-codex.ts';
 
@@ -21,7 +21,8 @@ describe('findCodex', () => {
         const [a, b] = [tmp(), tmp()];
         binary(b);
         const first = binary(a);
-        expect(findCodex({ ...linux, env: { PATH: `/nowhere:${a}:${b}` } })).toBe(first);
+        const PATH = ['/nowhere', a, b].join(delimiter);
+        expect(findCodex({ ...linux, env: { PATH } })).toBe(first);
     });
 
     it('finds nothing when there is nothing', () => {
@@ -34,6 +35,8 @@ describe('findCodex', () => {
         mkdirSync(join(dir, 'codex'));
         expect(findCodex({ ...linux, env: { PATH: dir } })).toBeUndefined();
 
+        // Windows has no execute bit.
+        if (process.platform === 'win32') return;
         const other = tmp();
         const path = binary(other);
         chmodSync(path, 0o644);
