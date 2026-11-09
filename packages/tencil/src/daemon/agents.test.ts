@@ -19,7 +19,7 @@ describe("the machine's agent", () => {
         const dir = dataDir();
         writeFileSync(join(dir, 'settings.json'), '{ nope');
         expect(await savedProvider(dir)).toBeUndefined();
-        writeFileSync(join(dir, 'settings.json'), '{"version":1,"provider":"cursor"}');
+        writeFileSync(join(dir, 'settings.json'), '{"version":1,"provider":"nope"}');
         expect(await savedProvider(dir)).toBeUndefined();
     });
 });
