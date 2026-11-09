@@ -1,3 +1,11 @@
+export {
+    FakeAcpAgent,
+    type FakeAcpCapabilities,
+    type FakeAcpParams,
+    type FakeAcpRequest,
+    type FakeAcpSession,
+    type FakeAcpUpdate,
+} from './fake-acp-agent.ts';
 export { FakeAgentProvider, type FakeAgentProviderOptions } from './fake-agent-provider.ts';
 export { FakeAgentSdk, type FakeQueryRecord, type FakeSession } from './fake-agent-sdk.ts';
 export {
