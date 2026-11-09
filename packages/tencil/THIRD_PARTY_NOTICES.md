@@ -62,3 +62,6 @@ Claude Code provider, under Anthropic's own terms.
 
 [Codex](https://github.com/openai/codex) is neither bundled nor installed by Tencil:
 the Codex provider runs the copy already on your machine.
+
+The same goes for the agents the ACP provider runs, such as Devin, Gemini CLI or
+OpenCode: Tencil starts the copy already on your machine, under its own terms.

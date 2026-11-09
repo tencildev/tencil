@@ -22,20 +22,25 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
                                                                                    └─────────────┘
 ```
 
-Tencil works with four agents. With **T3 Code**, every pin is a real T3 Code thread
+Tencil works with four agents, and with any agent that speaks the Agent Client
+Protocol (ACP), such as Devin. With **T3 Code**, every pin is a real T3 Code thread
 in the project that matches your dev site's folder, so you can continue any
 conversation there. With **Claude Code**, the daemon runs Claude Code itself and
 every pin is a Claude Code session you can resume in a terminal. With **Codex**, the
 daemon runs your own Codex and every pin is a Codex thread you can resume in a terminal
 or the desktop app. With **Ensemble**,
-every pin is a chat on the Ensemble thread serving your page.
+every pin is a chat on the Ensemble thread serving your page. With an **ACP agent**
+(Devin, Gemini CLI, GitHub Copilot, Cursor, OpenCode, goose or your own), the daemon
+runs it the way an editor does and every pin is one of its sessions.
 
 ## Quick start
 
 You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running),
 [Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in),
-[Codex](https://github.com/openai/codex) (the CLI or desktop app, logged in) or
-[Ensemble](https://tryensemble.co) (the desktop app, running).
+[Codex](https://github.com/openai/codex) (the CLI or desktop app, logged in),
+[Ensemble](https://tryensemble.co) (the desktop app, running) or an
+[ACP agent](https://agentclientprotocol.com) such as [Devin](https://docs.devin.ai/cli)
+(installed and logged in).
 
 ```sh
 cd your-app
@@ -139,6 +144,50 @@ Each pin is a Codex thread in the project's repository root, so you can pick it 
 `codex resume <id>` or in the desktop app, and threads you started there show up in the
 overlay's inbox. The composer's model picker lists your Codex models.
 
+### Devin and other ACP agents
+
+Agents that speak the [Agent Client Protocol](https://agentclientprotocol.com) run as an
+ACP server over stdio, the way Zed and JetBrains run them. Tencil knows how to start
+these, with the commands the ACP registry lists:
+
+| `--provider` | Agent | Command |
+| --- | --- | --- |
+| `devin` | [Devin](https://docs.devin.ai/cli) | `devin acp` |
+| `gemini` | [Gemini CLI](https://geminicli.com) | `gemini --acp` |
+| `copilot` | [GitHub Copilot](https://github.com/features/copilot/cli) | `copilot --acp` |
+| `cursor` | [Cursor](https://cursor.com/cli) | `cursor-agent acp` |
+| `opencode` | [OpenCode](https://opencode.ai) | `opencode acp` |
+| `goose` | [goose](https://block.github.io/goose) | `goose acp` |
+
+The ones on your `PATH` show up in setup and in each project's settings. The daemon
+starts the agent in the project's repository root when a project needs it, under your
+own install and login (sign in first, e.g. `devin auth login`), and closes it when idle.
+Tencil installs none of them. Each pin is a session of the agent: replies, tool calls,
+thoughts and plans stream into the pin, **Stop** cancels the turn, and a follow-up goes
+to the same session. A message sent while the agent works goes once its turn ends.
+Screenshots go along when the agent takes images.
+
+After a restart, Tencil reloads a pin's session when the agent can (`session/load`) or
+picks it up without the history (`session/resume`). An agent that can do neither can't
+continue an earlier conversation: following up says so, and a new pin starts a new
+session. Sessions the agent lists for the project show up in the overlay's inbox.
+
+To change a command, for example to pick Devin's model, or to add an agent of your own,
+edit `~/.config/tencil/settings.json`:
+
+```json
+{
+    "version": 1,
+    "provider": "devin",
+    "acp": {
+        "devin": { "command": "devin acp --model opus" },
+        "my-agent": { "label": "My agent", "command": "/opt/my-agent/bin/agent --acp" }
+    }
+}
+```
+
+An agent named there is offered in every project's settings, installed or not.
+
 ### Ensemble
 
 With `--provider ensemble` (or Ensemble picked in a project's settings), keep the
@@ -156,9 +205,12 @@ thread, and reopening the pin or replying to it brings it back. Threads you star
 yourself stay open, and so does one you've added a chat to. If the folder isn't in Ensemble, the overlay names the repository to add.
 
 Nobody is at a terminal to approve tool calls, so `--runtime-mode` decides up front:
-`full-access` (the default) lets Claude Code and Codex run anything; with the stricter
-modes, tools that would need approval are refused and the agent is told why. A turn that
-is running when the daemon stops is lost; the pin turns red and you can follow up.
+`full-access` (the default) lets Claude Code, Codex and ACP agents run anything; with the
+stricter modes, tools that would need approval are refused and the agent is told why. An
+ACP agent asks for whatever its own settings say needs approval: `auto` and
+`auto-accept-edits` allow reading and editing files, `approval-required` only reading. A
+turn that is running when the daemon stops is lost; the pin turns red and you can follow
+up.
 
 | `--runtime-mode` | Codex sandbox | What needs more than the sandbox allows |
 | --- | --- | --- |
@@ -176,7 +228,7 @@ is running when the daemon stops is lost; the pin turns red and you can follow u
 | Cancel | <kbd>Esc</kbd> |
 | Follow up | Open a pin and reply; the same agent thread continues |
 | Continue an existing thread | In the composer, switch **→ New thread** to any thread in the project; the element becomes its next message |
-| Open any project thread | Inbox → the agent's tab (**T3 Code**, **Claude Code** or **Codex**); the thread docks on the right so you can read, reply and stop while using the page |
+| Open any project thread | Inbox → the agent's tab (**T3 Code**, **Claude Code**, **Codex** or an ACP agent that lists its sessions); the thread docks on the right so you can read, reply and stop while using the page |
 | Stop the agent | **Stop** while a pin is working |
 | All pins | Inbox button, filter by page or show resolved |
 | Continue in T3 Code | External-link icon on a pin |
@@ -202,6 +254,7 @@ tencil connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 --port <n>              Port (default 4747, env TENCIL_PORT)
 --provider <name>       Agent for projects without their own: t3code (default) | claude-code | codex | ensemble
+                        ACP agents: devin | gemini | copilot | cursor | opencode | goose, or one in settings.json
 --t3-url <url>          T3 Code server (default: last paired, then http://127.0.0.1:3773)
 --model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
                         Claude Code: a model, e.g. claude-opus-5-5 (default: its default)

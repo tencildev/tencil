@@ -40,6 +40,7 @@ body:
         - Claude Code
         - Codex
         - Ensemble
+        - An ACP agent (Devin, Gemini CLI, …)
         - Several / not agent-related
     validations:
       required: true
