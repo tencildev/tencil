@@ -74,15 +74,21 @@ export function AgentIcon({
     agent,
     size = 13,
     decorative = false,
+    placeholder = false,
 }: {
     agent?: string;
     size?: number;
     /** Next to the agent's name already: hide it from screen readers. */
     decorative?: boolean;
+    /** Keep the space of an agent without a mark, so names in a list line up. */
+    placeholder?: boolean;
 }) {
-    if (!agent) return null;
-    const mark = markFor(agent);
-    if (!mark) return null;
+    const mark = agent ? markFor(agent) : undefined;
+    if (!mark) {
+        return placeholder ? (
+            <svg class="agent-icon" width={size} height={size} aria-hidden="true" />
+        ) : null;
+    }
     return (
         <svg
             class={`agent-icon ${mark.className}`}
