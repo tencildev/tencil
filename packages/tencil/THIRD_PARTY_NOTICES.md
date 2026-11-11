@@ -16,6 +16,12 @@ Compiled into `dist/overlay.global.js` (the browser overlay):
 | [modern-screenshot](https://github.com/qq15725/modern-screenshot) | 4 | Copyright (c) 2021-present wxm | Element screenshots |
 | [T3 Code](https://github.com/pingdotgg/t3code) | n/a | Copyright (c) 2026 T3 Tools Inc. | Agent icons (T3 Code, Codex, Claude, Cursor) shown in the thread list, from `apps/web/src/components/Icons.tsx` and `T3Wordmark.tsx` |
 
+The icons of the ACP agents (Devin, Gemini CLI, GitHub Copilot, OpenCode and
+goose) are each agent's `icon.svg` in the
+[ACP registry](https://github.com/agentclientprotocol/registry), used under the
+Apache License 2.0, Tencil's own license. They're cropped to what they draw, and
+Copilot's paths are merged into one.
+
 The product names and logos shown by those icons belong to their owners.
 
 Each of these projects is distributed under the following license, with the
