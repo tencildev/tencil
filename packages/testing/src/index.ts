@@ -1,6 +1,7 @@
 export {
     FakeAcpAgent,
     type FakeAcpCapabilities,
+    type FakeAcpModelChoice,
     type FakeAcpParams,
     type FakeAcpRequest,
     type FakeAcpSession,

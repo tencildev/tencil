@@ -14,7 +14,14 @@ export interface FakeAcpSession {
     updatedAt: string;
     /** Everything the session said, in order: what `session/load` replays. */
     history: FakeAcpUpdate[];
+    /** The model it runs on, when the agent offers models. */
+    model?: string;
 }
+
+/** A model the fake offers, or a group of them. */
+export type FakeAcpModelChoice =
+    | { value: string; name: string }
+    | { group: string; name: string; options: Array<{ value: string; name: string }> };
 
 /** What the provider sends: the fields the fake and tests read, by name. */
 export interface FakeAcpParams {
@@ -104,8 +111,14 @@ export class FakeAcpAgent {
     crashNextPrompt = false;
     /** What the next process prints before dying, instead of starting. */
     failToStart: string | undefined;
+    /**
+     * The models sessions offer, as their `model` setting (`configOptions`), and
+     * the one new sessions start on. None: sessions have no settings.
+     */
+    models: { choices: FakeAcpModelChoice[]; defaultModel: string } | undefined;
 
     #gates = new Set<() => void>();
+    readonly #connections = new Set<Connection>();
 
     /** For `AcpProviderOptions.spawn`. */
     spawn = (cwd = ''): FakeProcess => {
@@ -120,12 +133,42 @@ export class FakeAcpAgent {
             return process;
         }
         this.alive += 1;
-        new Connection(this, process);
+        const connection = new Connection(this, process);
+        this.#connections.add(connection);
         process.once('close', () => {
             this.alive -= 1;
+            this.#connections.delete(connection);
         });
         return process;
     };
+
+    /** Tell every open session that the models changed, as agents do when their list does. */
+    announceModels(): void {
+        for (const connection of this.#connections) connection.announceModels();
+    }
+
+    /** A session's settings, as `configOptions`: its model, when the agent offers models. */
+    configOptions(session: FakeAcpSession): unknown[] | undefined {
+        if (!this.models) return undefined;
+        return [
+            {
+                id: 'model',
+                name: 'Model',
+                category: 'model',
+                type: 'select',
+                currentValue: session.model ?? this.models.defaultModel,
+                options: this.models.choices,
+            },
+            {
+                id: 'mode',
+                name: 'Mode',
+                category: 'mode',
+                type: 'select',
+                currentValue: 'build',
+                options: [{ value: 'build', name: 'Build' }],
+            },
+        ];
+    }
 
     release(): void {
         for (const open of this.#gates) open();
@@ -240,22 +283,41 @@ class Connection {
                 };
             case 'session/new': {
                 if (agent.signedOut) throw new RpcFailure(-32000, 'Authentication required');
-                const session = agent.addSession({ cwd: params.cwd ?? '' });
+                const session = agent.addSession({
+                    cwd: params.cwd ?? '',
+                    ...(agent.models ? { model: agent.models.defaultModel } : {}),
+                });
                 this.#open.add(session.sessionId);
-                return { sessionId: session.sessionId };
+                return { sessionId: session.sessionId, ...this.#settings(session) };
             }
             case 'session/load': {
                 if (!loadSession) throw new RpcFailure(-32601, 'Method not found');
                 const session = this.#known(params.sessionId);
                 for (const update of session.history) this.#update(session.sessionId, update);
                 this.#open.add(session.sessionId);
-                return {};
+                return { ...this.#settings(session) };
             }
             case 'session/resume': {
                 if (!resume) throw new RpcFailure(-32601, 'Method not found');
                 const session = this.#known(params.sessionId);
                 this.#open.add(session.sessionId);
-                return {};
+                return { ...this.#settings(session) };
+            }
+            case 'session/set_config_option': {
+                const session = this.#known(params.sessionId);
+                const values = (agent.models?.choices ?? []).flatMap(choice =>
+                    'options' in choice
+                        ? choice.options.map(option => option.value)
+                        : [choice.value],
+                );
+                if (params.configId !== 'model' || !values.includes(String(params.value))) {
+                    throw new RpcFailure(
+                        -32602,
+                        `No such setting: ${params.configId}=${params.value}`,
+                    );
+                }
+                session.model = String(params.value);
+                return { configOptions: agent.configOptions(session) };
             }
             case 'session/list': {
                 if (!list) throw new RpcFailure(-32601, 'Method not found');
@@ -269,6 +331,22 @@ class Connection {
             default:
                 throw new RpcFailure(-32601, `Method not found: ${method}`);
         }
+    }
+
+    announceModels(): void {
+        for (const sessionId of this.#open) {
+            const session = this.#agent.sessions.get(sessionId);
+            if (!session) continue;
+            this.#update(sessionId, {
+                sessionUpdate: 'config_option_update',
+                configOptions: this.#agent.configOptions(session),
+            });
+        }
+    }
+
+    #settings(session: FakeAcpSession): { configOptions?: unknown[] } {
+        const configOptions = this.#agent.configOptions(session);
+        return configOptions ? { configOptions } : {};
     }
 
     #known(sessionId = ''): FakeAcpSession {
