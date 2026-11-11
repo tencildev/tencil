@@ -551,7 +551,16 @@ kbd {
 .segmented { display: flex; margin-right: auto; background: var(--n-100); border-radius: 9px; padding: 2px; }
 .segmented button { padding: 3px 10px; border-radius: 7px; color: var(--n-600); font-size: 12px; }
 .segmented .active { background: var(--surface); color: var(--n-950); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
-.inbox-filter { display: flex; align-items: center; gap: 6px; padding: 10px 16px 6px; color: var(--n-600); font-size: 12px; cursor: pointer; }
+.inbox-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 6px 16px; }
+.inbox-filter { display: flex; align-items: center; gap: 6px; color: var(--n-600); font-size: 12px; cursor: pointer; }
+.inbox-resolve {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 7px;
+  color: var(--n-600); font-size: 12px;
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+.inbox-resolve svg { width: 12px; height: 12px; }
+.inbox-resolve:hover { background: var(--n-100); color: var(--n-950); }
+.inbox-resolve:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Custom checkbox: the input stays the hit target, the check is an icon on top. */
 .checkbox { position: relative; display: inline-grid; place-items: center; flex: none; width: 14px; height: 14px; }
 .checkbox-input {

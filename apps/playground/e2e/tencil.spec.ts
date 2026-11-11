@@ -633,3 +633,22 @@ test('shows the version in settings and offers the update, with a fallback when 
     );
     await expect(about.getByRole('button', { name: 'Try again' })).toBeEnabled();
 });
+
+test('resolves every done pin on the page at once', async ({ page }) => {
+    await openPlayground(page);
+    await pinElement(page, 'Choose Team', 'Rename to Business');
+    await expect(overlay(page).locator('.thread .message-assistant')).toContainText('Updated it.', {
+        timeout: 10_000,
+    });
+    await page.keyboard.press('Escape');
+    // Only finished pins are resolved, so wait for this one to finish too.
+    await expect(overlay(page).locator('.pin-working')).toHaveCount(0);
+
+    await overlay(page).locator('.tool[title="Pins"]').click();
+    const resolve = overlay(page).getByRole('button', { name: /^Resolve \d+ done$/ });
+    await expect(resolve).toBeVisible();
+    await resolve.click();
+    await expect(resolve).toHaveCount(0);
+    await expect(overlay(page).locator('.inbox-item')).toHaveCount(0);
+    await expect(overlay(page).locator('.pin:not(.pin-leaving)')).toHaveCount(0);
+});
