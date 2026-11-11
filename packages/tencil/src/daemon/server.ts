@@ -44,6 +44,7 @@ import {
 } from '@tencildev/provider-t3code';
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
+import { AcpModelStore, acpModelsPath } from './acp-models.ts';
 import {
     acpAgents,
     type MachineAcpAgent,
@@ -182,6 +183,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const preferences = new FilePreferences(preferencesPath(dataDir));
 
     const claudeCodeDir = join(dataDir, 'claude-code');
+    const acpModels = new AcpModelStore(acpModelsPath(dataDir));
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
     const createProvider =
         options.createProvider ??
@@ -194,6 +196,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     projectRoot: root,
                     permissions: options.acp?.permissions,
                     spawn: options.acp?.spawn,
+                    models: acpModels.for(agent.id),
                     version: VERSION,
                     log: providerLog,
                 });

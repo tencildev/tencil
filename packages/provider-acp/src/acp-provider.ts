@@ -6,6 +6,7 @@ import type {
     ImageAttachment,
     Provider,
     ProviderInfo,
+    ProviderModels,
     ProviderProject,
     ProviderThreadSummary,
     SendMessageInput,
@@ -13,6 +14,7 @@ import type {
 } from '@tencildev/protocol';
 import { type AcpAgent, agentSpawner, type FindOptions } from './agents.ts';
 import { AgentConnection, errorMessage, RpcError, type SpawnAgent } from './connection.ts';
+import { type AgentModels, type ModelCache, modelSetting } from './models.ts';
 import {
     type AgentCapabilities,
     type AuthMethod,
@@ -44,6 +46,8 @@ export interface AcpProviderOptions {
     idleCloseMs?: number;
     /** How soon to look again while the agent is missing or signed out. Defaults to 15 seconds. */
     recheckMs?: number;
+    /** Where the agent's models are kept between projects and restarts. */
+    models?: ModelCache;
     /** Replaces starting the agent's command (tests). */
     spawn?: SpawnAgent;
     /** Where to look for the agent's program (tests). */
@@ -114,6 +118,10 @@ export class AcpProvider implements Provider {
     readonly #sessions = new Map<string, Session>();
     /** Loads replay a whole conversation each, so a restart with many pins takes them in turn. */
     #loads: Promise<unknown> = Promise.resolve();
+    /** The agent's models, from its sessions or the cache. */
+    #models: AgentModels | undefined;
+    /** Read from the cache once, when the provider is made. */
+    readonly #modelsCached: Promise<void>;
     #disposed = false;
 
     constructor(options: AcpProviderOptions) {
@@ -122,6 +130,12 @@ export class AcpProvider implements Provider {
         this.label = options.agent.label;
         this.#info = { id: this.id, label: this.label, state: 'connecting' };
         this.#cwd = options.projectRoot;
+        this.#modelsCached = (options.models?.get() ?? Promise.resolve(undefined)).then(
+            cached => {
+                this.#models ??= cached;
+            },
+            () => {},
+        );
     }
 
     /** Whether the agent starts and answers. Looks again until it does: installing it happens outside Tencil. */
@@ -183,18 +197,40 @@ export class AcpProvider implements Provider {
         return undefined;
     }
 
+    /**
+     * The models the agent's sessions offer, once one of them has said: agents
+     * name their models per session, so there are none before the first one.
+     */
+    async listModels(): Promise<ProviderModels> {
+        await this.#modelsCached;
+        const models = this.#models;
+        if (!models) return { models: [] };
+        return {
+            models: models.choices.map(choice => ({
+                id: choice.value,
+                label: choice.name,
+                group: choice.group ?? this.label,
+                agent: this.id,
+            })),
+            ...(models.defaultModel ? { defaultModel: models.defaultModel } : {}),
+        };
+    }
+
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {
         const [agent, workspace] = await Promise.all([this.#connect(), this.#workspaceRoot()]);
-        const { sessionId } = await this.#guard(
-            agent.connection.request<{ sessionId: string }>('session/new', {
-                cwd: workspace,
-                mcpServers: [],
-            }),
+        const created = await this.#guard(
+            agent.connection.request<{ sessionId: string; configOptions?: unknown }>(
+                'session/new',
+                { cwd: workspace, mcpServers: [] },
+            ),
         );
+        const { sessionId } = created;
         const session = this.#session(sessionId);
         session.connection = agent.connection;
         // Nothing to load yet; this turn is the whole conversation.
         session.hydrated = Promise.resolve();
+        const setting = this.#learnModels(created.configOptions, true);
+        if (input.model) await this.#pickModel(agent, sessionId, setting, input.model);
         this.#prompt(session, input.text, input.attachments);
         return { providerThreadId: sessionId };
     }
@@ -307,13 +343,14 @@ export class AcpProvider implements Provider {
         try {
             if (canResume && (known || !loadSession)) {
                 // Picking up without a replay; the pin already has the conversation.
-                await this.#guard(
-                    agent.connection.request('session/resume', {
+                const resumed = await this.#guard(
+                    agent.connection.request<{ configOptions?: unknown } | null>('session/resume', {
                         sessionId: session.id,
                         cwd: workspace,
                         mcpServers: [],
                     }),
                 );
+                this.#learnModels(resumed?.configOptions, false);
                 if (!known) session.transcript.continueUnseen();
                 session.connection = agent.connection;
             } else if (loadSession) {
@@ -341,13 +378,14 @@ export class AcpProvider implements Provider {
             session.replaying = true;
             session.transcript.beginReplay();
             try {
-                await this.#guard(
-                    agent.connection.request('session/load', {
+                const loaded = await this.#guard(
+                    agent.connection.request<{ configOptions?: unknown } | null>('session/load', {
                         sessionId: session.id,
                         cwd: workspace,
                         mcpServers: [],
                     }),
                 );
+                this.#learnModels(loaded?.configOptions, false);
             } catch (error) {
                 session.transcript.abortReplay();
                 throw error;
@@ -422,6 +460,42 @@ export class AcpProvider implements Provider {
         ];
     }
 
+    /**
+     * What a session's settings say about the agent's models. A session that
+     * was just made is on the default, so its model is noted as that.
+     */
+    #learnModels(configOptions: unknown, fresh: boolean): ReturnType<typeof modelSetting> {
+        const setting = modelSetting(configOptions);
+        if (!setting) return undefined;
+        const defaultModel = fresh ? setting.current : this.#models?.defaultModel;
+        this.#models = { ...setting.models, ...(defaultModel ? { defaultModel } : {}) };
+        this.#options.models?.set(this.#models);
+        return setting;
+    }
+
+    /** Put a new session on the model picked for it, when the agent has that one. */
+    async #pickModel(
+        agent: Agent,
+        sessionId: string,
+        setting: ReturnType<typeof modelSetting>,
+        model: string,
+    ): Promise<void> {
+        if (!setting || setting.current === model) return;
+        if (!setting.models.choices.some(choice => choice.value === model)) {
+            this.#log(`${this.label} doesn't offer ${model} here; it runs on its default`);
+            return;
+        }
+        try {
+            const result = await agent.connection.request<{ configOptions?: unknown } | null>(
+                'session/set_config_option',
+                { sessionId, configId: setting.models.configId, value: model },
+            );
+            this.#learnModels(result?.configOptions, false);
+        } catch (error) {
+            this.#log(`${this.label} didn't switch to ${model}: ${errorMessage(error)}`);
+        }
+    }
+
     #apply(session: Session, update: TranscriptUpdate): void {
         for (const message of update.messages) session.sink?.message(message);
         for (const step of update.steps) session.sink?.step?.(step);
@@ -475,6 +549,10 @@ export class AcpProvider implements Provider {
     #notification(connection: AgentConnection, method: string, params: unknown): void {
         if (method !== 'session/update') return;
         const { sessionId, update } = params as { sessionId: string; update: SessionUpdate };
+        if (update.sessionUpdate === 'config_option_update') {
+            this.#learnModels((update as { configOptions?: unknown }).configOptions, false);
+            return;
+        }
         const session = this.#sessions.get(sessionId);
         // Updates from a process the session has left are stale.
         if (!session || (!session.replaying && session.connection !== connection)) return;

@@ -556,6 +556,89 @@ describe('ACP agents', () => {
             'assistant',
         ]);
     });
+
+    it('offers the models its sessions name, and starts new pins on the one picked', async () => {
+        const agent = new FakeAcpAgent();
+        agent.models = {
+            choices: [
+                { value: 'opencode/big-pickle', name: 'OpenCode/Big Pickle' },
+                { value: 'openai/gpt-6.1-sol', name: 'OpenAI/GPT-6.1 Sol' },
+            ],
+            defaultModel: 'opencode/big-pickle',
+        };
+        const { daemon } = await setup({
+            provider: 'opencode',
+            acp: {
+                agents: [
+                    {
+                        id: 'opencode',
+                        label: 'OpenCode',
+                        command: 'opencode acp',
+                        installed: true,
+                        configured: false,
+                    },
+                ],
+                spawn: cwd => agent.spawn(cwd) as unknown as AgentProcess,
+            },
+        });
+        const page = await connectPage(daemon, 'http://localhost:3001/');
+        await ready(page.received);
+        const models = async () => {
+            const count = page.received.length;
+            page.send({ type: 'provider.models' });
+            return waitFor(
+                () =>
+                    page.received
+                        .slice(count)
+                        .find(
+                            (m): m is Extract<ServerMessage, { type: 'provider.models' }> =>
+                                m.type === 'provider.models',
+                        ),
+                { message: 'models' },
+            );
+        };
+        const done = (id: string) =>
+            waitFor(
+                () => {
+                    const latest = page.latest(id);
+                    return latest?.status === 'idle' && latest.provider.threadId
+                        ? latest
+                        : undefined;
+                },
+                { message: `${id} done` },
+            );
+
+        // OpenCode names its models with a session: none before the first pin.
+        expect((await models()).models).toEqual([]);
+        page.send(pin('pin-1', 'Tighten the hero', 'http://localhost:3001/'));
+        const first = await done('pin-1');
+        expect(agent.sessions.get(first.provider.threadId ?? '')?.model).toBe(
+            'opencode/big-pickle',
+        );
+
+        const listed = await models();
+        expect(listed).toMatchObject({ provider: 'opencode', defaultModel: 'opencode/big-pickle' });
+        // OpenCode's provider/model names come grouped by provider.
+        expect(listed.models.map(model => [model.id, model.label, model.group])).toEqual([
+            ['opencode/big-pickle', 'Big Pickle', 'OpenCode'],
+            ['openai/gpt-6.1-sol', 'GPT-6.1 Sol', 'OpenAI'],
+        ]);
+        expect(listed.models.every(model => model.agent === 'opencode')).toBe(true);
+
+        page.send({ type: 'model.select', model: 'openai/gpt-6.1-sol' });
+        await waitFor(
+            () =>
+                page.received.some(
+                    m => m.type === 'settings' && m.settings.model === 'openai/gpt-6.1-sol',
+                ),
+            { message: 'model picked' },
+        );
+        page.send(pin('pin-2', 'And the footer', 'http://localhost:3001/'));
+        const second = await done('pin-2');
+        expect(agent.sessions.get(second.provider.threadId ?? '')?.model).toBe(
+            'openai/gpt-6.1-sol',
+        );
+    });
 });
 
 describe('Ensemble', () => {

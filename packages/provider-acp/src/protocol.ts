@@ -95,6 +95,34 @@ interface ContentChunk {
     messageId?: string | null;
 }
 
+export interface ConfigSelectOption {
+    value: string;
+    name: string;
+    description?: string | null;
+}
+
+export interface ConfigSelectGroup {
+    group: string;
+    name: string;
+    options: ConfigSelectOption[];
+}
+
+/**
+ * A setting of a session (its model, mode, reasoning effort), which comes with
+ * the answers to `session/new`, `session/load` and `session/resume`.
+ */
+export interface SessionConfigOption {
+    id: string;
+    name: string;
+    description?: string | null;
+    /** `model`, `mode`, `thought_level`, …: what it's about, for showing it. */
+    category?: string | null;
+    type: string;
+    currentValue: string | boolean;
+    /** A `select`'s values: all flat, or all in groups. */
+    options?: Array<ConfigSelectOption | ConfigSelectGroup>;
+}
+
 export type SessionUpdate =
     | ({ sessionUpdate: 'user_message_chunk' } & ContentChunk)
     | ({ sessionUpdate: 'agent_message_chunk' } & ContentChunk)
@@ -102,6 +130,7 @@ export type SessionUpdate =
     | ({ sessionUpdate: 'tool_call' } & ToolCall)
     | ({ sessionUpdate: 'tool_call_update' } & ToolCall)
     | { sessionUpdate: 'plan'; entries: PlanEntry[] }
+    | { sessionUpdate: 'config_option_update'; configOptions: SessionConfigOption[] }
     | { sessionUpdate: string };
 
 export interface PermissionOption {

@@ -172,8 +172,14 @@ picks it up without the history (`session/resume`). An agent that can do neither
 continue an earlier conversation: following up says so, and a new pin starts a new
 session. Sessions the agent lists for the project show up in the overlay's inbox.
 
-To change a command, for example to pick Devin's model, or to add an agent of your own,
-edit `~/.config/tencil/settings.json`:
+The composer's model picker lists the agent's models, for agents that offer a choice
+(OpenCode does). Agents name their models with a session, so the picker shows up after
+the first pin; Tencil then keeps the list for every project, in `acp-models.json` next to
+`settings.json`. A new pin starts on the model picked, and pins you already made keep
+theirs.
+
+To change a command, for example to set Devin's default model, or to add an agent of your
+own, edit `~/.config/tencil/settings.json`:
 
 ```json
 {

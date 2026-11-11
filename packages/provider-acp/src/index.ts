@@ -8,3 +8,4 @@ export {
 } from './agents.ts';
 export { type AgentCheck, checkAgent } from './check-agent.ts';
 export type { AgentProcess, SpawnAgent } from './connection.ts';
+export type { AgentModels, ModelCache } from './models.ts';

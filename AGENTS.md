@@ -63,7 +63,9 @@ apps/
   to any agent's ACP mode over stdio (`devin acp`), one process per project, like Codex.
   Presets (`agents.ts`) name known agents' commands; `settings.json`'s `acp` changes them
   or adds agents. Agents on the PATH or in settings.json are offered. Message ids follow
-  turns, so a `session/load` replay after a restart lines up with the pin.
+  turns, so a `session/load` replay after a restart lines up with the pin. Models come
+  from the sessions' `model` setting (`configOptions`); `daemon/acp-models.ts` keeps each
+  agent's list, so the picker has it before a project's first session.
 - **Ensemble requires the running app and one-time approval.** Pair asks the user
   to allow Tencil and saves a private token. Resolve pages by dev server port through
   the public API (including forwarded ports), using `ensemble://thread/<id>` as the

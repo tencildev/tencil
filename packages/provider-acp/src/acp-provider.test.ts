@@ -15,6 +15,7 @@ import { AcpProvider, type AcpProviderOptions } from './acp-provider.ts';
 import type { AcpAgent } from './agents.ts';
 import { checkAgent } from './check-agent.ts';
 import type { AgentProcess } from './connection.ts';
+import type { AgentModels, ModelCache } from './models.ts';
 
 const PNG =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -403,6 +404,139 @@ describe('ACP provider', () => {
         await reply('Done: Try again');
         expect(fake.processes).toBe(2);
         expect(fake.requestsOf('session/load')).toHaveLength(1);
+    });
+
+    describe('models', () => {
+        const PICKLE = { value: 'opencode/big-pickle', name: 'Big Pickle' };
+        const SOL = { value: 'openai/gpt-6.1-sol', name: 'GPT-6.1 Sol' };
+
+        function withModels() {
+            const fake = new FakeAcpAgent();
+            fake.models = { choices: [PICKLE, SOL], defaultModel: PICKLE.value };
+            return fake;
+        }
+
+        async function runThread(provider: AcpProvider, model?: string) {
+            const { providerThreadId } = await provider.createThread({ ...newThread(), model });
+            const { sink, reply } = recordingSink();
+            provider.watch(providerThreadId, sink);
+            await reply();
+            return providerThreadId;
+        }
+
+        const listed = (model: { value: string; name: string }, group = 'Fake') => ({
+            id: model.value,
+            label: model.name,
+            group,
+            agent: 'fake',
+        });
+
+        it("lists none until a session names them, then the agent's models and default", async () => {
+            const fake = withModels();
+            const { provider } = setup({}, fake);
+            expect(await provider.listModels()).toEqual({ models: [] });
+
+            await runThread(provider);
+            expect(await provider.listModels()).toEqual({
+                models: [listed(PICKLE), listed(SOL)],
+                defaultModel: PICKLE.value,
+            });
+            expect(fake.requestsOf('session/set_config_option')).toEqual([]);
+        });
+
+        it('puts a new session on the picked model before its first prompt', async () => {
+            const fake = withModels();
+            const { provider } = setup({}, fake);
+            const sessionId = await runThread(provider, SOL.value);
+
+            expect(fake.sessions.get(sessionId)?.model).toBe(SOL.value);
+            expect(fake.requestsOf('session/set_config_option')).toEqual([
+                { sessionId, configId: 'model', value: SOL.value },
+            ]);
+            const methods = fake.requests.map(request => request.method);
+            expect(methods.indexOf('session/set_config_option')).toBeLessThan(
+                methods.indexOf('session/prompt'),
+            );
+            // Picking a model for one pin doesn't change the agent's default.
+            expect((await provider.listModels()).defaultModel).toBe(PICKLE.value);
+        });
+
+        it("stays on the default when the agent doesn't offer the picked model", async () => {
+            const fake = withModels();
+            const logged: string[] = [];
+            const { provider } = setup({ log: message => logged.push(message) }, fake);
+            const sessionId = await runThread(provider, 'gone/model');
+
+            expect(fake.requestsOf('session/set_config_option')).toEqual([]);
+            expect(fake.sessions.get(sessionId)?.model).toBe(PICKLE.value);
+            expect(logged).toContain("Fake doesn't offer gone/model here; it runs on its default");
+        });
+
+        it('groups the models the way the agent does', async () => {
+            const fake = new FakeAcpAgent();
+            fake.models = {
+                choices: [
+                    {
+                        group: 'anthropic',
+                        name: 'Anthropic',
+                        options: [{ value: 'a/opus', name: 'Opus' }],
+                    },
+                    { group: 'openai', name: 'OpenAI', options: [{ value: 'o/sol', name: 'Sol' }] },
+                ],
+                defaultModel: 'a/opus',
+            };
+            const { provider } = setup({}, fake);
+            await runThread(provider);
+            expect((await provider.listModels()).models).toEqual([
+                listed({ value: 'a/opus', name: 'Opus' }, 'Anthropic'),
+                listed({ value: 'o/sol', name: 'Sol' }, 'OpenAI'),
+            ]);
+        });
+
+        it('follows a change to the list, keeping the default', async () => {
+            const fake = withModels();
+            const { provider } = setup({}, fake);
+            await runThread(provider);
+
+            const LUNA = { value: 'openai/gpt-6-luna', name: 'GPT-6 Luna' };
+            fake.models = { choices: [PICKLE, SOL, LUNA], defaultModel: SOL.value };
+            fake.announceModels();
+            const models = await waitFor(
+                async () => {
+                    const list = await provider.listModels();
+                    return list.models.length === 3 && list;
+                },
+                { message: 'the new list' },
+            );
+            expect(models.defaultModel).toBe(PICKLE.value);
+        });
+
+        it("learns them from a session it loads, without taking that session's model for the default", async () => {
+            const fake = withModels();
+            const { provider, create } = setup({}, fake);
+            const sessionId = await runThread(provider, SOL.value);
+            await provider.dispose();
+
+            const restarted = create();
+            const { sink, lastStatus } = recordingSink();
+            restarted.watch(sessionId, sink);
+            await waitFor(() => lastStatus() === 'idle', { message: 'replayed' });
+            expect(await restarted.listModels()).toEqual({
+                models: [listed(PICKLE), listed(SOL)],
+            });
+        });
+
+        it('keeps them for other projects and the next start, through the cache', async () => {
+            const fake = withModels();
+            const saved: AgentModels[] = [];
+            const models: ModelCache = { get: async () => saved.at(-1), set: m => saved.push(m) };
+            const { provider, create } = setup({ models }, fake);
+            await runThread(provider);
+
+            const other = create();
+            expect(await other.listModels()).toEqual(await provider.listModels());
+            expect(fake.processes).toBe(1);
+        });
     });
 
     describe('after a restart', () => {
