@@ -182,6 +182,9 @@ function gitBytes(cwd: string, args: string[], options: GitOptions = {}): Promis
             const message = Buffer.concat(stderr).toString('utf8').trim();
             reject(new Error(message || `git ${args[0]} exited with ${code}`));
         });
-        child.stdin.end(options.input ?? '');
+        // Git can exit before it reads stdin (EPIPE); its exit code and
+        // stderr above tell what went wrong.
+        child.stdin.on('error', () => {});
+        child.stdin.end(options.input);
     });
 }
