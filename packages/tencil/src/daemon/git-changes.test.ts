@@ -16,6 +16,8 @@ function repo() {
     run('config', 'user.name', 'Test');
     run('config', 'user.email', 'test@example.com');
     run('config', 'commit.gpgsign', 'false');
+    // Windows runners set autocrlf, which writes reverted files with CRLF.
+    run('config', 'core.autocrlf', 'false');
     const write = (file: string, text: string) => {
         mkdirSync(dirname(join(root, file)), { recursive: true });
         writeFileSync(join(root, file), text);
