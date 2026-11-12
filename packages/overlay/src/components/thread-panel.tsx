@@ -1,15 +1,29 @@
-import type { Delivery, Thread, ThreadMessage, ThreadStep } from '@tencildev/protocol';
+import type {
+    Delivery,
+    Thread,
+    ThreadChange,
+    ThreadMessage,
+    ThreadStep,
+} from '@tencildev/protocol';
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
-import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
+import {
+    gitActions,
+    inboxOpen,
+    layoutTick,
+    openThreadId,
+    pinDrag,
+    queuedThreads,
+} from '../lib/state.ts';
 import {
     CheckIcon,
     ChevronIcon,
     CloseIcon,
     CodeIcon,
+    CommitIcon,
     ExternalIcon,
     StopIcon,
     TrashIcon,
@@ -293,6 +307,8 @@ function RunStatus({ thread }: { thread: Thread }) {
     const steps = thread.steps ?? [];
     const toggle = steps.length > 0 ? { open, onToggle: () => setOpen(!open) } : undefined;
     const working = thread.status === 'working';
+    // Shown between turns: a running one may still add to the change.
+    const settled = thread.status === 'idle' || thread.status === 'error';
     return (
         <>
             {open && steps.length > 0 && <StepList steps={steps} follow={working} />}
@@ -306,8 +322,99 @@ function RunStatus({ thread }: { thread: Thread }) {
                 </div>
             )}
             {thread.delivery && !working && <DeliveryLine delivery={thread.delivery} />}
+            {thread.change && settled && gitActions.value && (
+                <ChangeLine threadId={thread.id} change={thread.change} />
+            )}
         </>
     );
+}
+
+/** How long Revert waits for its second click. */
+const CONFIRM_MS = 3000;
+
+/** Git actions: the files the agent changed, as small Commit and Revert tags. */
+function ChangeLine({ threadId, change }: { threadId: string; change: ThreadChange }) {
+    const [confirming, setConfirming] = useState(false);
+    useEffect(() => {
+        if (!confirming) return;
+        const timer = setTimeout(() => setConfirming(false), CONFIRM_MS);
+        return () => clearTimeout(timer);
+    }, [confirming]);
+    const count = change.files.length;
+    const files = `${count} ${count === 1 ? 'file' : 'files'}`;
+    const list = [
+        ...change.files,
+        ...(change.shared
+            ? ['', "Another pin's agent worked at the same time; its edits may be in here too."]
+            : []),
+    ].join('\n');
+
+    switch (change.status) {
+        case 'committing':
+        case 'reverting':
+            return (
+                <div class="status-line change">
+                    <span class="live-dot" />
+                    <Shimmer text={change.status === 'committing' ? 'Committing…' : 'Reverting…'} />
+                </div>
+            );
+        case 'committed':
+            return (
+                <div class="status-line change change-committed" title={list}>
+                    <CommitIcon />
+                    <span class="change-files">Committed {files}</span>
+                    {change.commit && <code class="change-sha">{change.commit.slice(0, 7)}</code>}
+                </div>
+            );
+        case 'reverted':
+            return (
+                <div class="status-line change" title={list}>
+                    <UndoIcon />
+                    <span class="change-files">Reverted {files}</span>
+                </div>
+            );
+        default:
+            return (
+                <div class="status-line change">
+                    {change.status === 'failed' ? (
+                        <span class="change-files status-error" title={change.detail}>
+                            {change.detail ?? "Couldn't do that"}
+                        </span>
+                    ) : (
+                        <span
+                            class={`change-files${change.shared ? ' change-shared' : ''}`}
+                            title={list}
+                        >
+                            {files} changed
+                        </span>
+                    )}
+                    <span class="change-actions">
+                        <button
+                            type="button"
+                            class="tag tag-commit"
+                            title="Ask the agent to commit its edits, the way this repository wants"
+                            onClick={() => send({ type: 'thread.commit', threadId })}
+                        >
+                            <CommitIcon />
+                            Commit
+                        </button>
+                        <button
+                            type="button"
+                            class={`tag${confirming ? ' tag-confirm' : ''}`}
+                            title={confirming ? 'Click again to revert' : "Undo this agent's edits"}
+                            onClick={() => {
+                                if (!confirming) return setConfirming(true);
+                                setConfirming(false);
+                                send({ type: 'thread.revert', threadId });
+                            }}
+                        >
+                            <UndoIcon />
+                            {confirming ? 'Revert?' : 'Revert'}
+                        </button>
+                    </span>
+                </div>
+            );
+    }
 }
 
 interface Toggle {

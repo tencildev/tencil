@@ -73,6 +73,14 @@ export const UndoIcon = () => (
     </Icon>
 );
 
+export const CommitIcon = () => (
+    <Icon>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M3 12h6" />
+        <path d="M15 12h6" />
+    </Icon>
+);
+
 export const TrashIcon = () => (
     <Icon>
         <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />

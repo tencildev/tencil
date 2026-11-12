@@ -18,6 +18,7 @@ import {
     type SettingsSection,
     setBatchAvailable,
     setDockHidden,
+    setGitActions,
     setRulerAvailable,
     settingsOpen,
     settingsSection,
@@ -305,6 +306,14 @@ function ToolsPage() {
                     </>
                 }
             />
+            {current.git !== undefined && (
+                <SwitchRow
+                    label="Git actions"
+                    checked={current.git}
+                    onChange={setGitActions}
+                    help="Once an agent changes files, its pin offers Commit and Revert. Commit asks the agent to commit its edits, following your repository's rules. Revert undoes just its edits and keeps the rest of your work."
+                />
+            )}
         </>
     );
 }

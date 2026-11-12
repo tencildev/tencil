@@ -505,6 +505,24 @@ kbd {
   box-shadow: 0 0 0 1px var(--n-200); font-size: 12px;
 }
 
+/* Git actions: what the agent changed, as small Commit and Revert tags. */
+.change { gap: 6px; }
+.change > svg { flex: none; width: 14px; height: 14px; }
+.change-files { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.change-shared { color: var(--warn); }
+.change-committed > svg { color: var(--done); }
+.change-sha { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--n-500); }
+.change-actions { display: flex; gap: 4px; margin-left: auto; flex: none; }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 7px;
+  border-radius: 999px; box-shadow: 0 0 0 1px var(--n-200); color: var(--n-700);
+  font-size: 12px; font-weight: 500;
+}
+.tag svg { flex: none; width: 12px; height: 12px; }
+.tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tag-commit { background: var(--accent-soft); box-shadow: none; color: var(--accent-text); }
+.tag-confirm { color: var(--error); box-shadow: 0 0 0 1px currentColor; }
+
 /* A provider's steps for the turn (Tencil Cloud: sandbox, clone, install, the agent's tool calls). */
 .steps-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--n-600); }
 .steps-toggle:hover { color: var(--n-900); }
@@ -955,10 +973,10 @@ kbd {
 .toast-info kbd, .settings-help kbd { background: var(--n-100); color: var(--n-700); }
 
 /* --------------------------- feedback & motion --------------------------- */
-.tool, .icon-button, .toggle, .stop, .segmented button, .inbox-item, .composer-provider, .target-option {
+.tool, .icon-button, .toggle, .stop, .tag, .segmented button, .inbox-item, .composer-provider, .target-option {
   transition: transform 160ms var(--ease-out), background-color 150ms ease, color 150ms ease;
 }
-.tool:active, .icon-button:active, .toggle:active, .stop:active, .segmented button:active,
+.tool:active, .icon-button:active, .toggle:active, .stop:active, .tag:active, .segmented button:active,
 .composer-provider:active { transform: var(--press); }
 .target-option:active { transform: scale(0.99); }
 .inbox-item:active { transform: scale(0.99); }
@@ -968,7 +986,8 @@ kbd {
   .tool:not(.tool-active):hover { background: rgba(255, 255, 255, 0.08); color: white; }
   .icon-button:hover { background: var(--n-100); color: var(--n-950); }
   .divider:hover::before { background: rgba(255, 255, 255, 0.35); }
-  .toggle:hover, .stop:hover { background: var(--n-100); }
+  .toggle:hover, .stop:hover, .tag:not(.tag-commit):hover { background: var(--n-100); }
+  .tag-commit:hover { background: hsl(214 67% 51% / 0.2); }
   .inbox-item:hover { background: var(--n-100); }
   .project-picker-option:hover { background: rgba(255, 255, 255, 0.08); }
   .composer-provider:hover, .target-option:hover { background: var(--n-100); color: var(--n-950); }
@@ -983,7 +1002,7 @@ kbd {
 /* Reduced motion keeps fades (they aid comprehension) but drops movement. */
 @media (prefers-reduced-motion: reduce) {
   .popover, .inbox, .toast, .toolbar-hint, .settings-panel, .message-user, .pin-body,
-  .tool, .icon-button, .toggle, .stop, .send, .segmented button, .inbox-item {
+  .tool, .icon-button, .toggle, .stop, .tag, .send, .segmented button, .inbox-item {
     transition-property: opacity, background-color, color;
   }
   .w { animation: none; }
