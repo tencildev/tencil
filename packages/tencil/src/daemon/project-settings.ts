@@ -14,6 +14,8 @@ const SettingsFile = z.object({
     batch: z.boolean().optional(),
     /** Offer the ruler in the overlay's toolbar. */
     ruler: z.boolean().optional(),
+    /** Git actions: Commit and Revert on pins that changed files. */
+    git: z.boolean().optional(),
 });
 
 /** A project's settings live next to its pins: `<slug>-<hash>.settings.json`. */
@@ -21,7 +23,7 @@ export function projectSettingsPath(projectRoot: string, dataDir = defaultDataDi
     return projectStorePath(projectRoot, dataDir).replace(/\.json$/, '.settings.json');
 }
 
-/** A project's overlay settings (provider, models, batching, ruler) in a JSON file. */
+/** A project's overlay settings (provider, models, batching, ruler, Git actions) in a JSON file. */
 export class FileProjectSettings implements ProjectSettingsStore {
     constructor(readonly path: string) {}
 
@@ -43,6 +45,7 @@ export class FileProjectSettings implements ProjectSettingsStore {
                     models: settings.models,
                     batch: settings.batch,
                     ruler: settings.ruler,
+                    git: settings.git,
                 },
                 null,
                 2,

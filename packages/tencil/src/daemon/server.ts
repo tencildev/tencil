@@ -39,6 +39,7 @@ import {
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
+import { GitChanges } from './git-changes.ts';
 import { FilePreferences, preferencesPath } from './preferences.ts';
 import { type Detected, type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
@@ -227,6 +228,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     project: { name: basename(key), root: key },
                     version: VERSION,
                     update: () => updater?.status() ?? { state: 'idle' },
+                    changes: new GitChanges(key),
                     log: message => log(`[${basename(key)}] ${message}`),
                 });
                 log(`Serving ${key} with ${providers.default().label}`);
