@@ -107,6 +107,25 @@ function spacingLine(spacing: Spacing): string {
     return `- Measured spacing to ${target}${selector}: ${sides.length > 0 ? sides.join(', ') : 'none'}`;
 }
 
+/**
+ * Asks the pin's agent to commit what it changed, the way the repository
+ * wants commits made. The overlay shows the first line; the rest is context.
+ */
+export function renderCommitPrompt(files: string[], shared: boolean): string {
+    const list = files.map(file => `\`${file}\``).join(', ');
+    const lines = [
+        'The user clicked Commit on this pin in Tencil. Commit the changes you made for it, the way this repository wants commits made: follow its agent instructions and commit conventions (message format, changesets, sign-off).',
+        '',
+        shared
+            ? `- Files changed while you worked: ${list}. Another agent worked at the same time, so some of these edits may be its own.`
+            : `- Files you changed: ${list}`,
+        "- Commit only your own edits. Leave other uncommitted work as it is; where a file also has edits that aren't yours, stage just your hunks.",
+        "- Let Git hooks run (no --no-verify), and don't push.",
+        "- If you can't commit, say why.",
+    ];
+    return `Commit these changes\n\n${CONTEXT_OPEN}\n${lines.join('\n')}\n${CONTEXT_CLOSE}`;
+}
+
 export function stripContext(text: string): string {
     const index = text.indexOf(CONTEXT_OPEN);
     return index === -1 ? text : text.slice(0, index).trimEnd();

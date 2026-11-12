@@ -10,6 +10,8 @@ export interface SavedProjectSettings {
     batch?: boolean;
     /** Offer the ruler in the overlay's toolbar; on when unset. */
     ruler?: boolean;
+    /** Git actions: offer Commit and Revert on pins that changed files; off when unset. */
+    git?: boolean;
 }
 
 /**
@@ -50,6 +52,8 @@ export class ProjectProviders {
     #batch = true;
     /** On unless the project turns it off. */
     #ruler = true;
+    /** Off unless the project turns it on. */
+    #git = false;
 
     constructor(options: ProjectProvidersOptions) {
         this.#options = options;
@@ -81,6 +85,7 @@ export class ProjectProviders {
             this.#models = saved.models ?? {};
             this.#batch = saved.batch ?? true;
             this.#ruler = saved.ruler ?? true;
+            this.#git = saved.git ?? false;
         }
     }
 
@@ -157,7 +162,18 @@ export class ProjectProviders {
         for (const listener of this.#settingsListeners) listener();
     }
 
-    /** Fires when a picked model, batching or the ruler changes. */
+    get git(): boolean {
+        return this.#git;
+    }
+
+    async setGit(on: boolean): Promise<void> {
+        if (on === this.#git) return;
+        this.#git = on;
+        await this.#save();
+        for (const listener of this.#settingsListeners) listener();
+    }
+
+    /** Fires when a picked model, batching, the ruler or Git actions change. */
     onSettingsChange(listener: () => void): () => void {
         this.#settingsListeners.add(listener);
         return () => this.#settingsListeners.delete(listener);
@@ -179,6 +195,7 @@ export class ProjectProviders {
             models: this.#models,
             batch: this.#batch,
             ruler: this.#ruler,
+            git: this.#git,
         });
     }
 }
