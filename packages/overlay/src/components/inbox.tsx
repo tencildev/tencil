@@ -7,6 +7,7 @@ import {
     providerProject,
     providerThreads,
     refreshProviderThreads,
+    send,
     threads,
 } from '../lib/connection.ts';
 import { labels } from '../lib/shortcuts.ts';
@@ -90,22 +91,38 @@ function PinList({ scope }: { scope: 'page' | 'all' }) {
                 scope === 'all' ||
                 (thread.anchor && thread.pageUrl && pageKey(thread.pageUrl) === currentPage.value),
         );
+    // Done as its pin shows it: finished, nothing to answer, and deployed on the cloud.
+    const done = list.filter(thread => pinVariant(thread) === 'done');
+    const resolveDone = () => {
+        for (const thread of done) {
+            send({ type: 'thread.resolve', threadId: thread.id, resolved: true });
+        }
+        if (done.some(thread => thread.id === openThreadId.value)) openThreadId.value = null;
+    };
     return (
         <>
-            <label class="inbox-filter">
-                <span class="checkbox">
-                    <input
-                        type="checkbox"
-                        class="checkbox-input"
-                        checked={showResolved.value}
-                        onChange={event => {
-                            showResolved.value = (event.target as HTMLInputElement).checked;
-                        }}
-                    />
-                    <CheckIcon />
-                </span>
-                Show resolved
-            </label>
+            <div class="inbox-toolbar">
+                <label class="inbox-filter">
+                    <span class="checkbox">
+                        <input
+                            type="checkbox"
+                            class="checkbox-input"
+                            checked={showResolved.value}
+                            onChange={event => {
+                                showResolved.value = (event.target as HTMLInputElement).checked;
+                            }}
+                        />
+                        <CheckIcon />
+                    </span>
+                    Show resolved
+                </label>
+                {done.length > 0 && (
+                    <button type="button" class="inbox-resolve" onClick={resolveDone}>
+                        <CheckIcon />
+                        Resolve {done.length} done
+                    </button>
+                )}
+            </div>
             <div class="inbox-list">
                 {list.length === 0 ? (
                     <p class="empty">
