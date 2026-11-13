@@ -260,7 +260,7 @@ function AgentPage() {
                                     send({ type: 'settings.update', provider: option.id })
                                 }
                             />
-                            <AgentIcon agent={option.id} size={14} decorative />
+                            <AgentIcon agent={option.id} size={14} decorative placeholder />
                             <span class="target-option-title">{option.label}</span>
                             {selected && info?.id === option.id && (
                                 <span class="target-option-meta">{stateLabel(info)}</span>

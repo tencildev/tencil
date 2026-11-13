@@ -14,12 +14,15 @@
         "url": "https://github.com/tencildev/tencil/issues"
     },
     "keywords": [
+        "acp",
         "agent",
+        "agent-client-protocol",
         "ai",
         "claude-code",
         "code-review",
         "codex",
         "comments",
+        "devin",
         "devtools",
         "nextjs",
         "overlay",
@@ -99,6 +102,7 @@
         "@tencildev/bridge": "workspace:*",
         "@tencildev/overlay": "workspace:*",
         "@tencildev/protocol": "workspace:*",
+        "@tencildev/provider-acp": "workspace:*",
         "@tencildev/provider-claude-code": "workspace:*",
         "@tencildev/provider-codex": "workspace:*",
         "@tencildev/provider-ensemble": "workspace:*",

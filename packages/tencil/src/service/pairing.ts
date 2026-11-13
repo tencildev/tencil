@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { type AcpAgent, checkAgent } from '@tencildev/provider-acp';
 import { loadAgentSdk } from '@tencildev/provider-claude-code';
 import { codexProblem } from '@tencildev/provider-codex';
 import { EnsembleClient, EnsembleCredentialStore } from '@tencildev/provider-ensemble';
@@ -9,7 +10,7 @@ import {
     exchangePairingCredential,
 } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
-import type { ProviderName } from '../daemon/agents.ts';
+import { acpAgents, type ProviderName } from '../daemon/agents.ts';
 import { defaultDataDir } from '../daemon/thread-store.ts';
 
 /** Get the agent ready now, so the first page load is ready to go. */
@@ -21,6 +22,8 @@ export async function prepareProvider(
     if (provider === 'claude-code') return prepareClaudeCode(log);
     if (provider === 'codex') return checkCodex(log);
     if (provider === 'ensemble') return checkEnsemble(log);
+    const agent = (await acpAgents()).find(candidate => candidate.id === provider);
+    if (agent) return checkAcpAgent(agent, log);
     return pairWithLocalT3(t3Url, log);
 }
 
@@ -76,6 +79,20 @@ async function checkCodex(log: (message: string) => void): Promise<void> {
             ? `  ${pc.yellow('!')} ${problem.replace(/`([^`]+)`/g, (_, command) => pc.cyan(command))}`
             : `  ${pc.green('✓')} Codex is ready. Pins run in your Codex login.`,
     );
+}
+
+/**
+ * An ACP agent runs from the user's own install and login: start it once to
+ * see it answers. Whether it's signed in only shows on the first pin.
+ */
+async function checkAcpAgent(agent: AcpAgent, log: (message: string) => void): Promise<void> {
+    const { problem, about } = await checkAgent(agent);
+    const command = (text: string) => text.replace(/`([^`]+)`/g, (_, part) => pc.cyan(part));
+    if (problem) return log(`  ${pc.yellow('!')} ${command(problem)}`);
+    log(
+        `  ${pc.green('✓')} ${agent.label} is ready${about ? pc.dim(` (${about})`) : ''}. Pins run in your ${agent.label} login.`,
+    );
+    if (agent.login) log(pc.dim(`    Not signed in yet? ${agent.login}`));
 }
 
 /** Ask the user once to allow Tencil in Ensemble, unless Tencil's token still works. */

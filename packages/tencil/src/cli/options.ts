@@ -1,3 +1,4 @@
+import type { AcpPermissions } from '@tencildev/provider-acp';
 import type { CodexPermissions } from '@tencildev/provider-codex';
 
 export const RUNTIME_MODES = ['approval-required', 'auto-accept-edits', 'auto', 'full-access'];
@@ -52,6 +53,22 @@ const CODEX_PERMISSIONS: Record<string, CodexPermissions> = {
 
 export function codexPermissionsFor(runtimeMode: string | undefined) {
     return runtimeMode ? CODEX_PERMISSIONS[runtimeMode] : undefined;
+}
+
+/**
+ * Tencil's runtime modes in terms of what an ACP agent may do when it asks.
+ * ACP has no reviewer of its own, so `auto` allows file edits and refuses the
+ * rest, like `auto-accept-edits`. Reading is always allowed.
+ */
+const ACP_PERMISSIONS: Record<string, AcpPermissions> = {
+    'approval-required': 'read-only',
+    'auto-accept-edits': 'edits',
+    auto: 'edits',
+    'full-access': 'full-access',
+};
+
+export function acpPermissionsFor(runtimeMode: string | undefined) {
+    return runtimeMode ? ACP_PERMISSIONS[runtimeMode] : undefined;
 }
 
 /**

@@ -2,9 +2,10 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { ACP_PRESETS } from '@tencildev/provider-acp';
 import { DEFAULT_T3_URL, type RuntimeMode } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
-import { PROVIDERS, type ProviderName, saveProvider } from '../daemon/agents.ts';
+import { acpAgents, knownProviders, type ProviderName, saveProvider } from '../daemon/agents.ts';
 import { DEFAULT_PORT } from '../daemon/server.ts';
 import { runInit } from '../init/run-init.ts';
 import { stopDaemon } from '../service/background.ts';
@@ -39,6 +40,7 @@ ${pc.dim('Usage')}
 ${pc.dim('Daemon options')}
   --port <n>              Port (default ${DEFAULT_PORT}, env TENCIL_PORT)
   --provider <name>       t3code | claude-code | codex | ensemble: this machine's agent (setup asks when unset)
+                          ACP agents: ${ACP_PRESETS.map(agent => agent.id).join(' | ')}, or one in settings.json
   --t3-url <url>          T3 Code server (default ${DEFAULT_T3_URL}, env TENCIL_T3_URL)
   --model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
                           Claude Code: a model, e.g. claude-opus-5-5 (default: its default)
@@ -95,8 +97,9 @@ async function main(): Promise<void> {
         ? Number.parseInt(values.port, 10)
         : Number(process.env.TENCIL_PORT ?? DEFAULT_PORT);
     const provider = values.provider as ProviderName | undefined;
-    if (provider && !PROVIDERS.includes(provider)) {
-        throw new Error(`--provider must be one of ${PROVIDERS.join(', ')}`);
+    const providers = provider ? knownProviders(await acpAgents()) : [];
+    if (provider && !providers.includes(provider)) {
+        throw new Error(`--provider must be one of ${providers.join(', ')}`);
     }
     // The machine's choice, so setup doesn't ask and the login service needs no flag.
     if (provider && command !== 'daemon') await saveProvider(provider);

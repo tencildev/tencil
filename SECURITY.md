@@ -49,5 +49,5 @@ Out of scope:
   decides what it may do.
 - Exposure the developer opted into: `--listen` on a network address or
   `--allow-origin` for another origin. The CLI documents that these widen access.
-- Vulnerabilities in T3 Code, Claude Code, Codex or the Claude Agent SDK themselves; report
-  those to their maintainers.
+- Vulnerabilities in T3 Code, Claude Code, Codex, the ACP agents Tencil runs (Devin and
+  others) or the Claude Agent SDK themselves; report those to their maintainers.
