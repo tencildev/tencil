@@ -554,6 +554,7 @@ export class T3CodeProvider implements Provider {
             item => {
                 const update = watcher.tracker.apply(item);
                 for (const message of update.messages) watcher.sink.message(message);
+                for (const step of update.steps ?? []) watcher.sink.step?.(step);
                 if (update.status) watcher.sink.status(update.status.status, update.status.detail);
                 if (update.gone) watcher.sink.gone();
             },
