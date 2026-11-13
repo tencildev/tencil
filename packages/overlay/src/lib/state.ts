@@ -103,6 +103,15 @@ export function setRulerAvailable(on: boolean): void {
     settings.value = { ...current, ruler: on };
 }
 
+/** The project turned on Git actions: pins whose agent changed files offer Commit and Revert. */
+export const gitActions = computed(() => settings.value?.git === true);
+
+export function setGitActions(on: boolean): void {
+    const current = settings.value;
+    if (!current || !send({ type: 'settings.update', git: on })) return;
+    settings.value = { ...current, git: on };
+}
+
 export function toggleRuler(): void {
     rulerToggle.value = !rulerToggle.value;
     rulerAnchor.value = null;

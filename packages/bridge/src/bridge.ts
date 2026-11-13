@@ -7,13 +7,22 @@ import {
     type ProviderMessage,
     type ServerMessage,
     type Thread,
+    type ThreadChange,
     type ThreadMessage,
     type ThreadStep,
     type UpdateStatus,
     type Viewer,
 } from '@tencildev/protocol';
+import type { ChangeTracker } from './change-tracker.ts';
 import type { ProjectProviders } from './project-providers.ts';
-import { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
+import {
+    batchTitle,
+    renderBatchPrompt,
+    renderCommitPrompt,
+    renderPrompt,
+    stripContext,
+    titleFor,
+} from './prompt.ts';
 import type { ThreadStore } from './thread-store.ts';
 
 export interface BridgeClient {
@@ -32,7 +41,23 @@ export interface BridgeOptions {
      * handles `update.start` itself); Tencil Cloud doesn't.
      */
     update?: () => UpdateStatus;
+    /**
+     * What agents change in the project's files, for Git actions. Without it
+     * the overlay doesn't offer them (Tencil Cloud commits every run itself).
+     */
+    changes?: ChangeTracker;
     log?: (message: string) => void;
+}
+
+/** A turn of a provider thread with Git actions on: where the work tree started. */
+interface Turn {
+    from: Promise<string | undefined>;
+    /** The provider reported it working; the replayed status of a watch doesn't end it before. */
+    working: boolean;
+    /** Another provider thread worked at the same time. */
+    shared: boolean;
+    /** The agent was asked to commit the change; HEAD before, to tell whether it did. */
+    commit?: { head: string | undefined };
 }
 
 /** Local echo ids, replaced once the provider reports the real user message. */
@@ -51,6 +76,8 @@ export class Bridge {
     readonly #pendingBroadcast = new Map<string, ReturnType<typeof setTimeout>>();
     /** Screenshots of queued comments, kept in memory until the batch is sent. */
     readonly #draftAttachments = new Map<string, ImageAttachment[]>();
+    /** Turns in progress, by provider thread (`watchKey`), while Git actions are on. */
+    readonly #turns = new Map<string, Turn>();
     #offInfo: () => void = () => {};
     readonly #offDefault: () => void;
     readonly #offSettings: () => void;
@@ -67,6 +94,17 @@ export class Bridge {
             this.#broadcast({ type: 'settings', settings: this.#settings() }),
         );
         for (const thread of options.store.list()) {
+            const change = thread.change;
+            if (change?.status === 'committing' || change?.status === 'reverting') {
+                options.store.upsert({
+                    ...thread,
+                    change: {
+                        ...change,
+                        status: 'failed',
+                        detail: 'Tencil restarted before it finished',
+                    },
+                });
+            }
             if (
                 thread.provider.threadId &&
                 options.providers.has(thread.provider.id) &&
@@ -146,6 +184,11 @@ export class Bridge {
                     if (message.provider) await providers.setDefault(message.provider);
                     if (message.batch !== undefined) await providers.setBatch(message.batch);
                     if (message.ruler !== undefined) await providers.setRuler(message.ruler);
+                    if (message.git !== undefined) {
+                        if (!this.#options.changes)
+                            throw new Error("Git actions aren't available here");
+                        await providers.setGit(message.git);
+                    }
                     return;
                 }
                 case 'provider.models': {
@@ -175,6 +218,12 @@ export class Bridge {
                 case 'thread.resolve':
                     await this.#resolve(message.threadId, message.resolved);
                     return;
+                case 'thread.commit':
+                    await this.#settleChange(message.threadId, 'commit');
+                    return;
+                case 'thread.revert':
+                    await this.#settleChange(message.threadId, 'revert');
+                    return;
                 case 'thread.move':
                     this.#update(message.threadId, thread => ({
                         ...thread,
@@ -188,6 +237,9 @@ export class Bridge {
                         this.#broadcast({ type: 'thread.removed', threadId: message.threadId });
                     }
                     if (!thread?.provider.threadId) return;
+                    if (this.#pinsFor(thread.provider.id, thread.provider.threadId).length === 0) {
+                        this.#turns.delete(watchKey(thread.provider.id, thread.provider.threadId));
+                    }
                     // Deleting the last open pin is done with the thread, as resolving it is.
                     if (
                         !thread.resolved &&
@@ -247,6 +299,7 @@ export class Bridge {
         };
         store.upsert(thread);
         this.#broadcastThread(thread, true);
+        const from = await this.#snapshot();
 
         try {
             const created = await provider.createThread({
@@ -270,6 +323,7 @@ export class Bridge {
                     archivable: created.archivable,
                 },
             }));
+            this.#beginTurn(provider.id, created.providerThreadId, from);
             this.#watch(provider.id, created.providerThreadId);
             this.#options.log?.(`Pin "${thread.title}" → ${provider.label}`);
         } catch (error) {
@@ -345,6 +399,7 @@ export class Bridge {
                 provider: { id: provider.id },
             }));
         }
+        const from = await this.#snapshot();
 
         try {
             const created = await provider.createThread({
@@ -369,6 +424,7 @@ export class Bridge {
                     },
                 }));
             }
+            this.#beginTurn(provider.id, created.providerThreadId, from);
             this.#watch(provider.id, created.providerThreadId);
             this.#options.log?.(`${drafts.length} queued pins → ${provider.label}`);
         } catch (error) {
@@ -416,6 +472,7 @@ export class Bridge {
         store.upsert(thread);
         this.#broadcastThread(thread, true);
         this.#watch(provider.id, providerThreadId, true);
+        this.#beginTurn(provider.id, providerThreadId, await this.#snapshot());
 
         try {
             await provider.sendMessage({
@@ -430,6 +487,7 @@ export class Bridge {
             });
             this.#options.log?.(`Pin "${thread.title}" → existing ${provider.label} thread`);
         } catch (error) {
+            this.#turns.delete(watchKey(provider.id, providerThreadId));
             this.#update(thread.id, current => ({
                 ...current,
                 status: 'error',
@@ -471,8 +529,27 @@ export class Bridge {
     }
 
     async #reply(message: Extract<ClientMessage, { type: 'thread.reply' }>): Promise<void> {
-        const thread = this.#require(message.threadId);
-        if (!thread.provider.threadId) throw new Error('This pin has no agent thread yet');
+        await this.#followUp(
+            this.#require(message.threadId),
+            message.text,
+            message.attachments,
+            async (providerId, providerThreadId) =>
+                this.#beginTurn(providerId, providerThreadId, await this.#snapshot()),
+        );
+    }
+
+    /**
+     * The pin's next message to its agent, shown right away (without its
+     * context block) and sent once `begin` has started tracking the turn.
+     */
+    async #followUp(
+        thread: Thread,
+        text: string,
+        attachments: ImageAttachment[],
+        begin: (providerId: string, providerThreadId: string) => Promise<void>,
+    ): Promise<void> {
+        const { id: providerId, threadId: providerThreadId } = thread.provider;
+        if (!providerThreadId) throw new Error('This pin has no agent thread yet');
         await this.#resolve(thread.id, false);
         this.#update(thread.id, current => ({
             ...current,
@@ -480,13 +557,18 @@ export class Bridge {
             statusDetail: undefined,
             // Steps are per turn; the provider reports this one's afresh.
             steps: undefined,
-            messages: [...current.messages, localMessage(message.text, new Date().toISOString())],
+            messages: [
+                ...current.messages,
+                localMessage(stripContext(text), new Date().toISOString()),
+            ],
         }));
-        await this.#providerOf(thread).sendMessage({
-            providerThreadId: thread.provider.threadId,
-            text: message.text,
-            attachments: message.attachments,
-        });
+        await begin(providerId, providerThreadId);
+        try {
+            await this.#providerOf(thread).sendMessage({ providerThreadId, text, attachments });
+        } catch (error) {
+            this.#turns.delete(watchKey(providerId, providerThreadId));
+            throw error;
+        }
     }
 
     /**
@@ -555,15 +637,20 @@ export class Bridge {
         };
         const unwatch = provider.watch(providerThreadId, {
             message: message => each(thread => mergeMessage(thread, message)),
-            status: (status, statusDetail) => each(thread => ({ ...thread, status, statusDetail })),
+            status: (status, statusDetail) => {
+                each(thread => ({ ...thread, status, statusDetail }));
+                this.#followTurn(providerId, providerThreadId, status);
+            },
             delivery: delivery => each(thread => ({ ...thread, delivery })),
             step: step => each(thread => mergeStep(thread, step)),
-            gone: () =>
+            gone: () => {
+                this.#turns.delete(key);
                 each(thread => ({
                     ...thread,
                     status: 'error',
                     statusDetail: `Thread no longer exists in ${provider.label}`,
-                })),
+                }));
+            },
         });
         this.#watches.set(key, unwatch);
     }
@@ -622,7 +709,184 @@ export class Bridge {
             ...(model ? { model } : {}),
             batch: providers.batch,
             ruler: providers.ruler,
+            ...(this.#options.changes ? { git: providers.git } : {}),
         };
+    }
+
+    /* ------------------------------- git actions ------------------------------- */
+
+    #gitOn(): boolean {
+        return this.#options.changes !== undefined && this.#options.providers.git;
+    }
+
+    /** The work tree now, taken before a message goes out so the turn's edits stand apart. */
+    async #snapshot(): Promise<string | undefined> {
+        if (!this.#gitOn()) return undefined;
+        try {
+            return await this.#options.changes?.snapshot();
+        } catch (error) {
+            this.#options.log?.(`Couldn't snapshot the work tree: ${errorText(error)}`);
+            return undefined;
+        }
+    }
+
+    /** A turn starts from `from`; one already running keeps its own start. */
+    #beginTurn(
+        providerId: string,
+        providerThreadId: string,
+        from: string | undefined | Promise<string | undefined>,
+        working = false,
+    ): void {
+        const key = watchKey(providerId, providerThreadId);
+        if (from === undefined || this.#turns.has(key)) return;
+        const turn: Turn = { from: Promise.resolve(from), working, shared: false };
+        // Edits of turns that overlap can't be told apart. Commit turns edit nothing.
+        for (const other of this.#turns.values()) {
+            if (other.commit) continue;
+            other.shared = true;
+            turn.shared = true;
+        }
+        this.#turns.set(key, turn);
+    }
+
+    /** Turns end when the provider settles; ones started outside Tencil are picked up too. */
+    #followTurn(providerId: string, providerThreadId: string, status: Thread['status']): void {
+        const turn = this.#turns.get(watchKey(providerId, providerThreadId));
+        if (status === 'working' || status === 'waiting') {
+            if (turn) turn.working = true;
+            // E.g. a message sent in the provider's own app.
+            else if (status === 'working' && this.#gitOn()) {
+                this.#beginTurn(providerId, providerThreadId, this.#snapshot(), true);
+            }
+        } else if (status === 'idle' || status === 'error') {
+            void this.#endTurn(providerId, providerThreadId);
+        }
+    }
+
+    /**
+     * The turn's edits join the pins' open change: a follow-up adds to the
+     * change, which stays one until it's committed or reverted.
+     */
+    async #endTurn(providerId: string, providerThreadId: string): Promise<void> {
+        const key = watchKey(providerId, providerThreadId);
+        const turn = this.#turns.get(key);
+        const tracker = this.#options.changes;
+        if (!turn?.working || !tracker) return;
+        this.#turns.delete(key);
+        if (turn.commit) return this.#endCommit(providerId, providerThreadId, turn.commit.head);
+        try {
+            const from = await turn.from;
+            const to = await tracker.snapshot();
+            if (!from || !to || from === to) return;
+            const pins = this.#pinsFor(providerId, providerThreadId);
+            const open = pins
+                .map(pin => pin.change)
+                .find(change => change?.status === 'ready' || change?.status === 'failed');
+            const spans = [...(open?.spans ?? [])];
+            const last = spans.at(-1);
+            // Nothing happened in between: one span covers both turns.
+            if (last?.to === from) spans[spans.length - 1] = { from: last.from, to };
+            else spans.push({ from, to });
+            const files = await tracker.files(spans);
+            if (files.length === 0 && !open) return;
+            const change: ThreadChange | undefined =
+                files.length === 0
+                    ? undefined
+                    : {
+                          status: 'ready',
+                          files,
+                          spans,
+                          ...((turn.shared || open?.shared) && { shared: true }),
+                      };
+            for (const pin of this.#pinsFor(providerId, providerThreadId)) {
+                this.#update(pin.id, current => ({ ...current, change }));
+            }
+        } catch (error) {
+            this.#options.log?.(`Couldn't read the turn's changes: ${errorText(error)}`);
+        }
+    }
+
+    async #settleChange(threadId: string, action: 'commit' | 'revert'): Promise<void> {
+        const thread = this.#require(threadId);
+        const tracker = this.#options.changes;
+        if (!tracker) throw new Error("Git actions aren't available here");
+        const change = thread.change;
+        if (change?.status === 'committing' || change?.status === 'reverting') return;
+        if (change?.status !== 'ready' && change?.status !== 'failed') {
+            throw new Error(action === 'commit' ? 'Nothing to commit' : 'Nothing to revert');
+        }
+        const { detail: _detail, ...rest } = change;
+        if (action === 'commit') return this.#askToCommit(thread, rest);
+        this.#setChange(thread, { ...rest, status: 'reverting' });
+        try {
+            await tracker.revert(change.spans);
+            this.#setChange(thread, { ...rest, status: 'reverted' });
+            this.#options.log?.(`Reverted "${thread.title}"`);
+        } catch (error) {
+            this.#setChange(thread, { ...rest, status: 'failed', detail: errorText(error) });
+        }
+    }
+
+    /**
+     * The agent commits its own change, so the repository's rules for commits
+     * (agent instructions, message format, changesets, hooks) apply. Whether
+     * it did shows in HEAD once the turn ends (`#endCommit`).
+     */
+    async #askToCommit(thread: Thread, change: ThreadChange): Promise<void> {
+        const { id: providerId, threadId: providerThreadId } = thread.provider;
+        if (!providerThreadId) throw new Error('This pin has no agent thread yet');
+        if (this.#turns.has(watchKey(providerId, providerThreadId))) {
+            throw new Error("The agent is still working; commit once it's done");
+        }
+        const head = await this.#options.changes?.head();
+        this.#setChange(thread, { ...change, status: 'committing' });
+        try {
+            await this.#followUp(
+                thread,
+                renderCommitPrompt(change.files, change.shared === true),
+                [],
+                async (id, threadId) => {
+                    this.#turns.set(watchKey(id, threadId), {
+                        from: Promise.resolve(undefined),
+                        working: false,
+                        shared: false,
+                        commit: { head },
+                    });
+                },
+            );
+        } catch (error) {
+            this.#setChange(thread, { ...change, status: 'failed', detail: errorText(error) });
+        }
+    }
+
+    async #endCommit(providerId: string, providerThreadId: string, before: string | undefined) {
+        try {
+            const head = await this.#options.changes?.head();
+            const pin = this.#pinsFor(providerId, providerThreadId).find(
+                candidate => candidate.change?.status === 'committing',
+            );
+            if (!pin?.change) return;
+            const { detail: _detail, ...change } = pin.change;
+            if (head && head !== before) {
+                this.#setChange(pin, { ...change, status: 'committed', commit: head });
+                this.#options.log?.(`"${pin.title}" committed as ${head.slice(0, 7)}`);
+            } else {
+                this.#setChange(pin, {
+                    ...change,
+                    status: 'failed',
+                    detail: "The agent didn't commit; its reply says why",
+                });
+            }
+        } catch (error) {
+            this.#options.log?.(`Couldn't read the commit: ${errorText(error)}`);
+        }
+    }
+
+    /** Pins on one provider thread share their change. */
+    #setChange(thread: Thread, change: ThreadChange): void {
+        const { id, threadId: providerThreadId } = thread.provider;
+        const pins = providerThreadId ? this.#pinsFor(id, providerThreadId) : [thread];
+        for (const pin of pins) this.#update(pin.id, current => ({ ...current, change }));
     }
 
     /* --------------------------------- helpers --------------------------------- */
@@ -664,6 +928,10 @@ export class Bridge {
 
 function watchKey(providerId: string, providerThreadId: string): string {
     return `${providerId}:${providerThreadId}`;
+}
+
+function errorText(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 function localMessage(text: string, createdAt: string): ThreadMessage {

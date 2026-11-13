@@ -34,12 +34,14 @@ describe('FileProjectSettings', () => {
         await providers.setModel('t3code', 'claudeAgent/claude-opus-5-5');
         await providers.setBatch(false);
         await providers.setRuler(false);
+        await providers.setGit(true);
         expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({
             version: 1,
             provider: 'claude-code',
             models: { t3code: 'claudeAgent/claude-opus-5-5' },
             batch: false,
             ruler: false,
+            git: true,
         });
 
         const reloaded = setup(path).providers;
@@ -48,6 +50,7 @@ describe('FileProjectSettings', () => {
         expect(reloaded.modelFor('t3code')).toBe('claudeAgent/claude-opus-5-5');
         expect(reloaded.batch).toBe(false);
         expect(reloaded.ruler).toBe(false);
+        expect(reloaded.git).toBe(true);
     });
 
     it('starts from the defaults without a file', async () => {
@@ -56,5 +59,6 @@ describe('FileProjectSettings', () => {
         expect(providers.defaultId).toBe('t3code');
         expect(providers.batch).toBe(true);
         expect(providers.ruler).toBe(true);
+        expect(providers.git).toBe(false);
     });
 });

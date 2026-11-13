@@ -154,6 +154,10 @@ export const ClientMessage = z.discriminatedUnion('type', [
     z.object({ type: z.literal('thread.interrupt'), threadId: z.string() }),
     z.object({ type: z.literal('thread.resolve'), threadId: z.string(), resolved: z.boolean() }),
     z.object({ type: z.literal('thread.delete'), threadId: z.string() }),
+    /** Git actions: commit the files the pin's agent changed, and nothing else. */
+    z.object({ type: z.literal('thread.commit'), threadId: z.string() }),
+    /** Git actions: undo the pin's change in the work tree, keeping other edits. */
+    z.object({ type: z.literal('thread.revert'), threadId: z.string() }),
     /** Re-anchor a pin that was dragged somewhere else. */
     z.object({ type: z.literal('thread.move'), threadId: z.string(), anchor: Anchor }),
     /** Change the project's settings, e.g. the provider new pins go to. */
@@ -162,6 +166,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
         provider: z.string().min(1).optional(),
         batch: z.boolean().optional(),
         ruler: z.boolean().optional(),
+        git: z.boolean().optional(),
     }),
     /** Run new threads of the default provider on this model; null goes back to its default. */
     z.object({ type: z.literal('model.select'), model: z.string().min(1).nullable() }),
@@ -202,6 +207,11 @@ export const ProjectSettings = z.object({
     batch: z.boolean(),
     /** The toolbar offers the ruler: spacing while picking, distances with Alt. */
     ruler: z.boolean(),
+    /**
+     * Git actions: pins whose agent changed files offer Commit and Revert. Off
+     * by default; left out where the host can't run Git (Tencil Cloud).
+     */
+    git: z.boolean().optional(),
 });
 export type ProjectSettings = z.infer<typeof ProjectSettings>;
 

@@ -64,6 +64,43 @@ export const Delivery = z.object({
 });
 export type Delivery = z.infer<typeof Delivery>;
 
+/**
+ * Where the files a pin's agent changed are, with Git actions on (local daemon only).
+ * - `ready`: changed and uncommitted; the overlay offers Commit and Revert
+ * - `committing` / `reverting`: on its way
+ * - `committed`: in a commit of its own (`commit`); the rest of the work tree is untouched
+ * - `reverted`: undone in the work tree
+ * - `failed`: couldn't commit or revert (`detail`); both can be tried again
+ */
+export const ChangeStatus = z.enum([
+    'ready',
+    'committing',
+    'reverting',
+    'committed',
+    'reverted',
+    'failed',
+]);
+export type ChangeStatus = z.infer<typeof ChangeStatus>;
+
+/** Two snapshots of the work tree: one turn's edits. Opaque to the overlay. */
+export const ChangeSpan = z.object({ from: z.string(), to: z.string() });
+export type ChangeSpan = z.infer<typeof ChangeSpan>;
+
+export const ThreadChange = z.object({
+    status: ChangeStatus,
+    /** The changed files, relative to the repository root. */
+    files: z.array(z.string()),
+    /** One span per turn that changed files, oldest first. */
+    spans: z.array(ChangeSpan),
+    /** Another pin's agent worked at the same time, so its edits may be in here too. */
+    shared: z.boolean().optional(),
+    /** The commit's sha, once committed. */
+    commit: z.string().optional(),
+    /** Why committing or reverting failed. */
+    detail: z.string().optional(),
+});
+export type ThreadChange = z.infer<typeof ThreadChange>;
+
 export const StepStatus = z.enum(['running', 'done', 'failed', 'skipped']);
 export type StepStatus = z.infer<typeof StepStatus>;
 
@@ -112,6 +149,8 @@ export const Thread = z.object({
     delivery: Delivery.optional(),
     /** What the provider did during the latest turn, when it reports steps. */
     steps: z.array(ThreadStep).optional(),
+    /** Git actions: the files the agent changed, to commit or revert. */
+    change: ThreadChange.optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
 });
