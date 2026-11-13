@@ -505,26 +505,78 @@ kbd {
   box-shadow: 0 0 0 1px var(--n-200); font-size: 12px;
 }
 
-/* A provider's steps for the turn (Tencil Cloud: sandbox, clone, install, the agent's tool calls). */
-.steps-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--n-600); }
-.steps-toggle:hover { color: var(--n-900); }
-.steps-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.steps-toggle svg { flex: none; color: var(--n-500); transition: transform 150ms var(--ease-out); }
-.steps-toggle.open svg { transform: rotate(180deg); }
-.steps {
-  display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;
-  margin: 0 2px 10px; padding: 10px 12px; list-style: none; border-radius: 0.875rem;
-  background: var(--n-100); color: var(--n-700); font-size: 12px; line-height: 1rem;
+/*
+ * The turn's activity: a provider's steps (the agent's tool calls; on Tencil
+ * Cloud also sandbox, clone, install). Live, it's a header over a rolling
+ * window of the newest calls; done, one line that opens the full list.
+ */
+.activity {
+  display: grid; gap: 6px; padding: 8px 10px 9px;
+  border-radius: 0.875rem; background: var(--n-100);
+  color: var(--n-700); font-size: 12px; line-height: 16px;
+  transition: opacity 250ms var(--ease-out), translate 250ms var(--ease-out);
+  @starting-style { opacity: 0; translate: 0 4px; }
 }
-.step { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.step-child { padding-left: 20px; color: var(--n-600); }
-.step-mark { display: inline-grid; place-items: center; width: 12px; flex: none; color: var(--n-500); }
-.step-mark svg { width: 12px; height: 12px; }
-.step-done .step-mark { color: var(--done); }
-.step-failed, .step-failed .step-mark { color: var(--error); }
-.step-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.step-detail { margin-left: 6px; color: var(--n-500); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
-.step-time { flex: none; color: var(--n-500); font-variant-numeric: tabular-nums; }
+.activity-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; }
+.activity-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--n-900); }
+.activity-waiting .activity-title { color: var(--warn); }
+.waiting-dot { width: 6px; height: 6px; border-radius: 999px; background: #e69a10; flex: none; }
+.activity-clock { flex: none; color: var(--n-500); font-variant-numeric: tabular-nums; }
+.activity-stop {
+  display: grid; place-items: center; width: 20px; height: 20px; margin-right: -4px;
+  border-radius: 999px; color: var(--n-600); flex: none;
+}
+.activity-stop svg { width: 12px; height: 12px; }
+.activity-open { flex: none; color: var(--n-950); font-weight: 500; }
+/* A window \`--rows\` high; the list sits on its floor and slides up as steps arrive. */
+.activity-window {
+  height: calc(var(--rows) * 22px - 6px); overflow: hidden;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  transition: height 320ms var(--ease-out);
+}
+.activity-window-full {
+  mask-image: linear-gradient(to bottom, transparent, #000 14px);
+}
+.activity-steps { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.activity-step {
+  display: flex; align-items: center; gap: 8px; min-width: 0; height: 16px;
+  color: var(--n-600);
+  transition: color 300ms ease, opacity 300ms var(--ease-out), filter 300ms var(--ease-out);
+  @starting-style { opacity: 0; filter: blur(3px); }
+}
+.activity-step.step-running { color: var(--n-900); }
+.activity-step.step-failed { color: var(--error); }
+.activity-step.step-skipped { opacity: 0.6; }
+.activity-step.step-child { padding-left: 20px; }
+.activity-icon { display: grid; place-items: center; width: 12px; flex: none; color: var(--n-500); }
+.activity-icon svg { width: 12px; height: 12px; }
+.activity-icon .dot { width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
+.step-running .activity-icon { color: var(--live); }
+.step-failed .activity-icon { color: var(--error); }
+.activity-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-label .shimmer { display: inline; }
+.activity-time { flex: none; color: var(--n-500); font-variant-numeric: tabular-nums; }
+.activity-done { padding: 0; background: none; }
+.activity-summary {
+  display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%;
+  padding: 2px 0; color: var(--n-600); text-align: left;
+}
+.activity-summary:hover { color: var(--n-900); }
+.activity-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.activity-summary > svg { flex: none; color: var(--n-500); transition: transform 150ms var(--ease-out); }
+.activity-done.open .activity-summary > svg { transform: rotate(180deg); }
+.activity-check { color: var(--done); }
+.activity-all {
+  max-height: 220px; overflow-y: auto; padding: 8px 10px;
+  border-radius: 0.875rem; background: var(--n-100);
+  transition: opacity 200ms var(--ease-out);
+  @starting-style { opacity: 0; }
+}
+
+/* Hovering a busy pin: who it is and what its agent is doing. */
+.peek { padding: 8px; display: grid; gap: 6px; cursor: pointer; }
+.peek-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0 4px; font-size: 12px; }
+.peek-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--n-700); }
 
 /* A color wave across the label, one character at a time. */
 .shimmer { display: inline-flex; align-items: center; line-height: 1; user-select: none; }
@@ -969,6 +1021,7 @@ kbd {
   .icon-button:hover { background: var(--n-100); color: var(--n-950); }
   .divider:hover::before { background: rgba(255, 255, 255, 0.35); }
   .toggle:hover, .stop:hover { background: var(--n-100); }
+  .activity-stop:hover { background: var(--n-200); color: var(--n-950); }
   .inbox-item:hover { background: var(--n-100); }
   .project-picker-option:hover { background: rgba(255, 255, 255, 0.08); }
   .composer-provider:hover, .target-option:hover { background: var(--n-100); color: var(--n-950); }
@@ -992,5 +1045,6 @@ kbd {
   @keyframes pin-bloom { from { opacity: 0; } }
   @keyframes pin-dissolve { to { opacity: 0; } }
   .shimmer > span[aria-hidden], .status-ping, .live-dot { animation: none; }
+  .activity-window, .activity-step { transition: none; }
 }
 `;

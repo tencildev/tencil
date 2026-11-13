@@ -163,3 +163,50 @@ export const GitHubIcon = () => (
         <path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3" />
     </svg>
 );
+
+/* A step's tool call, by kind. */
+export const FileIcon = () => (
+    <Icon>
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+        <path d="M14 3v5h5M9 13h6M9 17h4" />
+    </Icon>
+);
+
+export const SearchIcon = () => (
+    <Icon>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+    </Icon>
+);
+
+export const PencilIcon = () => (
+    <Icon>
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    </Icon>
+);
+
+export const TerminalIcon = () => (
+    <Icon>
+        <path d="m5 7 5 5-5 5M12 19h7" />
+    </Icon>
+);
+
+export const GlobeIcon = () => (
+    <Icon>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+    </Icon>
+);
+
+export const AgentIcon = () => (
+    <Icon>
+        <rect x="4" y="8" width="16" height="12" rx="3" />
+        <path d="M12 8V4M9 13v1M15 13v1" />
+    </Icon>
+);
+
+export const ToolIcon = () => (
+    <Icon>
+        <path d="M14.7 6.3a4 4 0 0 0 5 5L12 19a2.1 2.1 0 0 1-3-3l7.7-7.7a4 4 0 0 0-2-2Z" />
+    </Icon>
+);
