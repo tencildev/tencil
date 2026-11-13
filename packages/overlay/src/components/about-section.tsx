@@ -1,11 +1,11 @@
 import { computed, signal } from '@preact/signals';
 import type { UpdateStatus } from '@tencildev/protocol';
+import { CHANGELOG_URL, changelogUrl } from '../lib/changelog.ts';
 import { daemonVersion, isCloud, provider, send, update, updatedFrom } from '../lib/connection.ts';
 import { ChevronIcon, GitHubIcon, StarIcon } from './icons.tsx';
 import { StatusRows, statusRows } from './status-card.tsx';
 
 const REPO_URL = 'https://github.com/tencildev/tencil';
-const CHANGELOG_URL = `${REPO_URL}/blob/master/packages/tencil/CHANGELOG.md`;
 const MANUAL_UPDATE = 'npx tencil@latest setup';
 
 /** A newer Tencil is out and nothing is being done about it yet: the settings button shows a dot. */
@@ -44,7 +44,7 @@ export function AboutSection() {
                 <div class="settings-update">
                     <p class="settings-help">
                         <strong>Tencil {status.latest} is available.</strong>{' '}
-                        <a href={CHANGELOG_URL} target="_blank" rel="noreferrer">
+                        <a href={changelogUrl(status.latest)} target="_blank" rel="noreferrer">
                             What's new
                         </a>
                     </p>
