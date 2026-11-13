@@ -1,5 +1,11 @@
 # tencil
 
+## 0.12.1
+
+### Patch Changes
+
+- [#35](https://github.com/tencildev/tencil/pull/35) [`4582302`](https://github.com/tencildev/tencil/commit/45823029e43955dbea7b1a860891ba04b657e97f) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - "What's new" in Settings → About now opens that release's page on tencil.dev/changelog, and the Changelog link opens the changelog there instead of the CHANGELOG.md on GitHub.
+
 ## 0.12.0
 
 ### Minor Changes
