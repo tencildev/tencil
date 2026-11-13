@@ -614,7 +614,11 @@ test('shows the version in settings and offers the update, with a fallback when 
     await expect(about).toContainText('Tencil 99.0.0 is available.');
     await expect(about.getByRole('link', { name: "What's new" })).toHaveAttribute(
         'href',
-        /CHANGELOG\.md$/,
+        'https://tencil.dev/changelog/99-0-0',
+    );
+    await expect(about.getByRole('link', { name: 'Changelog' })).toHaveAttribute(
+        'href',
+        'https://tencil.dev/changelog',
     );
 
     // It has no package to install, so the update fails and the old daemon stays.
