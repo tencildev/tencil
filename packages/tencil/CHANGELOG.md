@@ -1,5 +1,17 @@
 # tencil
 
+## 0.12.0
+
+### Minor Changes
+
+- [#29](https://github.com/tencildev/tencil/pull/29) [`9c57a48`](https://github.com/tencildev/tencil/commit/9c57a48a5407964074988bf955346f99a09714c6) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Resolve every done pin at once. The inbox shows "Resolve N done" when pins in the list have
+  finished; it leaves pins that are still working, need input or failed open.
+
+### Patch Changes
+
+- [#33](https://github.com/tencildev/tencil/pull/33) [`c814b1f`](https://github.com/tencildev/tencil/commit/c814b1f56da5e864e66d04fe32622caf15031212) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Shortcuts keep working after you record a new one. Closing settings right after recording could
+  leave the overlay's shortcuts switched off.
+
 ## 0.11.0
 
 ### Minor Changes
