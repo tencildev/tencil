@@ -1,10 +1,13 @@
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderMessage, ThreadStatus } from '@tencildev/protocol';
+import type { ProviderMessage, ThreadStatus, ThreadStep } from '@tencildev/protocol';
+import { ToolSteps } from './tool-steps.ts';
 
 export type RunStatus = { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
 
 export interface TrackerUpdate {
     messages: ProviderMessage[];
+    /** Tool calls that started or finished. */
+    steps: ThreadStep[];
     status?: RunStatus;
     /** Claude Code isn't signed in; the detail says how to fix it. */
     unauthorized?: string;
@@ -32,6 +35,7 @@ export class TurnTracker {
     readonly #drafts = new Map<string, Draft>();
     #current: string | undefined;
     #status: RunStatus = { status: 'idle' };
+    #tools = new ToolSteps();
 
     status(): RunStatus {
         return this.#status;
@@ -42,7 +46,7 @@ export class TurnTracker {
     }
 
     apply(message: SDKMessage, now = new Date().toISOString()): TrackerUpdate {
-        const update: TrackerUpdate = { messages: [] };
+        const update: TrackerUpdate = { messages: [], steps: [] };
         switch (message.type) {
             case 'stream_event': {
                 if (message.parent_tool_use_id) break;
@@ -67,7 +71,14 @@ export class TurnTracker {
                 break;
             }
             case 'assistant': {
-                if (message.parent_tool_use_id) break;
+                // Subagents' tool calls nest under the call that started them.
+                const parent = message.parent_tool_use_id ?? undefined;
+                for (const block of message.message.content) {
+                    if (block.type !== 'tool_use') continue;
+                    const step = this.#tools.start(block.id, block.name, block.input, now, parent);
+                    if (step) update.steps.push(step);
+                }
+                if (parent) break;
                 const draft = this.#begin(message.message.id, now, update);
                 for (const block of message.message.content) {
                     if (block.type !== 'text') continue;
@@ -80,8 +91,18 @@ export class TurnTracker {
                 }
                 break;
             }
+            case 'user': {
+                const content = message.message.content;
+                if (!Array.isArray(content)) break;
+                for (const block of content) {
+                    if (block.type !== 'tool_result') continue;
+                    const step = this.#tools.finish(block.tool_use_id, !!block.is_error, now);
+                    if (step) update.steps.push(step);
+                }
+                break;
+            }
             case 'result': {
-                this.#finish(update);
+                this.#finish(update, now);
                 update.turnEnded = true;
                 if (message.subtype === 'success' && !message.is_error) {
                     update.status =
@@ -122,10 +143,10 @@ export class TurnTracker {
     }
 
     /** Mark everything still streaming as done, e.g. after an interrupt. */
-    finish(): ProviderMessage[] {
-        const update: TrackerUpdate = { messages: [] };
-        this.#finish(update);
-        return update.messages;
+    finish(now = new Date().toISOString()): TrackerUpdate {
+        const update: TrackerUpdate = { messages: [], steps: [] };
+        this.#finish(update, now);
+        return update;
     }
 
     #begin(id: string, now: string, update: TrackerUpdate): Draft {
@@ -149,7 +170,8 @@ export class TurnTracker {
         return this.#current ? this.#drafts.get(this.#current) : undefined;
     }
 
-    #finish(update: TrackerUpdate): void {
+    #finish(update: TrackerUpdate, now: string): void {
+        update.steps.push(...this.#tools.abandon(now));
         for (const draft of this.#drafts.values()) {
             if (!draft.streaming) continue;
             draft.streaming = false;

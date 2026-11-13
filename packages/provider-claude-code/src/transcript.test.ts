@@ -12,6 +12,13 @@ const assistant = (id: string, content: unknown[], parent: string | null = null)
         parent_tool_use_id: parent,
         message: { id, content },
     }) as SDKMessage;
+const user = (content: unknown[], parent: string | null = null) =>
+    ({
+        type: 'user',
+        ...base,
+        parent_tool_use_id: parent,
+        message: { role: 'user', content },
+    }) as SDKMessage;
 const result = (fields: Record<string, unknown>) =>
     ({ type: 'result', ...base, ...fields }) as unknown as SDKMessage;
 
@@ -46,6 +53,93 @@ describe('TurnTracker', () => {
         expect(end.messages).toEqual([
             expect.objectContaining({ id: 'm2', text: 'Fixed.', streaming: false }),
         ]);
+    });
+
+    it("reports tool calls as steps, nesting a subagent's under its own", () => {
+        const tracker = new TurnTracker();
+        const started = tracker.apply(
+            assistant('m1', [
+                { type: 'text', text: 'Checking the card.' },
+                { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/src/card.tsx' } },
+                { type: 'tool_use', id: 't2', name: 'Task', input: { description: 'Find styles' } },
+                { type: 'tool_use', id: 't3', name: 'TodoWrite', input: { todos: [] } },
+            ]),
+            't0',
+        );
+        expect(started.steps).toEqual([
+            expect.objectContaining({
+                id: 't1',
+                label: 'Reading card.tsx',
+                kind: 'read',
+                status: 'running',
+                startedAt: 't0',
+            }),
+            expect.objectContaining({ id: 't2', label: 'Delegating: Find styles', kind: 'agent' }),
+        ]);
+        expect(started.messages.at(-1)?.text).toBe('Checking the card.');
+
+        const nested = tracker.apply(
+            assistant(
+                'sub',
+                [
+                    { type: 'text', text: 'inner' },
+                    { type: 'tool_use', id: 't4', name: 'Grep', input: { pattern: 'accent' } },
+                ],
+                't2',
+            ),
+        );
+        expect(nested.steps).toEqual([expect.objectContaining({ id: 't4', parentId: 't2' })]);
+        expect(nested.messages).toEqual([]);
+
+        const ended = tracker.apply(
+            user([
+                { type: 'tool_result', tool_use_id: 't1', content: 'ok' },
+                { type: 'tool_result', tool_use_id: 't4', content: 'nope', is_error: true },
+                { type: 'tool_result', tool_use_id: 't3', content: 'ok' },
+            ]),
+            't1',
+        );
+        expect(ended.steps).toEqual([
+            expect.objectContaining({
+                id: 't1',
+                label: 'Read card.tsx',
+                status: 'done',
+                endedAt: 't1',
+            }),
+            expect.objectContaining({ id: 't4', status: 'failed' }),
+        ]);
+
+        // The turn ended with the subagent's call still out.
+        const end = tracker.apply(
+            result({ subtype: 'success', is_error: false, result: '' }),
+            't2',
+        );
+        expect(end.steps).toEqual([
+            expect.objectContaining({ id: 't2', status: 'skipped', endedAt: 't2' }),
+        ]);
+        expect(tracker.finish().steps).toEqual([]);
+    });
+
+    it('skips the steps still running when a turn is interrupted', () => {
+        const tracker = new TurnTracker();
+        tracker.apply(
+            assistant('m1', [
+                { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'sleep 60' } },
+            ]),
+        );
+        expect(tracker.finish('t9').steps).toEqual([
+            expect.objectContaining({ id: 't1', status: 'skipped', endedAt: 't9' }),
+        ]);
+    });
+
+    it('ignores user messages without tool results', () => {
+        const tracker = new TurnTracker();
+        const update = tracker.apply({
+            type: 'user',
+            ...base,
+            message: { role: 'user', content: 'plain text' },
+        } as SDKMessage);
+        expect(update.steps).toEqual([]);
     });
 
     it('skips subagent output', () => {

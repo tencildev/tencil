@@ -17,6 +17,7 @@ import {
     sortedThreads,
 } from '../lib/state.ts';
 import { CheckIcon } from './icons.tsx';
+import { peekable, peekPin, unpeekPin } from './pin-peek.tsx';
 
 /** Stable pin numbers: oldest pin is #1, across all pages. */
 export const pinNumbers = computed(() => {
@@ -153,7 +154,11 @@ function Pin({ thread }: { thread: Thread }) {
             type="button"
             class={`pin pin-${pinVariant(thread)}${open ? ' pin-open' : ''}${dragging ? ' pin-dragging' : ''}`}
             style={{ transform: `translate(${point.x}px, ${point.y}px)` }}
-            title={thread.title}
+            title={peekable(thread.status) ? undefined : thread.title}
+            onPointerEnter={() => {
+                if (peekable(thread.status)) peekPin(thread.id);
+            }}
+            onPointerLeave={unpeekPin}
             onPointerDown={event => startPinDrag(event, thread, point)}
             onClick={() => {
                 if (draggedPin === thread.id) {
