@@ -95,6 +95,8 @@ export class FakeCodexAppServer {
     crashNextTurn = false;
     /** What the next process prints before dying, instead of starting. */
     failToStart: string | undefined;
+    /** How long every answer takes, like a busy machine. */
+    answerDelayMs = 0;
 
     #gates = new Set<() => void>();
     #processes = new Set<FakeProcess>();
@@ -195,12 +197,16 @@ class Connection {
         if (message.id === undefined) return;
         const { id, method, params = {} } = message;
         this.#server.requests.push({ method, params });
-        try {
-            this.#send({ id, result: this.#handle(method, params) });
-        } catch (error) {
-            const code = error instanceof RpcFailure ? error.code : -32603;
-            this.#send({ id, error: { code, message: (error as Error).message } });
-        }
+        const answer = () => {
+            try {
+                this.#send({ id, result: this.#handle(method, params) });
+            } catch (error) {
+                const code = error instanceof RpcFailure ? error.code : -32603;
+                this.#send({ id, error: { code, message: (error as Error).message } });
+            }
+        };
+        if (this.#server.answerDelayMs > 0) setTimeout(answer, this.#server.answerDelayMs);
+        else answer();
     }
 
     #handle(method: string, params: FakeCodexParams): unknown {
