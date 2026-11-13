@@ -288,6 +288,17 @@ describe('Codex provider', () => {
         await reply();
     });
 
+    it('keeps the process while a call waits on a slow Codex, however short the idle time', async () => {
+        const codex = new FakeCodexAppServer();
+        codex.answerDelayMs = 20;
+        const { provider } = setup({ idleCloseMs: 5 }, codex);
+        const { providerThreadId } = await provider.createThread(newThread());
+        const { sink, reply } = recordingSink();
+        provider.watch(providerThreadId, sink);
+        expect((await reply()).text).toBe('Done: Tighten the hero');
+        expect(codex.processes).toBe(1);
+    });
+
     it('replays a thread from Codex after a restart, with ids that line up', async () => {
         const codex = new FakeCodexAppServer();
         const { provider, create } = setup({}, codex);

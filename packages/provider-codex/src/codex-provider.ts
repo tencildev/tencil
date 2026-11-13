@@ -99,6 +99,8 @@ export class CodexProvider implements Provider {
     /** The process behind `#server`, known from the moment it starts. */
     #current: AppServer | undefined;
     #idleTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Calls in progress: the idle close waits for them, as it does for a turn. */
+    #inUse = 0;
     #recheckTimer: ReturnType<typeof setTimeout> | undefined;
     readonly #sessions = new Map<string, Session>();
     #disposed = false;
@@ -111,17 +113,22 @@ export class CodexProvider implements Provider {
     async start(): Promise<void> {
         clearTimeout(this.#recheckTimer);
         try {
-            const [server, workspace] = await Promise.all([this.#connect(), this.#workspaceRoot()]);
-            const { account, requiresOpenaiAuth } = await server.request<AccountRead>(
-                'account/read',
-                {},
-            );
-            if (!account && requiresOpenaiAuth) {
-                this.#signedOut(NOT_SIGNED_IN);
-                return;
-            }
-            this.#setInfo({ state: 'ready', target: basename(workspace) });
-            this.#log(`Codex ready in ${workspace}`);
+            await this.#using(async () => {
+                const [server, workspace] = await Promise.all([
+                    this.#connect(),
+                    this.#workspaceRoot(),
+                ]);
+                const { account, requiresOpenaiAuth } = await server.request<AccountRead>(
+                    'account/read',
+                    {},
+                );
+                if (!account && requiresOpenaiAuth) {
+                    this.#signedOut(NOT_SIGNED_IN);
+                    return;
+                }
+                this.#setInfo({ state: 'ready', target: basename(workspace) });
+                this.#log(`Codex ready in ${workspace}`);
+            });
         } catch (error) {
             this.#setInfo({ state: 'unavailable', detail: errorMessage(error) });
             this.#recheckLater();
@@ -137,7 +144,11 @@ export class CodexProvider implements Provider {
         return () => this.#infoListeners.delete(listener);
     }
 
-    async listThreads(): Promise<{ project: ProviderProject; threads: ProviderThreadSummary[] }> {
+    listThreads(): Promise<{ project: ProviderProject; threads: ProviderThreadSummary[] }> {
+        return this.#using(() => this.#listThreads());
+    }
+
+    async #listThreads(): Promise<{ project: ProviderProject; threads: ProviderThreadSummary[] }> {
         const [server, workspace] = await Promise.all([this.#connect(), this.#workspaceRoot()]);
         const { data } = await server.request<Page<CodexThread>>('thread/list', {
             cwd: workspace,
@@ -157,7 +168,11 @@ export class CodexProvider implements Provider {
         return { project: { name: basename(workspace) }, threads };
     }
 
-    async listModels(): Promise<ProviderModels> {
+    listModels(): Promise<ProviderModels> {
+        return this.#using(() => this.#listModels());
+    }
+
+    async #listModels(): Promise<ProviderModels> {
         const [server, workspace] = await Promise.all([this.#connect(), this.#workspaceRoot()]);
         const available = await pages<CodexModel>(cursor =>
             server.request('model/list', { cursor, limit: PAGE_SIZE }),
@@ -181,7 +196,11 @@ export class CodexProvider implements Provider {
         return undefined;
     }
 
-    async createThread(input: CreateThreadInput): Promise<CreatedThread> {
+    createThread(input: CreateThreadInput): Promise<CreatedThread> {
+        return this.#using(() => this.#createThread(input));
+    }
+
+    async #createThread(input: CreateThreadInput): Promise<CreatedThread> {
         const [server, workspace, model] = await Promise.all([
             this.#connect(),
             this.#workspaceRoot(),
@@ -204,7 +223,11 @@ export class CodexProvider implements Provider {
         return { providerThreadId: thread.id };
     }
 
-    async sendMessage(input: SendMessageInput): Promise<void> {
+    sendMessage(input: SendMessageInput): Promise<void> {
+        return this.#using(() => this.#sendMessage(input));
+    }
+
+    async #sendMessage(input: SendMessageInput): Promise<void> {
         const session = this.#session(input.providerThreadId);
         const [server, workspace] = await Promise.all([this.#connect(), this.#workspaceRoot()]);
         if (session.server !== server) {
@@ -274,7 +297,7 @@ export class CodexProvider implements Provider {
 
     /** Load the conversation Codex saved, once. */
     #hydrate(session: Session): Promise<void> {
-        session.hydrated ??= (async () => {
+        session.hydrated ??= this.#using(async () => {
             const server = await this.#connect();
             try {
                 for (const message of messagesFromHistory(await readHistory(server, session.id))) {
@@ -287,7 +310,7 @@ export class CodexProvider implements Provider {
                 if (!isMissingThread(error)) throw error;
                 session.missing = true;
             }
-        })().catch((error: unknown) => {
+        }).catch((error: unknown) => {
             // Try again on the next watch rather than remember a failed load.
             session.hydrated = undefined;
             throw error;
@@ -447,10 +470,21 @@ export class CodexProvider implements Provider {
             const working = [...this.#sessions.values()].some(
                 session => session.tracker.status().status === 'working',
             );
-            if (working) this.#keepOpen();
+            if (working || this.#inUse > 0) this.#keepOpen();
             else this.#closeServer();
         }, this.#options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS);
         this.#idleTimer.unref?.();
+    }
+
+    /** Keep the process for the whole of `work`, then a while longer. */
+    async #using<T>(work: () => Promise<T>): Promise<T> {
+        this.#inUse++;
+        try {
+            return await work();
+        } finally {
+            this.#inUse--;
+            this.#keepOpen();
+        }
     }
 
     #closeServer(): void {
