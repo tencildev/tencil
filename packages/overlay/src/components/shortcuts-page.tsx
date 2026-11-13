@@ -41,14 +41,17 @@ interface Clash {
  * new combination. Esc cancels, Backspace clears. Saved per browser.
  */
 export function ShortcutsPage() {
-    const [editing, setEditing] = useState<Action | null>(null);
+    const [editing, setEditingState] = useState<Action | null>(null);
     const [message, setMessage] = useState<{ action: Action; text: string } | null>(null);
     const [clash, setClash] = useState<Clash | null>(null);
     const current = shortcuts.value;
 
-    useEffect(() => {
-        recording.value = editing !== null;
-    }, [editing]);
+    // Set with the state, not in an effect: effects run after paint, so a key
+    // pressed right after recording could still find the page's shortcuts off.
+    const setEditing = (next: Action | null) => {
+        recording.value = next !== null;
+        setEditingState(next);
+    };
     // Closing the dialog mid-recording turns the page's shortcuts back on.
     useEffect(
         () => () => {
