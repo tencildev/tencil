@@ -1,5 +1,11 @@
 # @tencildev/protocol
 
+## 0.7.0
+
+### Minor Changes
+
+- [#12](https://github.com/tencildev/tencil/pull/12) [`20d2601`](https://github.com/tencildev/tencil/commit/20d2601ffb55570e59b8b5e157ac37808c021420) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Allow a site that isn't on localhost from the overlay. When the daemon refuses a page, the overlay says so and offers Allow, which opens a confirmation page served by the daemon itself. Allowed sites are saved in `allowed-origins.json` in Tencil's data folder, next to the ones passed with `--allow-origin`. The protocol adds the `origin.blocked` server message for it.
+
 ## 0.6.0
 
 ### Minor Changes

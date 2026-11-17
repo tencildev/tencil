@@ -1,5 +1,13 @@
 # @tencildev/testing
 
+## 0.4.1
+
+### Patch Changes
+
+- [#36](https://github.com/tencildev/tencil/pull/36) [`1909cae`](https://github.com/tencildev/tencil/commit/1909cae427e48bb2ca9b22e124baa245b3f8c65b) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Codex no longer closes for being idle while Tencil is still starting a thread or waiting on an answer from it. `FakeCodexAppServer` gets `answerDelayMs` to answer slowly, like a busy machine.
+- Updated dependencies [[`20d2601`](https://github.com/tencildev/tencil/commit/20d2601ffb55570e59b8b5e157ac37808c021420)]:
+  - @tencildev/protocol@0.7.0
+
 ## 0.4.0
 
 ### Minor Changes
