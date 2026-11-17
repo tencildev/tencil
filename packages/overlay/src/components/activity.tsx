@@ -1,3 +1,4 @@
+import { signal } from '@preact/signals';
 import type { StepKind, Thread, ThreadStep } from '@tencildev/protocol';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { send } from '../lib/connection.ts';
@@ -30,8 +31,20 @@ const KIND_ICONS: Record<StepKind, () => preact.JSX.Element> = {
 };
 
 /**
+ * Threads whose live steps the user opened. Shared, so the thread panel and the
+ * pin's peek agree; the card starts collapsed.
+ */
+const expanded = signal<ReadonlySet<string>>(new Set());
+
+function toggleExpanded(threadId: string): void {
+    const next = new Set(expanded.value);
+    if (!next.delete(threadId)) next.add(threadId);
+    expanded.value = next;
+}
+
+/**
  * The agent's tool calls for the latest turn. While it works, a header with a
- * live clock and Stop over a rolling window of the newest calls; once done,
+ * live clock and Stop; clicking it opens a rolling window of the newest calls. Once done,
  * one line ("6 steps · 13s") that opens the full list.
  */
 export function Activity({ thread, rows = 3 }: { thread: Thread; rows?: number }) {
@@ -60,19 +73,41 @@ function LiveActivity({
     const top = steps.filter(step => !step.parentId);
     // One row more than fits, so the oldest has somewhere to fade out to.
     const visible = top.slice(-(rows + 1));
+    const open = expanded.value.has(thread.id);
+    const title = live ? (
+        <Shimmer text={thread.status === 'starting' ? 'Starting…' : 'Working…'} />
+    ) : (
+        (thread.statusDetail ?? 'Needs your input')
+    );
     return (
-        <div class={`activity${live ? '' : ' activity-waiting'}`}>
+        <div
+            class={`activity${live ? '' : ' activity-waiting'}${open && visible.length > 0 ? ' open' : ''}`}
+        >
             <div class="activity-head">
-                <span class={live ? 'live-dot' : 'waiting-dot'} />
-                <span class="activity-title">
-                    {live ? (
-                        <Shimmer text={thread.status === 'starting' ? 'Starting…' : 'Working…'} />
-                    ) : (
-                        (thread.statusDetail ?? 'Needs your input')
-                    )}
-                </span>
-                {started !== undefined && (
-                    <span class="activity-clock">{clock(now - started)}</span>
+                {top.length > 0 ? (
+                    <button
+                        type="button"
+                        class="activity-toggle"
+                        aria-expanded={open}
+                        title={open ? 'Hide steps' : 'Show steps'}
+                        onClick={event => {
+                            event.stopPropagation();
+                            toggleExpanded(thread.id);
+                        }}
+                    >
+                        <HeadLabel live={live} title={title} />
+                        {started !== undefined && (
+                            <span class="activity-clock">{clock(now - started)}</span>
+                        )}
+                        <ChevronIcon />
+                    </button>
+                ) : (
+                    <span class="activity-toggle">
+                        <HeadLabel live={live} title={title} />
+                        {started !== undefined && (
+                            <span class="activity-clock">{clock(now - started)}</span>
+                        )}
+                    </span>
                 )}
                 {live && (
                     <button
@@ -99,8 +134,17 @@ function LiveActivity({
                     </a>
                 )}
             </div>
-            {visible.length > 0 && <RollingSteps steps={visible} rows={rows} />}
+            {open && visible.length > 0 && <RollingSteps steps={visible} rows={rows} />}
         </div>
+    );
+}
+
+function HeadLabel({ live, title }: { live: boolean; title: preact.ComponentChildren }) {
+    return (
+        <>
+            <span class={live ? 'live-dot' : 'waiting-dot'} />
+            <span class="activity-title">{title}</span>
+        </>
     );
 }
 

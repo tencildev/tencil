@@ -507,7 +507,7 @@ kbd {
 
 /*
  * The turn's activity: a provider's steps (the agent's tool calls; on Tencil
- * Cloud also sandbox, clone, install). Live, it's a header over a rolling
+ * Cloud also sandbox, clone, install). Live, it's a header that opens a rolling
  * window of the newest calls; done, one line that opens the full list.
  */
 .activity {
@@ -518,6 +518,15 @@ kbd {
   @starting-style { opacity: 0; translate: 0 4px; }
 }
 .activity-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; }
+.activity-toggle {
+  display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 20px;
+  padding: 0; color: inherit; text-align: left;
+}
+button.activity-toggle { cursor: pointer; }
+.activity-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.activity-toggle > svg { flex: none; color: var(--n-500); transition: transform 150ms var(--ease-out); }
+button.activity-toggle:hover > svg { color: var(--n-900); }
+.activity.open .activity-toggle > svg { transform: rotate(180deg); }
 .activity-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--n-900); }
 .activity-waiting .activity-title { color: var(--warn); }
 .waiting-dot { width: 6px; height: 6px; border-radius: 999px; background: #e69a10; flex: none; }
