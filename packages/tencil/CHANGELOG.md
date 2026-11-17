@@ -1,5 +1,51 @@
 # tencil
 
+## 0.12.0
+
+### Minor Changes
+
+- [#29](https://github.com/tencildev/tencil/pull/29) [`9c57a48`](https://github.com/tencildev/tencil/commit/9c57a48a5407964074988bf955346f99a09714c6) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Resolve every done pin at once. The inbox shows "Resolve N done" when pins in the list have
+  finished; it leaves pins that are still working, need input or failed open.
+
+### Patch Changes
+
+- [#33](https://github.com/tencildev/tencil/pull/33) [`c814b1f`](https://github.com/tencildev/tencil/commit/c814b1f56da5e864e66d04fe32622caf15031212) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Shortcuts keep working after you record a new one. Closing settings right after recording could
+  leave the overlay's shortcuts switched off.
+
+## 0.11.0
+
+### Minor Changes
+
+- [#24](https://github.com/tencildev/tencil/pull/24) [`5989fc4`](https://github.com/tencildev/tencil/commit/5989fc4058f6b339d31dfd2a9b5c0998af2439b8) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Send pins to Codex directly, next to T3 Code, Claude Code and Ensemble. The daemon runs
+  `codex app-server` under your own Codex install and login, the CLI or the desktop app's
+  copy, and each pin is a Codex thread you can continue with `codex resume <id>`. Pick it
+  with `--provider codex` or in a project's settings; `--model`, the model picker and
+  `--runtime-mode` all apply. `@tencildev/testing` gains `FakeCodexAppServer`.
+
+## 0.10.0
+
+### Minor Changes
+
+- [#21](https://github.com/tencildev/tencil/pull/21) [`09e4b03`](https://github.com/tencildev/tencil/commit/09e4b0371655f512d6c515d5ea774698f4e272f9) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Settings open in a dialog with pages, grouped by where each setting is
+  saved: the project's (Agent, Tools), yours (Appearance, Shortcuts, Dock,
+  Account) and Tencil's (About, with links to the GitHub repo and a debug
+  section to copy into bug reports).
+  
+  - Settings start on the Project page: the project's name and folder, and
+    how Tencil detected it. Change switches the page to another project; the
+    pick holds while Tencil detects the same project on that address, so a
+    reused port still goes to the right one.
+  
+  - Tencil is dark by default now. Appearance switches it to light, or to
+    follow the system.
+  - The theme and shortcuts are saved by the daemon (`preferences.json`), so
+    they're the same in every project and browser on the machine.
+  - A new Dock setting hides Tencil on a site altogether: no toolbar, pins
+    or panels. Press Alt+T (⌥T on a Mac) to bring it back or hide it again.
+  - Shortcuts can be changed on the Shortcuts page: click one and press the
+    new keys. Comment, Ruler, Measure (the held key), Hide pins (new, off by
+    default) and Hide the dock. Tooltips and hints show the keys you picked.
+
 ## 0.9.0
 
 ### Minor Changes

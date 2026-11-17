@@ -201,6 +201,10 @@ export class Bridge {
                 }
                 case 'update.start':
                     throw new Error("Tencil can't update itself here");
+                case 'preferences.update':
+                    throw new Error("Preferences aren't saved here");
+                case 'project.choices':
+                    throw new Error("Projects can't be switched here");
             }
         } catch (error) {
             const threadId = 'threadId' in message ? message.threadId : undefined;

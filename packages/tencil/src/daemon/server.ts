@@ -5,12 +5,22 @@ import { basename, join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { Bridge, type BridgeClient, ProjectProviders } from '@tencildev/bridge';
-import type { Provider, ServerMessage } from '@tencildev/protocol';
+import {
+    Preferences,
+    type ProjectSource,
+    type Provider,
+    type ServerMessage,
+} from '@tencildev/protocol';
 import {
     ClaudeCodeProvider,
     listClaudeCodeProjects,
     type PermissionMode,
 } from '@tencildev/provider-claude-code';
+import {
+    CodexProvider,
+    type CodexProviderOptions,
+    listCodexProjects,
+} from '@tencildev/provider-codex';
 import {
     type EnsembleCredentialStore,
     EnsembleProvider,
@@ -31,7 +41,8 @@ import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
 import { AllowedOrigins, approvableOrigin } from './allowed-origins.ts';
 import { APPROVAL_HEADERS, allowedPage, confirmPage, errorPage } from './approval-page.ts';
-import { type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
+import { FilePreferences, preferencesPath } from './preferences.ts';
+import { type Detected, type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
 import { defaultDataDir, FileThreadStore } from './thread-store.ts';
@@ -57,6 +68,7 @@ export interface DaemonOptions {
      */
     provider?: ProviderName;
     claudeCode?: { model?: string; permissionMode?: PermissionMode };
+    codex?: Pick<CodexProviderOptions, 'model' | 'permissions' | 'command' | 'spawn'>;
     /** Ensemble's public local API. */
     ensemble?: { url?: string; credentials?: EnsembleCredentialStore };
     t3?: Pick<T3CodeProviderOptions, 'autoPair' | 'createPairingCode' | 'timeouts'> & {
@@ -113,6 +125,17 @@ interface Session {
  * the dev server's port, or picked by the user), and every project gets its
  * own bridge, provider connection and pin store, created on first use.
  */
+type AutoVia = 'ensemble' | 'plugin' | 'port' | 'docker';
+
+/** The detected project behind a result, also when a pick overrides it. */
+function automaticPart(
+    found: Detected | undefined,
+): { root: string; via: AutoVia; port?: number } | undefined {
+    if (!found) return undefined;
+    if (found.source.via === 'picked') return found.source.detected;
+    return { root: found.root, via: found.source.via, port: found.source.port };
+}
+
 export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> {
     const port = options.port ?? DEFAULT_PORT;
     const host = options.host ?? '127.0.0.1';
@@ -133,12 +156,16 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         exec: options.exec,
         ensembleForPort: port => ensembleProjectForPort(port, ensembleOptions),
     });
-    const resolveProject =
-        options.resolveProject ?? ((pageUrl, root) => resolver.resolve(pageUrl, root));
+    const detectProject = async (pageUrl: string, root?: string): Promise<Detected | undefined> => {
+        if (!options.resolveProject) return resolver.detect(pageUrl, root);
+        const found = await options.resolveProject(pageUrl, root);
+        return found ? { root: found, source: { via: 'port' } } : undefined;
+    };
     const sessions = new Map<string, Promise<Session>>();
     const overlayPath = resolveOverlayPath();
     // Created once the port is known; bridges read it when a page says hello.
     let updater: Updater | undefined;
+    const preferences = new FilePreferences(preferencesPath(dataDir));
 
     const claudeCodeDir = join(dataDir, 'claude-code');
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
@@ -151,6 +178,14 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     ...options.claudeCode,
                     projectRoot: root,
                     installDir: claudeCodeDir,
+                    log: providerLog,
+                });
+            }
+            if (id === 'codex') {
+                return new CodexProvider({
+                    ...options.codex,
+                    projectRoot: root,
+                    version: VERSION,
                     log: providerLog,
                 });
             }
@@ -209,17 +244,18 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
 
     /** Projects any agent knows, offered when a page's project can't be worked out. */
     const choices = async () => {
-        const [t3, claude, ensemble] = await Promise.all([
+        const [t3, claude, codex, ensemble] = await Promise.all([
             listT3Projects({
                 baseUrl: t3Url,
                 token: options.t3?.token ?? process.env.TENCIL_T3_TOKEN,
                 credentials: options.t3?.credentials,
             }).catch(() => []),
             listClaudeCodeProjects({ installDir: claudeCodeDir }).catch(() => []),
+            listCodexProjects(options.codex).catch(() => []),
             listEnsembleProjects(ensembleOptions).catch(() => []),
         ]);
         const byRoot = new Map<string, { root: string; title: string }>();
-        for (const project of [...t3, ...claude, ...ensemble]) {
+        for (const project of [...t3, ...claude, ...codex, ...ensemble]) {
             if (!byRoot.has(project.workspaceRoot)) {
                 byRoot.set(project.workspaceRoot, {
                     root: project.workspaceRoot,
@@ -230,7 +266,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         return [...byRoot.values()];
     };
     const noChoicesHint =
-        "No projects found. Open this page's project in T3 Code or Ensemble, or run claude in it once.";
+        "No projects found. Open this page's project in T3 Code or Ensemble, or run claude or codex in it once.";
 
     const settled = async () =>
         (await Promise.allSettled(sessions.values()))
@@ -356,8 +392,14 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         let current: Session | undefined;
         let detach: (() => void) | undefined;
         let pageUrl = '';
+        /** What detection found for this page, to switch from and back to. */
+        let detected: { root: string; via: AutoVia; port?: number } | undefined;
         // Messages are processed in order even though attaching is async.
         let queue = Promise.resolve();
+        // Before any project: the theme and shortcuts are the same everywhere.
+        void preferences
+            .load()
+            .then(saved => client.send({ type: 'preferences', preferences: saved }));
 
         const attach = async (root: string, hello: unknown) => {
             detach?.();
@@ -374,8 +416,12 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 pageUrl = message.pageUrl ?? '';
                 // `root` on hello is the repository the Vite or Next loader claims.
                 const claimed = typeof message.root === 'string' ? message.root : undefined;
-                const root = await resolveProject(pageUrl, claimed).catch(() => undefined);
-                if (root) return attach(root, raw);
+                const found = await detectProject(pageUrl, claimed).catch(() => undefined);
+                detected = automaticPart(found);
+                if (found) {
+                    await attach(found.root, raw);
+                    return client.send({ type: 'project.source', source: found.source });
+                }
                 return client.send({
                     type: 'project.unknown',
                     pageUrl,
@@ -388,9 +434,35 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 // Runs for a while; progress goes out as `update` messages.
                 return void updater.update();
             }
+            if (message.type === 'preferences.update') {
+                const changes = Preferences.parse((raw as { preferences?: unknown }).preferences);
+                const saved = await preferences.update(changes);
+                const update = JSON.stringify({
+                    type: 'preferences',
+                    preferences: saved,
+                } satisfies ServerMessage);
+                // Every tab, on every project, picks up the change.
+                for (const other of wss.clients) {
+                    if (other.readyState === WebSocket.OPEN) other.send(update);
+                }
+                return;
+            }
             if (message.type === 'project.select' && message.root) {
-                await resolver.remember(pageUrl, message.root);
-                return attach(message.root, { type: 'hello', protocol: 1, pageUrl });
+                const root = message.root;
+                const auto = detected;
+                // A switch away from a detected project holds while that project is detected.
+                if (auto) await resolver.pick(pageUrl, auto.root, root);
+                else await resolver.remember(pageUrl, root);
+                await attach(root, { type: 'hello', protocol: 1, pageUrl });
+                const source: ProjectSource = !auto
+                    ? { via: 'picked' }
+                    : projectKey(root) === auto.root
+                      ? { via: auto.via, port: auto.port }
+                      : { via: 'picked', detected: auto };
+                return client.send({ type: 'project.source', source });
+            }
+            if (message.type === 'project.choices') {
+                return client.send({ type: 'project.choices', choices: await choices() });
             }
             if (!current) return client.send({ type: 'error', message: 'No project selected yet' });
             await current.bridge.handle(client, raw);

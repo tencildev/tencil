@@ -11,12 +11,6 @@ export interface Box {
 
 export type Side = 'top' | 'right' | 'bottom' | 'left';
 
-/** Option on a Mac: the same key, which browsers report as Alt. */
-export const ALT_KEY =
-    typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
-        ? '⌥ Option'
-        : 'Alt';
-
 export const SIDES: Side[] = ['top', 'right', 'bottom', 'left'];
 
 /** One measured distance, drawn as a line with its value. */

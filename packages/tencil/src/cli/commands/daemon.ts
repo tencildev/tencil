@@ -3,7 +3,12 @@ import pc from 'picocolors';
 import type { ProviderName } from '../../daemon/agents.ts';
 import { startDaemon } from '../../daemon/server.ts';
 import { time } from '../format.ts';
-import { forwardedFlags, parseModel, permissionModeFor } from '../options.ts';
+import {
+    codexPermissionsFor,
+    forwardedFlags,
+    modelFlagFor,
+    permissionModeFor,
+} from '../options.ts';
 
 export async function runDaemon(
     values: Record<string, unknown>,
@@ -13,21 +18,23 @@ export async function runDaemon(
     runtimeMode: RuntimeMode | undefined,
     cli: string,
 ): Promise<void> {
-    // T3 Code models read `instance:model`; anything else is a Claude Code model.
-    const model = values.model as string | undefined;
-    const t3Model = model?.includes(':') ? model : undefined;
+    const model = modelFlagFor(values.model as string | undefined);
     const daemon = await startDaemon({
         port,
         listen: values.listen as string[] | undefined,
         allowedOrigins: values['allow-origin'] as string[] | undefined,
         provider,
         claudeCode: {
-            model: t3Model ? undefined : model,
+            model: model.claudeCode,
             permissionMode: permissionModeFor(runtimeMode),
+        },
+        codex: {
+            model: model.codex,
+            permissions: codexPermissionsFor(runtimeMode),
         },
         t3: {
             url: t3Url,
-            modelSelection: parseModel(t3Model),
+            modelSelection: model.t3,
             runtimeMode,
             createProjectIfMissing: !values['no-create-project'],
         },

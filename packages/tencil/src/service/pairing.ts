@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { loadAgentSdk } from '@tencildev/provider-claude-code';
+import { codexProblem } from '@tencildev/provider-codex';
 import { EnsembleClient, EnsembleCredentialStore } from '@tencildev/provider-ensemble';
 import {
     CredentialStore,
@@ -18,6 +19,7 @@ export async function prepareProvider(
     log: (message: string) => void,
 ): Promise<void> {
     if (provider === 'claude-code') return prepareClaudeCode(log);
+    if (provider === 'codex') return checkCodex(log);
     if (provider === 'ensemble') return checkEnsemble(log);
     return pairWithLocalT3(t3Url, log);
 }
@@ -64,6 +66,16 @@ async function prepareClaudeCode(log: (message: string) => void): Promise<void> 
     } catch (error) {
         log(`  ${pc.yellow('!')} ${error instanceof Error ? error.message : String(error)}`);
     }
+}
+
+/** Pins run from the user's own Codex install and login, so say what's missing, don't install it. */
+async function checkCodex(log: (message: string) => void): Promise<void> {
+    const problem = await codexProblem();
+    log(
+        problem
+            ? `  ${pc.yellow('!')} ${problem.replace(/`([^`]+)`/g, (_, command) => pc.cyan(command))}`
+            : `  ${pc.green('✓')} Codex is ready. Pins run in your Codex login.`,
+    );
 }
 
 /** Ask the user once to allow Tencil in Ensemble, unless Tencil's token still works. */

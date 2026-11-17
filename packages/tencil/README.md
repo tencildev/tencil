@@ -22,16 +22,19 @@ Think Vercel Comments, except the reviewer on the other side is an agent.
                                                                                    └─────────────┘
 ```
 
-Tencil works with three agents. With **T3 Code**, every pin is a real T3 Code thread
+Tencil works with four agents. With **T3 Code**, every pin is a real T3 Code thread
 in the project that matches your dev site's folder, so you can continue any
 conversation there. With **Claude Code**, the daemon runs Claude Code itself and
-every pin is a Claude Code session you can resume in a terminal. With **Ensemble**,
+every pin is a Claude Code session you can resume in a terminal. With **Codex**, the
+daemon runs your own Codex and every pin is a Codex thread you can resume in a terminal
+or the desktop app. With **Ensemble**,
 every pin is a chat on the Ensemble thread serving your page.
 
 ## Quick start
 
 You need [T3 Code](https://github.com/pingdotgg/t3code) (the desktop app, running),
-[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in) or
+[Claude Code](https://docs.claude.com/en/docs/claude-code) (installed and logged in),
+[Codex](https://github.com/openai/codex) (the CLI or desktop app, logged in) or
 [Ensemble](https://tryensemble.co) (the desktop app, running).
 
 ```sh
@@ -123,6 +126,19 @@ repository root. Each pin is a Claude Code session you can also pick up in a
 terminal with `claude --resume <id>`. The first time, Tencil installs the Claude
 Agent SDK into its config folder (it brings Claude Code along, about 250 MB).
 
+### Codex
+
+With `--provider codex` (or Codex picked in a project's settings), the daemon runs the
+Codex on your machine, under your own login and with no API key of its own: the `codex`
+on your `PATH`, otherwise the copy in the desktop app. Setup picks it when it's the only
+agent you have. Tencil doesn't install Codex, which is about 400 MB. If it's missing, setup
+and the overlay say so: run `npm i -g @openai/codex`, then `codex login`, and Tencil
+notices by itself.
+
+Each pin is a Codex thread in the project's repository root, so you can pick it up with
+`codex resume <id>` or in the desktop app, and threads you started there show up in the
+overlay's inbox. The composer's model picker lists your Codex models.
+
 ### Ensemble
 
 With `--provider ensemble` (or Ensemble picked in a project's settings), keep the
@@ -140,9 +156,16 @@ thread, and reopening the pin or replying to it brings it back. Threads you star
 yourself stay open, and so does one you've added a chat to. If the folder isn't in Ensemble, the overlay names the repository to add.
 
 Nobody is at a terminal to approve tool calls, so `--runtime-mode` decides up front:
-`full-access` (the default) lets Claude Code run anything; with the stricter modes,
-tools that would need approval are refused and Claude Code is told why. A turn that
+`full-access` (the default) lets Claude Code and Codex run anything; with the stricter
+modes, tools that would need approval are refused and the agent is told why. A turn that
 is running when the daemon stops is lost; the pin turns red and you can follow up.
+
+| `--runtime-mode` | Codex sandbox | What needs more than the sandbox allows |
+| --- | --- | --- |
+| `full-access` | `danger-full-access` | Nothing does |
+| `auto` | `workspace-write` | Codex's own automatic review decides |
+| `auto-accept-edits` | `workspace-write` | Refused |
+| `approval-required` | `read-only` | Refused |
 
 ## Using it
 
@@ -153,11 +176,12 @@ is running when the daemon stops is lost; the pin turns red and you can follow u
 | Cancel | <kbd>Esc</kbd> |
 | Follow up | Open a pin and reply; the same agent thread continues |
 | Continue an existing thread | In the composer, switch **→ New thread** to any thread in the project; the element becomes its next message |
-| Open any project thread | Inbox → the agent's tab (**T3 Code** or **Claude Code**); the thread docks on the right so you can read, reply and stop while using the page |
+| Open any project thread | Inbox → the agent's tab (**T3 Code**, **Claude Code** or **Codex**); the thread docks on the right so you can read, reply and stop while using the page |
 | Stop the agent | **Stop** while a pin is working |
 | All pins | Inbox button, filter by page or show resolved |
 | Continue in T3 Code | External-link icon on a pin |
 | Continue in Claude Code | `claude --resume <id>` in the project's folder |
+| Continue in Codex | `codex resume <id>` in the project's folder, or the desktop app |
 
 Pins show their state: spinning while the agent works, blue when done, amber when
 the agent waits for approval, red on errors, grey once resolved.
@@ -177,10 +201,11 @@ tencil service uninstall      Remove the login service
 tencil connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 --port <n>              Port (default 4747, env TENCIL_PORT)
---provider <name>       Agent for projects without their own: t3code (default) | claude-code | ensemble
+--provider <name>       Agent for projects without their own: t3code (default) | claude-code | codex | ensemble
 --t3-url <url>          T3 Code server (default: last paired, then http://127.0.0.1:3773)
 --model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
                         Claude Code: a model, e.g. claude-opus-5-5 (default: its default)
+                        Codex: a model, e.g. gpt-6.1-sol (default: its default)
 --runtime-mode <mode>   approval-required | auto-accept-edits | auto | full-access
 --listen <address>      Also listen here, e.g. a Tailscale IP (repeatable)
 --allow-origin <url>    Allow a non-localhost page to connect (repeatable)

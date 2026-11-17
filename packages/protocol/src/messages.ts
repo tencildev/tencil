@@ -53,6 +53,41 @@ export interface UpdateStatus {
     error?: string;
 }
 
+/* ------------------------------- preferences ------------------------------- */
+
+/** A key combination, matched by key position (`code`) so it works on any layout. */
+export const Shortcut = z.object({
+    code: z.string().min(1).max(32),
+    /** What the layout prints for it, for labels. */
+    key: z.string().min(1).max(32),
+    alt: z.boolean(),
+    ctrl: z.boolean(),
+    meta: z.boolean(),
+    shift: z.boolean(),
+});
+export type Shortcut = z.infer<typeof Shortcut>;
+
+export const Shortcuts = z.object({
+    comment: Shortcut.nullable(),
+    ruler: Shortcut.nullable(),
+    hidePins: Shortcut.nullable(),
+    /** Never cleared: it's the only way back to a hidden dock. */
+    hideDock: Shortcut,
+    /** Held, not pressed. */
+    measure: z.enum(['Alt', 'Control', 'Meta', 'Shift']).nullable(),
+});
+export type Shortcuts = z.infer<typeof Shortcuts>;
+
+/**
+ * The person's own overlay settings, the same in every project on the machine.
+ * Saved by the local daemon; unset ones fall back to the overlay's defaults.
+ */
+export const Preferences = z.object({
+    theme: z.enum(['dark', 'light', 'system']).optional(),
+    shortcuts: Shortcuts.optional(),
+});
+export type Preferences = z.infer<typeof Preferences>;
+
 /* ----------------------------- overlay → bridge ----------------------------- */
 
 export const ClientMessage = z.discriminatedUnion('type', [
@@ -104,6 +139,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     z.object({ type: z.literal('provider.threads') }),
     /** The models new threads of the default provider can run on. */
     z.object({ type: z.literal('provider.models') }),
+    /** List the projects this page could belong to, to switch (local daemon only). */
+    z.object({ type: z.literal('project.choices') }),
     /** Attach this page to a project folder (answer to `project.unknown`, or a switch). */
     z.object({ type: z.literal('project.select'), root: z.string().min(1) }),
     /** Ask the provider to authorize (e.g. pair with a local T3 Code). */
@@ -130,6 +167,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     z.object({ type: z.literal('model.select'), model: z.string().min(1).nullable() }),
     /** Install the latest Tencil and restart the daemon on it (local daemon only). */
     z.object({ type: z.literal('update.start') }),
+    /** Save some preferences on this machine (local daemon only); unnamed ones stay. */
+    z.object({ type: z.literal('preferences.update'), preferences: Preferences }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 export type ClientMessageInput = z.input<typeof ClientMessage>;
@@ -166,6 +205,23 @@ export const ProjectSettings = z.object({
 });
 export type ProjectSettings = z.infer<typeof ProjectSettings>;
 
+/**
+ * How the daemon matched the page to its project: an Ensemble thread's dev
+ * server, the git root the Vite or Next plugin passed, the dev server listening
+ * on the page's port, the Docker container publishing it, or a pick in the overlay.
+ */
+const DetectedVia = z.enum(['ensemble', 'plugin', 'port', 'docker']);
+
+export const ProjectSource = z.object({
+    via: z.enum([...DetectedVia.options, 'picked']),
+    port: z.number().int().optional(),
+    /** Picked over a project Tencil did detect: that one, to go back to. */
+    detected: z
+        .object({ root: z.string(), via: DetectedVia, port: z.number().int().optional() })
+        .optional(),
+});
+export type ProjectSource = z.infer<typeof ProjectSource>;
+
 export type ServerMessage =
     | {
           type: 'ready';
@@ -183,6 +239,12 @@ export type ServerMessage =
       }
     /** The update status changed: a check found a newer version, or an update moved on. */
     | { type: 'update'; update: UpdateStatus }
+    /** Local daemon only: the answer to `project.choices`. */
+    | { type: 'project.choices'; choices: Array<{ root: string; title: string }> }
+    /** Local daemon only: how this page's project was found, after it attaches. */
+    | { type: 'project.source'; source: ProjectSource }
+    /** Local daemon only: the saved preferences, on connect and whenever they change. */
+    | { type: 'preferences'; preferences: Preferences }
     /** Tencil Cloud: sign in first (no token, or one it no longer accepts). */
     | { type: 'auth.required'; signIn: CloudSignIn; reason?: string }
     | { type: 'provider.status'; provider: ProviderInfo }

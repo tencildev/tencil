@@ -8,6 +8,7 @@
         "../protocol/src",
         "../provider-t3code/src",
         "../provider-claude-code/src",
+        "../provider-codex/src",
         "../provider-ensemble/src"
     ],
     "exclude": ["**/*.test.ts"]

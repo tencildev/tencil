@@ -38,7 +38,9 @@ body:
       options:
         - T3 Code
         - Claude Code
-        - Both / not agent-related
+        - Codex
+        - Ensemble
+        - Several / not agent-related
     validations:
       required: true
   - type: input
