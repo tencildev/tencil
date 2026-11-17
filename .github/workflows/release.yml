@@ -53,3 +53,84 @@ jobs:
         env:
           # npm provenance needs a public repository.
           NPM_CONFIG_PROVENANCE: ${{ !github.event.repository.private }}
+
+  extension:
+    # Publishes the Chrome extension when `tencil` reaches a version the store doesn't have yet:
+    # the manifest takes tencil's version, and the `extension@<version>` tag marks it as sent.
+    # Off until the store is set up (apps/extension/README.md, "Releasing"): set the repository
+    # variable EXTENSION_RELEASE_ENABLED=true.
+    if: github.repository == 'tencildev/tencil' && github.ref == 'refs/heads/master' && vars.EXTENSION_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      PUBLISHER_ID: ${{ vars.CHROME_WEBSTORE_PUBLISHER_ID }}
+      EXTENSION_ID: ${{ vars.CHROME_WEBSTORE_EXTENSION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for a new version
+        id: version
+        run: |
+          version=$(node -p "require('./packages/tencil/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/extension@$version" > /dev/null; then
+            echo "extension@$version is already released"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.version.outputs.new == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.version.outputs.new == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - if: steps.version.outputs.new == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Build and zip
+        if: steps.version.outputs.new == 'true'
+        run: |
+          pnpm turbo run build --filter=@tencildev/extension...
+          pnpm --filter @tencildev/extension zip
+
+      # Workload Identity Federation: GitHub vouches for this workflow, so there is no key.
+      - name: Sign in to Google
+        if: steps.version.outputs.new == 'true'
+        id: google
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.CHROME_WEBSTORE_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+
+      - name: Upload and submit for review
+        if: steps.version.outputs.new == 'true'
+        env:
+          TOKEN: ${{ steps.google.outputs.access_token }}
+        run: |
+          api="https://chromewebstore.googleapis.com/v2/publishers/$PUBLISHER_ID/items/$EXTENSION_ID"
+          upload="https://chromewebstore.googleapis.com/upload/v2/publishers/$PUBLISHER_ID/items/$EXTENSION_ID:upload"
+
+          state=$(curl -sSf -X POST -H "Authorization: Bearer $TOKEN" \
+            -T apps/extension/tencil-extension.zip "$upload" | tee /dev/stderr | jq -r .uploadState)
+          for _ in $(seq 30); do
+            [ "$state" = IN_PROGRESS ] || break
+            sleep 10
+            state=$(curl -sSf -H "Authorization: Bearer $TOKEN" "$api:fetchStatus" \
+              | tee /dev/stderr | jq -r .lastAsyncUploadState)
+          done
+          if [ "$state" != SUCCEEDED ]; then
+            echo "::error::Upload ended as $state"
+            exit 1
+          fi
+
+          curl -sSf -X POST -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' -d '{}' "$api:publish"
+
+      - name: Tag the release
+        if: steps.version.outputs.new == 'true'
+        run: |
+          git tag "extension@${{ steps.version.outputs.version }}"
+          git push origin "extension@${{ steps.version.outputs.version }}"

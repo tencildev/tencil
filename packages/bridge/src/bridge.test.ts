@@ -3,7 +3,7 @@ import { FakeAgentProvider, waitFor } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, mergeMessage } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';
-import { renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';
+import { isDeployed, renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';
 import { MemoryThreadStore } from './thread-store.ts';
 
 const context = {
@@ -105,6 +105,60 @@ describe('batch prompt', () => {
         expect(text).toContain('#2\n- Page: http://localhost:3000/\n');
         expect(text).toContain('- Screenshot: attached image 1');
         expect(text).toContain('#5\n- Page: http://localhost:3000/pricing\n');
+    });
+});
+
+describe('deployed sites', () => {
+    it('tells the agent a page on a deployed site only changes once it ships', () => {
+        const text = renderPrompt({
+            prompt: 'Make it red',
+            pageUrl: 'https://shop.example.com/pricing',
+            context,
+            hasScreenshot: false,
+        });
+        expect(text).toContain(
+            '- Page: https://shop.example.com/pricing (deployed site, not a local dev server)',
+        );
+        expect(text).toContain('The page is on https://shop.example.com, a deployed site');
+        expect(text).toContain("won't show on that site until it's deployed");
+    });
+
+    it('says nothing extra for local dev servers', () => {
+        const text = renderPrompt({
+            prompt: 'Make it red',
+            pageUrl: 'http://localhost:3000/',
+            context,
+            hasScreenshot: false,
+        });
+        expect(text).not.toContain('deployed');
+    });
+
+    it('names each deployed origin once in a batch', () => {
+        const text = renderBatchPrompt([
+            { number: 1, prompt: 'a', pageUrl: 'https://site.example/', context, screenshots: [] },
+            { number: 2, prompt: 'b', pageUrl: 'https://site.example/x', context, screenshots: [] },
+            { number: 3, prompt: 'c', pageUrl: 'http://localhost:3000/', context, screenshots: [] },
+        ]);
+        expect(text).toContain('The page is on https://site.example, a deployed site');
+        expect(text).toContain('#3\n- Page: http://localhost:3000/\n');
+    });
+
+    it.each([
+        ['http://localhost:5173/', false],
+        ['http://app.localhost/', false],
+        ['http://127.0.0.1:8000/', false],
+        ['http://[::1]:3000/', false],
+        ['http://192.168.1.20:3000/', false],
+        ['http://10.0.0.5/', false],
+        ['http://172.20.0.2/', false],
+        ['http://shop.test/', false],
+        ['http://mac.local:3000/', false],
+        ['not a url', false],
+        ['https://pixelperfect.agency/', true],
+        ['https://preview-123.vercel.app/', true],
+        ['http://172.32.0.1/', true],
+    ])('%s is deployed: %s', (url, deployed) => {
+        expect(isDeployed(url)).toBe(deployed);
     });
 });
 

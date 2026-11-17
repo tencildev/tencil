@@ -1,0 +1,19 @@
+{
+    "name": "@tencildev/extension",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "tsdown && node scripts/manifest.mjs",
+        "dev": "tsdown --watch",
+        "typecheck": "tsc -p .",
+        "zip": "rm -f tencil-extension.zip && cd dist && zip -qr ../tencil-extension.zip ."
+    },
+    "devDependencies": {
+        "@tencildev/overlay": "workspace:*",
+        "@tencildev/tsconfig": "workspace:*",
+        "@types/chrome": "^0.1.0",
+        "tencil": "workspace:*",
+        "tsdown": "^0.23.0"
+    }
+}
