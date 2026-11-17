@@ -4,6 +4,7 @@ import type { ProviderName } from '../../daemon/agents.ts';
 import { startDaemon } from '../../daemon/server.ts';
 import { time } from '../format.ts';
 import {
+    acpPermissionsFor,
     codexPermissionsFor,
     forwardedFlags,
     modelFlagFor,
@@ -32,6 +33,7 @@ export async function runDaemon(
             model: model.codex,
             permissions: codexPermissionsFor(runtimeMode),
         },
+        acp: { permissions: acpPermissionsFor(runtimeMode) },
         t3: {
             url: t3Url,
             modelSelection: model.t3,

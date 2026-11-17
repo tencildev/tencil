@@ -3,10 +3,12 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerMessage, Thread } from '@tencildev/protocol';
+import type { AgentProcess } from '@tencildev/provider-acp';
 import type { AppServerProcess } from '@tencildev/provider-codex';
 import { EnsembleCredentialStore, ensembleRoot } from '@tencildev/provider-ensemble';
 import { CredentialStore } from '@tencildev/provider-t3code';
 import {
+    FakeAcpAgent,
     FakeCodexAppServer,
     FakeEnsembleServer,
     FakeRegistry,
@@ -79,9 +81,10 @@ async function setup(
             autoPair: false,
             createPairingCode: async () => t3.issuePairingCode(),
         },
-        // Keep this machine's Ensemble app and Codex out of these tests.
+        // Keep this machine's Ensemble app, Codex and ACP agents out of these tests.
         ensemble: { url: 'http://127.0.0.1:1' },
         codex: { command: join(tmp('tencil-no-codex-'), 'codex') },
+        acp: { agents: [] },
         resolveProject: async pageUrl => byPort[new URL(pageUrl).port],
         // No registry requests unless a test brings its own.
         updates: { check: false },
@@ -471,6 +474,170 @@ describe('Codex', () => {
         );
         // The element context stays in the prompt; the pin shows what was typed.
         expect(done.messages.find(m => m.role === 'user')?.text).toBe('Tighten the hero');
+    });
+});
+
+describe('ACP agents', () => {
+    it('sends pins to the agent in the project, and continues its session', async () => {
+        const agent = new FakeAcpAgent();
+        const { daemon, projectA } = await setup({
+            provider: 'devin',
+            acp: {
+                agents: [
+                    {
+                        id: 'devin',
+                        label: 'Devin',
+                        command: 'devin acp',
+                        installed: true,
+                        configured: false,
+                    },
+                    // Neither installed nor configured, so not offered.
+                    {
+                        id: 'gemini',
+                        label: 'Gemini CLI',
+                        command: 'gemini --acp',
+                        installed: false,
+                        configured: false,
+                    },
+                ],
+                spawn: cwd => agent.spawn(cwd) as unknown as AgentProcess,
+            },
+        });
+        const page = await connectPage(daemon, 'http://localhost:3001/');
+        await ready(page.received);
+        const hello = page.received.find(
+            (m): m is Extract<ServerMessage, { type: 'ready' }> => m.type === 'ready',
+        );
+        expect(hello?.settings.provider).toBe('devin');
+        expect(hello?.settings.providers.map(option => option.id)).toEqual([
+            't3code',
+            'claude-code',
+            'codex',
+            'ensemble',
+            'devin',
+        ]);
+
+        page.send(pin('pin-1', 'Tighten the hero', 'http://localhost:3001/'));
+        const reply = (text: string) =>
+            waitFor(
+                () => {
+                    const latest = page.latest('pin-1');
+                    return (
+                        latest?.status === 'idle' &&
+                        latest.messages.some(
+                            m => m.role === 'assistant' && m.text.includes(text),
+                        ) &&
+                        latest
+                    );
+                },
+                { message: `Devin reply "${text}" on the pin` },
+            );
+        const done = await reply('Tighten the hero');
+        expect(done.provider.id).toBe('devin');
+        const session = agent.sessions.get(done.provider.threadId ?? '');
+        expect(session?.cwd).toBe(realpathSync.native(projectA));
+        expect(agent.requestsOf('session/prompt')[0]?.prompt?.at(-1)?.text).toContain(
+            '<tencil-context>',
+        );
+        // The element context stays in the prompt; the pin shows what was typed.
+        expect(done.messages.find(m => m.role === 'user')?.text).toBe('Tighten the hero');
+
+        page.send({ type: 'thread.reply', threadId: 'pin-1', text: 'And the footer' });
+        const followed = await reply('And the footer');
+        expect(agent.requestsOf('session/new')).toHaveLength(1);
+        expect(agent.requestsOf('session/prompt').map(params => params.sessionId)).toEqual([
+            session?.sessionId,
+            session?.sessionId,
+        ]);
+        expect(followed.messages.map(m => m.role)).toEqual([
+            'user',
+            'assistant',
+            'user',
+            'assistant',
+        ]);
+    });
+
+    it('offers the models its sessions name, and starts new pins on the one picked', async () => {
+        const agent = new FakeAcpAgent();
+        agent.models = {
+            choices: [
+                { value: 'opencode/big-pickle', name: 'OpenCode/Big Pickle' },
+                { value: 'openai/gpt-6.1-sol', name: 'OpenAI/GPT-6.1 Sol' },
+            ],
+            defaultModel: 'opencode/big-pickle',
+        };
+        const { daemon } = await setup({
+            provider: 'opencode',
+            acp: {
+                agents: [
+                    {
+                        id: 'opencode',
+                        label: 'OpenCode',
+                        command: 'opencode acp',
+                        installed: true,
+                        configured: false,
+                    },
+                ],
+                spawn: cwd => agent.spawn(cwd) as unknown as AgentProcess,
+            },
+        });
+        const page = await connectPage(daemon, 'http://localhost:3001/');
+        await ready(page.received);
+        const models = async () => {
+            const count = page.received.length;
+            page.send({ type: 'provider.models' });
+            return waitFor(
+                () =>
+                    page.received
+                        .slice(count)
+                        .find(
+                            (m): m is Extract<ServerMessage, { type: 'provider.models' }> =>
+                                m.type === 'provider.models',
+                        ),
+                { message: 'models' },
+            );
+        };
+        const done = (id: string) =>
+            waitFor(
+                () => {
+                    const latest = page.latest(id);
+                    return latest?.status === 'idle' && latest.provider.threadId
+                        ? latest
+                        : undefined;
+                },
+                { message: `${id} done` },
+            );
+
+        // OpenCode names its models with a session: none before the first pin.
+        expect((await models()).models).toEqual([]);
+        page.send(pin('pin-1', 'Tighten the hero', 'http://localhost:3001/'));
+        const first = await done('pin-1');
+        expect(agent.sessions.get(first.provider.threadId ?? '')?.model).toBe(
+            'opencode/big-pickle',
+        );
+
+        const listed = await models();
+        expect(listed).toMatchObject({ provider: 'opencode', defaultModel: 'opencode/big-pickle' });
+        // OpenCode's provider/model names come grouped by provider.
+        expect(listed.models.map(model => [model.id, model.label, model.group])).toEqual([
+            ['opencode/big-pickle', 'Big Pickle', 'OpenCode'],
+            ['openai/gpt-6.1-sol', 'GPT-6.1 Sol', 'OpenAI'],
+        ]);
+        expect(listed.models.every(model => model.agent === 'opencode')).toBe(true);
+
+        page.send({ type: 'model.select', model: 'openai/gpt-6.1-sol' });
+        await waitFor(
+            () =>
+                page.received.some(
+                    m => m.type === 'settings' && m.settings.model === 'openai/gpt-6.1-sol',
+                ),
+            { message: 'model picked' },
+        );
+        page.send(pin('pin-2', 'And the footer', 'http://localhost:3001/'));
+        const second = await done('pin-2');
+        expect(agent.sessions.get(second.provider.threadId ?? '')?.model).toBe(
+            'openai/gpt-6.1-sol',
+        );
     });
 });
 

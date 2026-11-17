@@ -1,0 +1,4 @@
+{
+    "extends": "@tencildev/tsconfig/node.json",
+    "include": ["src"]
+}

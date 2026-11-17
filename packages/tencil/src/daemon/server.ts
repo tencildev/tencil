@@ -12,6 +12,12 @@ import {
     type ServerMessage,
 } from '@tencildev/protocol';
 import {
+    type AcpAgent,
+    type AcpPermissions,
+    AcpProvider,
+    type SpawnAgent,
+} from '@tencildev/provider-acp';
+import {
     ClaudeCodeProvider,
     listClaudeCodeProjects,
     type PermissionMode,
@@ -38,7 +44,14 @@ import {
 } from '@tencildev/provider-t3code';
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
-import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
+import { AcpModelStore, acpModelsPath } from './acp-models.ts';
+import {
+    acpAgents,
+    type MachineAcpAgent,
+    machineProvider,
+    type ProviderName,
+    providerOptions,
+} from './agents.ts';
 import { FilePreferences, preferencesPath } from './preferences.ts';
 import { type Detected, type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
@@ -67,6 +80,13 @@ export interface DaemonOptions {
     provider?: ProviderName;
     claudeCode?: { model?: string; permissionMode?: PermissionMode };
     codex?: Pick<CodexProviderOptions, 'model' | 'permissions' | 'command' | 'spawn'>;
+    acp?: {
+        permissions?: AcpPermissions;
+        /** Replaces the agents from the presets and settings.json (tests). */
+        agents?: MachineAcpAgent[];
+        /** Replaces starting an agent's command (tests). */
+        spawn?: SpawnAgent;
+    };
     /** Ensemble's public local API. */
     ensemble?: { url?: string; credentials?: EnsembleCredentialStore };
     t3?: Pick<T3CodeProviderOptions, 'autoPair' | 'createPairingCode' | 'timeouts'> & {
@@ -82,7 +102,7 @@ export interface DaemonOptions {
     /** Overrides process lookups for the default resolver (tests). */
     exec?: Exec;
     /** Build a project's provider by id (tests). */
-    createProvider?: (root: string, id: string) => Provider;
+    createProvider?: (root: string, id: string, agents: AcpAgent[]) => Provider;
     log?: (message: string) => void;
     /** The CLI flags this daemon runs with, reported on /health so a restart can keep them. */
     flags?: string[];
@@ -163,11 +183,24 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const preferences = new FilePreferences(preferencesPath(dataDir));
 
     const claudeCodeDir = join(dataDir, 'claude-code');
+    const acpModels = new AcpModelStore(acpModelsPath(dataDir));
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
     const createProvider =
         options.createProvider ??
-        ((root: string, id: string): Provider => {
+        ((root: string, id: string, agents: AcpAgent[]): Provider => {
             const providerLog = (message: string) => log(`[${basename(root)}] ${message}`);
+            const agent = agents.find(candidate => candidate.id === id);
+            if (agent) {
+                return new AcpProvider({
+                    agent,
+                    projectRoot: root,
+                    permissions: options.acp?.permissions,
+                    spawn: options.acp?.spawn,
+                    models: acpModels.for(agent.id),
+                    version: VERSION,
+                    log: providerLog,
+                });
+            }
             if (id === 'claude-code') {
                 return new ClaudeCodeProvider({
                     ...options.claudeCode,
@@ -207,16 +240,18 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         let pending = sessions.get(key);
         if (!pending) {
             pending = (async () => {
+                // Read per project, like the machine's agent, so setup's choices apply without a restart.
+                const agents = options.acp?.agents ?? (await acpAgents(dataDir));
+                // An Ensemble thread's pins go to Ensemble. Otherwise the machine's agent.
+                const fallback =
+                    options.provider ??
+                    (ensembleThreadId(key) === undefined
+                        ? await machineProvider({ dataDir, t3Url })
+                        : 'ensemble');
                 const providers = new ProjectProviders({
-                    choices: PROVIDER_OPTIONS,
-                    // An Ensemble thread's pins go to Ensemble. Otherwise the machine's agent,
-                    // read per project so a new choice in setup applies without a restart.
-                    fallback:
-                        options.provider ??
-                        (ensembleThreadId(key) === undefined
-                            ? await machineProvider({ dataDir, t3Url })
-                            : 'ensemble'),
-                    create: id => createProvider(key, id),
+                    choices: providerOptions(agents, fallback),
+                    fallback,
+                    create: id => createProvider(key, id, agents),
                     settings: new FileProjectSettings(projectSettingsPath(key, dataDir)),
                 });
                 const store = new FileThreadStore(key, dataDir);

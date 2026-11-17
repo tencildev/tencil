@@ -1,10 +1,12 @@
 import { createInterface } from 'node:readline/promises';
 import pc from 'picocolors';
 import {
+    acpAgents,
     detectAgents,
-    PROVIDERS,
+    type MachineAcpAgent,
     type ProviderName,
     providerLabel,
+    providerOptions,
     savedProvider,
     saveProvider,
 } from '../daemon/agents.ts';
@@ -23,8 +25,12 @@ export async function chooseProvider(options: {
     const saved = await savedProvider();
     if (saved) return saved;
 
-    const found = await detectAgents({ t3Url: options.t3Url });
-    const installed = PROVIDERS.filter(id => found[id]);
+    const [found, agents] = await Promise.all([
+        detectAgents({ t3Url: options.t3Url }),
+        acpAgents(),
+    ]);
+    const installed = Object.keys(found).filter(id => found[id]);
+    const label = (id: ProviderName) => providerLabel(id, agents);
     const hint = () =>
         options.log(
             pc.dim("    Each project can switch agents in the overlay's settings (the gear)."),
@@ -33,43 +39,41 @@ export async function chooseProvider(options: {
     if (installed.length === 1) {
         const provider = installed[0]!;
         await saveProvider(provider);
-        options.log(
-            `  ${pc.green('✓')} Pins go to ${providerLabel(provider)}, found on this machine.`,
-        );
+        options.log(`  ${pc.green('✓')} Pins go to ${label(provider)}, found on this machine.`);
         hint();
         return provider;
     }
     if (options.yes || !process.stdin.isTTY) return 't3code';
 
-    const provider = await ask(installed, options.log);
+    const provider = await ask(installed, agents, options.log);
     await saveProvider(provider);
-    options.log(`  ${pc.green('✓')} Pins go to ${providerLabel(provider)}.`);
+    options.log(`  ${pc.green('✓')} Pins go to ${label(provider)}.`);
     hint();
     return provider;
 }
 
+/** The built-in agents, installed or not, and the ACP agents this machine has. */
 async function ask(
     installed: ProviderName[],
+    agents: MachineAcpAgent[],
     log: (message: string) => void,
 ): Promise<ProviderName> {
+    const choices = providerOptions(agents);
+    const listOf = (labels: string[]) =>
+        labels.length > 1
+            ? `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
+            : (labels[0] ?? '');
     log(
         installed.length === 0
-            ? `  None of ${listOf(PROVIDERS)} was found. Which one will you use?`
-            : `  ${listOf(installed)} are here. Which agent should pins go to?`,
+            ? `  None of ${listOf(choices.map(choice => choice.label))} was found. Which one will you use?`
+            : `  ${listOf(installed.map(id => providerLabel(id, agents)))} are here. Which agent should pins go to?`,
     );
-    PROVIDERS.forEach((id, index) => {
-        log(`    ${pc.cyan(String(index + 1))}  ${providerLabel(id)}`);
+    choices.forEach((choice, index) => {
+        log(`    ${pc.cyan(String(index + 1))}  ${choice.label}`);
     });
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     const answer = await rl.question(`  Choose ${pc.dim('(1)')} `);
     rl.close();
     const index = Number.parseInt(answer.trim(), 10) - 1;
-    return PROVIDERS[index] ?? PROVIDERS[0];
-}
-
-function listOf(ids: readonly ProviderName[]): string {
-    const labels = ids.map(providerLabel);
-    return labels.length > 1
-        ? `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
-        : (labels[0] ?? '');
+    return (choices[index] ?? choices[0])!.id;
 }

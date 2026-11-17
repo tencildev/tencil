@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codexPermissionsFor, modelFlagFor, RUNTIME_MODES } from './options.ts';
+import { acpPermissionsFor, codexPermissionsFor, modelFlagFor, RUNTIME_MODES } from './options.ts';
 
 describe('runtime modes in Codex terms', () => {
     it('covers every mode, and leaves an unset one to the provider', () => {
@@ -25,6 +25,18 @@ describe('runtime modes in Codex terms', () => {
             sandbox: 'read-only',
             approvalPolicy: 'never',
         });
+    });
+});
+
+describe('runtime modes for ACP agents', () => {
+    it('covers every mode, and only allows commands on full access', () => {
+        expect(RUNTIME_MODES.map(acpPermissionsFor)).toEqual([
+            'read-only',
+            'edits',
+            'edits',
+            'full-access',
+        ]);
+        expect(acpPermissionsFor(undefined)).toBeUndefined();
     });
 });
 

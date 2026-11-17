@@ -27,8 +27,10 @@ packages/
 ├── provider-t3code/    # T3 Code provider: Effect RPC socket, auth, protocols/{v1,v2}
 ├── provider-claude-code/  # Claude Code provider: Agent SDK sessions, loaded on first use
 ├── provider-codex/     # Codex provider: `codex app-server` over stdio, under the user's own install
+├── provider-acp/       # Any Agent Client Protocol agent (Devin, Gemini CLI, …): its command over stdio
 ├── provider-ensemble/  # Ensemble provider: public local API, bearer auth and shared SSE feed
-├── testing/            # Fake provider, fake T3 Code, Ensemble and Codex servers, fake Agent SDK, helpers
+├── testing/            # Fake provider, fake T3 Code, Ensemble and Codex servers, fake ACP agent,
+│                       # fake Agent SDK, helpers
 └── tsconfig/           # Shared tsconfig: base, node, browser
 apps/
 └── playground/         # Vite + React app; the browser-test (Playwright) target
@@ -57,6 +59,13 @@ apps/
   (the CLI on the PATH, or the copy in the desktop app) when a project needs it and closes it
   when idle. Threads are Codex's own, so `codex resume <id>` and the app see them. At ~400 MB
   it's never installed for the user: setup and the overlay say what's missing instead.
+- **ACP agents are a command line each.** `provider-acp` speaks the Agent Client Protocol
+  to any agent's ACP mode over stdio (`devin acp`), one process per project, like Codex.
+  Presets (`agents.ts`) name known agents' commands; `settings.json`'s `acp` changes them
+  or adds agents. Agents on the PATH or in settings.json are offered. Message ids follow
+  turns, so a `session/load` replay after a restart lines up with the pin. Models come
+  from the sessions' `model` setting (`configOptions`); `daemon/acp-models.ts` keeps each
+  agent's list, so the picker has it before a project's first session.
 - **Ensemble requires the running app and one-time approval.** Pair asks the user
   to allow Tencil and saves a private token. Resolve pages by dev server port through
   the public API (including forwarded ports), using `ensemble://thread/<id>` as the
@@ -89,7 +98,7 @@ apps/
 
 [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`,
 imperative and lowercase. Scopes: `cli`, `daemon`, `init`, `overlay`, `t3code`, `claude-code`,
-`codex`, `ensemble`, `protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
+`codex`, `acp`, `ensemble`, `protocol`, `testing`, `playground`. Add a changeset (`pnpm changeset`) for changes
 users of the `tencil` package will notice.
 
 ## Commands
