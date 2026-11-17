@@ -1,5 +1,19 @@
 # tencil
 
+## 0.13.0
+
+### Minor Changes
+
+- [#12](https://github.com/tencildev/tencil/pull/12) [`20d2601`](https://github.com/tencildev/tencil/commit/20d2601ffb55570e59b8b5e157ac37808c021420) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Allow a site that isn't on localhost from the overlay. When the daemon refuses a page, the overlay says so and offers Allow, which opens a confirmation page served by the daemon itself. Allowed sites are saved in `allowed-origins.json` in Tencil's data folder, next to the ones passed with `--allow-origin`. The protocol adds the `origin.blocked` server message for it.
+
+### Patch Changes
+
+- [#36](https://github.com/tencildev/tencil/pull/36) [`1909cae`](https://github.com/tencildev/tencil/commit/1909cae427e48bb2ca9b22e124baa245b3f8c65b) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Codex no longer closes for being idle while Tencil is still starting a thread or waiting on an answer from it. `FakeCodexAppServer` gets `answerDelayMs` to answer slowly, like a busy machine.
+
+- [#35](https://github.com/tencildev/tencil/pull/35) [`4582302`](https://github.com/tencildev/tencil/commit/45823029e43955dbea7b1a860891ba04b657e97f) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - "What's new" in Settings → About now opens that release's page on tencil.dev/changelog, and the Changelog link opens the changelog there instead of the CHANGELOG.md on GitHub.
+
+- [#12](https://github.com/tencildev/tencil/pull/12) [`fe1e09f`](https://github.com/tencildev/tencil/commit/fe1e09f8aab369619eb3fcd793544bbd05a387ba) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - The overlay's status card shows the current Tencil mark, as on tencil.dev.
+
 ## 0.12.0
 
 ### Minor Changes

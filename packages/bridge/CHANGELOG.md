@@ -1,5 +1,12 @@
 # @tencildev/bridge
 
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [[`20d2601`](https://github.com/tencildev/tencil/commit/20d2601ffb55570e59b8b5e157ac37808c021420)]:
+  - @tencildev/protocol@0.7.0
+
 ## 0.5.1
 
 ### Patch Changes
