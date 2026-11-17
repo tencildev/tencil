@@ -12,8 +12,16 @@ import {
     type UpdateStatus,
     type Viewer,
 } from '@tencildev/protocol';
+import type { GlobalContextStore } from './global-context.ts';
 import type { ProjectProviders } from './project-providers.ts';
-import { batchTitle, renderBatchPrompt, renderPrompt, stripContext, titleFor } from './prompt.ts';
+import {
+    batchTitle,
+    type PinInstructions,
+    renderBatchPrompt,
+    renderPrompt,
+    stripContext,
+    titleFor,
+} from './prompt.ts';
 import type { ThreadStore } from './thread-store.ts';
 
 export interface BridgeClient {
@@ -32,6 +40,11 @@ export interface BridgeOptions {
      * handles `update.start` itself); Tencil Cloud doesn't.
      */
     update?: () => UpdateStatus;
+    /**
+     * Instructions for every pin of every project, shared by the host's bridges.
+     * Without it the overlay doesn't offer them.
+     */
+    globalContext?: GlobalContextStore;
     log?: (message: string) => void;
 }
 
@@ -54,6 +67,7 @@ export class Bridge {
     #offInfo: () => void = () => {};
     readonly #offDefault: () => void;
     readonly #offSettings: () => void;
+    readonly #offGlobalContext: () => void;
 
     constructor(options: BridgeOptions) {
         this.#options = options;
@@ -66,6 +80,10 @@ export class Bridge {
         this.#offSettings = options.providers.onSettingsChange(() =>
             this.#broadcast({ type: 'settings', settings: this.#settings() }),
         );
+        this.#offGlobalContext =
+            options.globalContext?.onChange(() =>
+                this.#broadcast({ type: 'settings', settings: this.#settings() }),
+            ) ?? (() => {});
         for (const thread of options.store.list()) {
             if (
                 thread.provider.threadId &&
@@ -146,6 +164,14 @@ export class Bridge {
                     if (message.provider) await providers.setDefault(message.provider);
                     if (message.batch !== undefined) await providers.setBatch(message.batch);
                     if (message.ruler !== undefined) await providers.setRuler(message.ruler);
+                    if (message.context !== undefined) await providers.setContext(message.context);
+                    if (message.globalContext !== undefined) {
+                        const { globalContext } = this.#options;
+                        if (!globalContext) {
+                            throw new Error("Instructions for every project aren't saved here");
+                        }
+                        await globalContext.set(message.globalContext);
+                    }
                     return;
                 }
                 case 'provider.models': {
@@ -220,6 +246,7 @@ export class Bridge {
         this.#offInfo();
         this.#offDefault();
         this.#offSettings();
+        this.#offGlobalContext();
         for (const unwatch of this.#watches.values()) unwatch();
         for (const timer of this.#pendingBroadcast.values()) clearTimeout(timer);
         await this.#options.store.flush();
@@ -256,6 +283,7 @@ export class Bridge {
                     pageUrl: message.pageUrl,
                     context: message.context,
                     hasScreenshot: message.attachments.length > 0,
+                    instructions: this.#instructions(),
                 }),
                 attachments: message.attachments,
                 model: this.#options.providers.modelFor(provider.id),
@@ -332,8 +360,12 @@ export class Bridge {
         });
         const text =
             drafts.length === 1
-                ? renderPrompt({ ...comments[0]!, hasScreenshot: attachments.length > 0 })
-                : renderBatchPrompt(comments);
+                ? renderPrompt({
+                      ...comments[0]!,
+                      hasScreenshot: attachments.length > 0,
+                      instructions: this.#instructions(),
+                  })
+                : renderBatchPrompt(comments, this.#instructions());
         const now = new Date().toISOString();
         // Every pin shows the shared conversation; the provider's snapshot replaces this echo.
         const echo = localMessage(stripContext(text), now);
@@ -425,6 +457,7 @@ export class Bridge {
                     pageUrl: message.pageUrl,
                     context: message.context,
                     hasScreenshot: message.attachments.length > 0,
+                    instructions: this.#instructions(),
                 }),
                 attachments: message.attachments,
             });
@@ -622,6 +655,18 @@ export class Bridge {
             ...(model ? { model } : {}),
             batch: providers.batch,
             ruler: providers.ruler,
+            context: providers.context,
+            ...(this.#options.globalContext && {
+                globalContext: this.#options.globalContext.get(),
+            }),
+        };
+    }
+
+    /** What the user's settings say goes with every new pin. */
+    #instructions(): PinInstructions {
+        return {
+            global: this.#options.globalContext?.get(),
+            project: this.#options.providers.context,
         };
     }
 

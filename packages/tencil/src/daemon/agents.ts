@@ -24,27 +24,43 @@ const SettingsFile = z.object({
     version: z.literal(1),
     /** The agent of projects that haven't picked one in the overlay. */
     provider: z.enum(PROVIDERS).optional(),
+    /** Instructions that go with every pin of every project. */
+    context: z.string().optional(),
 });
+type MachineSettings = Omit<z.infer<typeof SettingsFile>, 'version'>;
 
 const settingsPath = (dataDir: string) => join(dataDir, 'settings.json');
 
-/** The agent chosen for this machine (by setup or `--provider`), if any. */
-export async function savedProvider(dataDir = defaultDataDir()): Promise<ProviderName | undefined> {
+/** This machine's settings; empty when there are none or the file is broken. */
+export async function readSettings(dataDir = defaultDataDir()): Promise<MachineSettings> {
     const raw = await readFile(settingsPath(dataDir), 'utf8').catch(() => undefined);
-    if (raw === undefined) return undefined;
+    if (raw === undefined) return {};
     try {
         const parsed = SettingsFile.safeParse(JSON.parse(raw));
-        return parsed.success ? parsed.data.provider : undefined;
+        if (!parsed.success) return {};
+        const { version: _, ...settings } = parsed.data;
+        return settings;
     } catch {
-        return undefined;
+        return {};
     }
 }
 
-export async function saveProvider(provider: ProviderName, dataDir = defaultDataDir()) {
+/** Merges `changes` into the saved settings; an undefined value removes that setting. */
+export async function writeSettings(changes: MachineSettings, dataDir = defaultDataDir()) {
     const path = settingsPath(dataDir);
+    const next = { version: 1, ...(await readSettings(dataDir)), ...changes };
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(`${path}.tmp`, `${JSON.stringify({ version: 1, provider }, null, 2)}\n`);
+    await writeFile(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`);
     await rename(`${path}.tmp`, path);
+}
+
+/** The agent chosen for this machine (by setup or `--provider`), if any. */
+export async function savedProvider(dataDir = defaultDataDir()): Promise<ProviderName | undefined> {
+    return (await readSettings(dataDir)).provider;
+}
+
+export async function saveProvider(provider: ProviderName, dataDir = defaultDataDir()) {
+    await writeSettings({ provider }, dataDir);
 }
 
 /**

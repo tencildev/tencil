@@ -3,6 +3,14 @@ import type { BoxModel, ElementContext, Sides, Spacing } from '@tencildev/protoc
 const CONTEXT_OPEN = '<tencil-context>';
 const CONTEXT_CLOSE = '</tencil-context>';
 
+/** What the user wrote in Tencil's settings to go with every pin. */
+export interface PinInstructions {
+    /** For every project on this machine (or account). */
+    global?: string;
+    /** For this project only. */
+    project?: string;
+}
+
 /**
  * Renders the text sent to the agent: the user's words first, then a fenced
  * block of element context. The block is stripped again before messages are
@@ -13,6 +21,7 @@ export function renderPrompt(input: {
     pageUrl: string;
     context: ElementContext;
     hasScreenshot: boolean;
+    instructions?: PinInstructions;
 }): string {
     const lines = [
         'The user pinned this comment on an element of their running app (via Tencil). Use the context below to locate the code, then make the change in this workspace.',
@@ -20,6 +29,7 @@ export function renderPrompt(input: {
         ...contextLines(input.pageUrl, input.context),
     ];
     if (input.hasScreenshot) lines.push('- A screenshot of the element is attached.');
+    lines.push(...instructionLines(input.instructions));
     return `${input.prompt.trim()}\n\n${CONTEXT_OPEN}\n${lines.join('\n')}\n${CONTEXT_CLOSE}`;
 }
 
@@ -37,6 +47,7 @@ export function renderBatchPrompt(
         /** 1-based positions of this comment's screenshots among the attachments. */
         screenshots: number[];
     }>,
+    instructions?: PinInstructions,
 ): string {
     const lines = [
         `The user pinned ${comments.length} comments on elements of their running app (via Tencil). Work through all of them in this workspace, using the context below to locate the code. They're numbered like the pins on the page: refer to them by number (#2) when you report back.`,
@@ -47,6 +58,7 @@ export function renderBatchPrompt(
             lines.push(`- Screenshot: attached image ${comment.screenshots.join(', ')}`);
         }
     }
+    lines.push(...instructionLines(instructions));
     const text = comments.map(comment => `#${comment.number} ${comment.prompt.trim()}`);
     return `${text.join('\n\n')}\n\n${CONTEXT_OPEN}\n${lines.join('\n')}\n${CONTEXT_CLOSE}`;
 }
@@ -73,6 +85,24 @@ function contextLines(pageUrl: string, context: ElementContext): string[] {
     const box = context.box && boxLine(context.box);
     if (box) lines.push(`- Box: ${box}`);
     if (context.spacing) lines.push(spacingLine(context.spacing));
+    return lines;
+}
+
+/**
+ * The user's standing instructions, global first, then the project's. They're
+ * the user's own words but go inside the block, so the agent reads them as
+ * context for the change and the overlay doesn't show them on every pin.
+ */
+function instructionLines(instructions: PinInstructions = {}): string[] {
+    const lines: string[] = [];
+    const sections = [
+        ['The user asks this for every project:', instructions.global],
+        ['The user asks this for this project:', instructions.project],
+    ] as const;
+    for (const [heading, text] of sections) {
+        const trimmed = text?.trim();
+        if (trimmed) lines.push('', heading, page(trimmed));
+    }
     return lines;
 }
 
