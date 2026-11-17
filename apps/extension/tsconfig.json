@@ -1,0 +1,7 @@
+{
+    "extends": "@tencildev/tsconfig/browser.json",
+    "compilerOptions": {
+        "types": ["chrome"]
+    },
+    "include": ["src", "tsdown.config.ts"]
+}

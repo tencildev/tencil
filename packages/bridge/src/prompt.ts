@@ -25,6 +25,7 @@ export function renderPrompt(input: {
 }): string {
     const lines = [
         'The user pinned this comment on an element of their running app (via Tencil). Use the context below to locate the code, then make the change in this workspace.',
+        ...deployedNote([input.pageUrl]),
         '',
         ...contextLines(input.pageUrl, input.context),
     ];
@@ -51,6 +52,7 @@ export function renderBatchPrompt(
 ): string {
     const lines = [
         `The user pinned ${comments.length} comments on elements of their running app (via Tencil). Work through all of them in this workspace, using the context below to locate the code. They're numbered like the pins on the page: refer to them by number (#2) when you report back.`,
+        ...deployedNote(comments.map(comment => comment.pageUrl)),
     ];
     for (const comment of comments) {
         lines.push('', `#${comment.number}`, ...contextLines(comment.pageUrl, comment.context));
@@ -65,7 +67,7 @@ export function renderBatchPrompt(
 
 function contextLines(pageUrl: string, context: ElementContext): string[] {
     const lines = [
-        `- Page: ${page(pageUrl)}`,
+        `- Page: ${page(pageUrl)}${isDeployed(pageUrl) ? ' (deployed site, not a local dev server)' : ''}`,
         `- Element: \`${page(truncate(oneLine(context.html), 2000))}\``,
     ];
 
@@ -104,6 +106,40 @@ function instructionLines(instructions: PinInstructions = {}): string[] {
         if (trimmed) lines.push('', heading, page(trimmed));
     }
     return lines;
+}
+
+/**
+ * When a pin was made on a deployed site (through the extension) rather than the
+ * local dev server, the agent should know its edit won't show there until it ships,
+ * and that a production build may have no component names or source paths.
+ */
+function deployedNote(pageUrls: string[]): string[] {
+    const origins = [...new Set(pageUrls.filter(isDeployed).map(url => new URL(url).origin))];
+    if (origins.length === 0) return [];
+    return [
+        `The page is on ${page(origins.join(', '))}, a deployed site, not this workspace's dev server. Change the source here; the change won't show on that site until it's deployed, so say so when you report back. A production build may not name components or their source files: find the code by its visible text, markup and selector.`,
+    ];
+}
+
+/** Anything but a loopback, private-network or local-only host (`.local`, `.test`). */
+export function isDeployed(pageUrl: string): boolean {
+    let hostname: string;
+    try {
+        hostname = new URL(pageUrl).hostname.toLowerCase();
+    } catch {
+        return false;
+    }
+    if (!hostname) return false;
+    return !(
+        hostname === 'localhost' ||
+        /\.(localhost|local|test|internal)$/.test(hostname) ||
+        hostname === '[::1]' ||
+        hostname === '0.0.0.0' ||
+        /^127(\.\d{1,3}){3}$/.test(hostname) ||
+        /^10(\.\d{1,3}){3}$/.test(hostname) ||
+        /^192\.168(\.\d{1,3}){2}$/.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2}$/.test(hostname)
+    );
 }
 
 /** Computed spacing in CSS shorthand, px: `padding 12 16, margin 0 0 24, gap 8`. */

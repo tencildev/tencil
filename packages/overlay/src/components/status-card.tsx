@@ -5,6 +5,7 @@ import {
     daemonHost,
     daemonVersion,
     isCloud,
+    originBlocked,
     project,
     projectChoices,
     provider,
@@ -98,7 +99,13 @@ export function statusRows(tone: Tone = defaultTone()): StatusRow[] {
             label: isCloud() ? 'Tencil Cloud' : 'Daemon',
             tone: state === 'open' ? 'ok' : tone,
             value:
-                state === 'open' ? 'Connected' : state === 'connecting' ? 'Connecting…' : 'Offline',
+                state === 'open'
+                    ? 'Connected'
+                    : originBlocked.value
+                      ? 'Site not allowed'
+                      : state === 'connecting'
+                        ? 'Connecting…'
+                        : 'Offline',
         },
         { label: 'Address', value: daemonHost() },
         {
