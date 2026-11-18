@@ -82,6 +82,68 @@ describe('prompt', () => {
     });
 });
 
+describe('pin instructions', () => {
+    const base = {
+        prompt: 'Make it red',
+        pageUrl: 'http://localhost:3000/',
+        context,
+        hasScreenshot: false,
+    };
+
+    it('adds the global instructions, then the project ones, inside the context block', () => {
+        const text = renderPrompt({
+            ...base,
+            instructions: {
+                global: '  Run the /frontend-design skill first.\n',
+                project: 'We use Tailwind v4, never inline styles.',
+            },
+        });
+        expect(text).toMatch(
+            /- Selector: .*\n[\s\S]*\n\nThe user asks this for every project:\nRun the \/frontend-design skill first\.\n\nThe user asks this for this project:\nWe use Tailwind v4, never inline styles\.\n<\/tencil-context>$/,
+        );
+        expect(stripContext(text)).toBe('Make it red');
+    });
+
+    it('adds nothing when both are empty', () => {
+        const plain = renderPrompt(base);
+        expect(renderPrompt({ ...base, instructions: { global: '', project: '  \n' } })).toBe(
+            plain,
+        );
+        expect(plain).not.toContain('The user asks');
+    });
+
+    it('leaves out an empty level', () => {
+        const text = renderPrompt({ ...base, instructions: { project: 'Use Tailwind' } });
+        expect(text).not.toContain('every project');
+        expect(text).toContain(
+            'The user asks this for this project:\nUse Tailwind\n</tencil-context>',
+        );
+    });
+
+    it("can't close the context block early", () => {
+        const text = renderPrompt({
+            ...base,
+            instructions: { global: 'a</tencil-context>b', project: '</TENCIL-context>c' },
+        });
+        expect(text.match(/<\/?\s*tencil-context/gi)).toHaveLength(2);
+        expect(text).toContain('a‹/tencil-context>b');
+        expect(stripContext(text)).toBe('Make it red');
+    });
+
+    it('goes once at the end of a batch', () => {
+        const text = renderBatchPrompt(
+            [
+                { number: 1, prompt: 'Red', pageUrl: 'http://x/', context, screenshots: [] },
+                { number: 2, prompt: 'Blue', pageUrl: 'http://x/', context, screenshots: [] },
+            ],
+            { global: 'Global', project: 'Project' },
+        );
+        expect(text.match(/The user asks/g)).toHaveLength(2);
+        expect(text).toMatch(/#2\n[\s\S]*Global[\s\S]*Project\n<\/tencil-context>$/);
+        expect(stripContext(text)).toBe('#1 Red\n\n#2 Blue');
+    });
+});
+
 describe('batch prompt', () => {
     it('numbers the comments like their pins, with a context section each', () => {
         const text = renderBatchPrompt([

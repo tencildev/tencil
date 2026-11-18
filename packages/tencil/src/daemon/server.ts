@@ -41,6 +41,7 @@ import { VERSION } from '../version.ts';
 import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
 import { AllowedOrigins, approvableOrigin } from './allowed-origins.ts';
 import { APPROVAL_HEADERS, allowedPage, confirmPage, errorPage } from './approval-page.ts';
+import { FileGlobalContext } from './global-context.ts';
 import { FilePreferences, preferencesPath } from './preferences.ts';
 import { type Detected, type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
@@ -166,6 +167,8 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     // Created once the port is known; bridges read it when a page says hello.
     let updater: Updater | undefined;
     const preferences = new FilePreferences(preferencesPath(dataDir));
+    const globalContext = new FileGlobalContext(dataDir);
+    const globalContextLoaded = globalContext.load();
 
     const claudeCodeDir = join(dataDir, 'claude-code');
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
@@ -225,13 +228,14 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                     settings: new FileProjectSettings(projectSettingsPath(key, dataDir)),
                 });
                 const store = new FileThreadStore(key, dataDir);
-                await Promise.all([store.load(), providers.load()]);
+                await Promise.all([store.load(), providers.load(), globalContextLoaded]);
                 const bridge = new Bridge({
                     providers,
                     store,
                     project: { name: basename(key), root: key },
                     version: VERSION,
                     update: () => updater?.status() ?? { state: 'idle' },
+                    globalContext,
                     log: message => log(`[${basename(key)}] ${message}`),
                 });
                 log(`Serving ${key} with ${providers.default().label}`);

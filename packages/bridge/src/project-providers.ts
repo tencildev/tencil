@@ -10,6 +10,8 @@ export interface SavedProjectSettings {
     batch?: boolean;
     /** Offer the ruler in the overlay's toolbar; on when unset. */
     ruler?: boolean;
+    /** Instructions that go with every pin of this project. */
+    context?: string;
 }
 
 /**
@@ -50,6 +52,7 @@ export class ProjectProviders {
     #batch = true;
     /** On unless the project turns it off. */
     #ruler = true;
+    #context = '';
 
     constructor(options: ProjectProvidersOptions) {
         this.#options = options;
@@ -81,6 +84,7 @@ export class ProjectProviders {
             this.#models = saved.models ?? {};
             this.#batch = saved.batch ?? true;
             this.#ruler = saved.ruler ?? true;
+            this.#context = saved.context ?? '';
         }
     }
 
@@ -157,7 +161,19 @@ export class ProjectProviders {
         for (const listener of this.#settingsListeners) listener();
     }
 
-    /** Fires when a picked model, batching or the ruler changes. */
+    /** The project's instructions for every pin, empty when there are none. */
+    get context(): string {
+        return this.#context;
+    }
+
+    async setContext(context: string): Promise<void> {
+        if (context === this.#context) return;
+        this.#context = context;
+        await this.#save();
+        for (const listener of this.#settingsListeners) listener();
+    }
+
+    /** Fires when a picked model, batching, the ruler or the context changes. */
     onSettingsChange(listener: () => void): () => void {
         this.#settingsListeners.add(listener);
         return () => this.#settingsListeners.delete(listener);
@@ -179,6 +195,7 @@ export class ProjectProviders {
             models: this.#models,
             batch: this.#batch,
             ruler: this.#ruler,
+            ...(this.#context ? { context: this.#context } : {}),
         });
     }
 }

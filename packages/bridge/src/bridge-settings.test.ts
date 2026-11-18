@@ -2,6 +2,7 @@ import type { ServerMessage } from '@tencildev/protocol';
 import { FakeAgentProvider } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, type BridgeClient } from './bridge.ts';
+import { type GlobalContextStore, MemoryGlobalContext } from './global-context.ts';
 import { ProjectProviders } from './project-providers.ts';
 import { MemoryThreadStore } from './thread-store.ts';
 
@@ -23,7 +24,7 @@ const pin = (id: string) => ({
     },
 });
 
-function setup() {
+function setup(globalContext?: GlobalContextStore) {
     const fakes = new Map<string, FakeAgentProvider>();
     const providers = new ProjectProviders({
         choices: [
@@ -43,6 +44,7 @@ function setup() {
         store,
         project: { name: 'acme', root: '/x' },
         version: '0',
+        globalContext,
     });
     const received: ServerMessage[] = [];
     const client: BridgeClient = { send: message => received.push(message) };
@@ -164,6 +166,73 @@ describe('project settings', () => {
         expect(received.at(-1)).toMatchObject({
             type: 'error',
             message: 'Unknown provider "nope"',
+        });
+    });
+});
+
+describe('pin instructions', () => {
+    it('offers global instructions only where the host keeps them', async () => {
+        const without = setup();
+        await without.bridge.handle(without.client, { type: 'hello', protocol: 1, pageUrl: 'x' });
+        expect(without.received.at(-1)).toMatchObject({ settings: { context: '' } });
+        expect(without.received.at(-1)).not.toHaveProperty('settings.globalContext');
+        await without.bridge.handle(without.client, {
+            type: 'settings.update',
+            globalContext: 'Hi',
+        });
+        expect(without.received.at(-1)).toMatchObject({ type: 'error' });
+
+        const withStore = setup(new MemoryGlobalContext('Be brief'));
+        await withStore.bridge.handle(withStore.client, {
+            type: 'hello',
+            protocol: 1,
+            pageUrl: 'x',
+        });
+        expect(withStore.received.at(-1)).toMatchObject({
+            settings: { context: '', globalContext: 'Be brief' },
+        });
+    });
+
+    it('sends both with new pins and queued batches', async () => {
+        const { bridge, client, received, fakes } = setup(new MemoryGlobalContext());
+        await bridge.handle(client, {
+            type: 'settings.update',
+            context: 'Use Tailwind',
+            globalContext: 'Run the skill',
+        });
+        expect(received.at(-1)).toMatchObject({
+            type: 'settings',
+            settings: { context: 'Use Tailwind', globalContext: 'Run the skill' },
+        });
+
+        await bridge.handle(client, pin('a'));
+        const single = fakes.get('t3code')!.created[0]!.text;
+        expect(single.indexOf('Run the skill')).toBeLessThan(single.indexOf('Use Tailwind'));
+        expect(single.indexOf('Use Tailwind')).toBeLessThan(single.indexOf('</tencil-context>'));
+
+        await bridge.handle(client, { ...pin('b'), draft: true });
+        await bridge.handle(client, { ...pin('c'), draft: true });
+        await bridge.handle(client, {
+            type: 'drafts.send',
+            drafts: [
+                { threadId: 'b', number: 1 },
+                { threadId: 'c', number: 2 },
+            ],
+        });
+        const batch = fakes.get('t3code')!.created[1]!.text;
+        expect(batch).toContain('pinned 2 comments');
+        expect(batch).toContain('Run the skill');
+        expect(batch).toContain('Use Tailwind');
+    });
+
+    it('tells every project when the global instructions change', async () => {
+        const shared = new MemoryGlobalContext();
+        const one = setup(shared);
+        const two = setup(shared);
+        await one.bridge.handle(one.client, { type: 'settings.update', globalContext: 'Hi' });
+        expect(two.received.at(-1)).toMatchObject({
+            type: 'settings',
+            settings: { globalContext: 'Hi' },
         });
     });
 });

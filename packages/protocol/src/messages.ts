@@ -90,6 +90,9 @@ export type Preferences = z.infer<typeof Preferences>;
 
 /* ----------------------------- overlay → bridge ----------------------------- */
 
+/** The longest instructions a user can save to go with every pin. */
+export const CONTEXT_MAX = 10_000;
+
 export const ClientMessage = z.discriminatedUnion('type', [
     z.object({
         type: z.literal('hello'),
@@ -162,6 +165,10 @@ export const ClientMessage = z.discriminatedUnion('type', [
         provider: z.string().min(1).optional(),
         batch: z.boolean().optional(),
         ruler: z.boolean().optional(),
+        /** Instructions for every pin of this project; empty clears them. */
+        context: z.string().max(CONTEXT_MAX).optional(),
+        /** Instructions for every pin of every project (where the host keeps them). */
+        globalContext: z.string().max(CONTEXT_MAX).optional(),
     }),
     /** Run new threads of the default provider on this model; null goes back to its default. */
     z.object({ type: z.literal('model.select'), model: z.string().min(1).nullable() }),
@@ -202,6 +209,13 @@ export const ProjectSettings = z.object({
     batch: z.boolean(),
     /** The toolbar offers the ruler: spacing while picking, distances with Alt. */
     ruler: z.boolean(),
+    /** Instructions that go with every pin of this project; empty when there are none. */
+    context: z.string(),
+    /**
+     * Instructions that go with every pin of every project. Left out where the
+     * host has nowhere to keep them; the overlay then doesn't offer them.
+     */
+    globalContext: z.string().optional(),
 });
 export type ProjectSettings = z.infer<typeof ProjectSettings>;
 

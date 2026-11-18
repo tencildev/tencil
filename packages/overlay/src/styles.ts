@@ -714,6 +714,14 @@ kbd {
 .settings-section + .settings-section { border-top: 1px solid var(--line); }
 .settings-label { margin: 0; font-weight: 500; }
 .settings-help { margin: 0; color: var(--n-600); font-size: 12px; line-height: 1.4; }
+.settings-textarea {
+  box-sizing: border-box; width: 100%; min-height: 96px; max-height: 280px; margin-top: 4px;
+  padding: 8px 10px; border: 0; border-radius: 8px; resize: vertical;
+  color: var(--n-950); background: var(--surface); box-shadow: 0 0 0 1px var(--n-200);
+  font: inherit; font-size: 13px; line-height: 1.45; transition: box-shadow 150ms ease;
+}
+.settings-textarea::placeholder { color: var(--n-500); }
+.settings-textarea:focus { outline: none; box-shadow: 0 0 0 1px var(--n-400), 0 0 0 4px var(--n-100); }
 .settings-switch-row { grid-template-columns: 1fr auto; align-items: center; gap: 16px; cursor: pointer; }
 .settings-switch-text { display: grid; gap: 2px; }
 .settings-account { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

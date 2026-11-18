@@ -1,6 +1,6 @@
-import type { ProviderInfo } from '@tencildev/protocol';
+import { CONTEXT_MAX, type ProviderInfo } from '@tencildev/protocol';
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { forgetToken, viewer } from '../lib/cloud-auth.ts';
 import {
     cloudUrl,
@@ -49,6 +49,7 @@ export function SettingsPanel() {
         { id: 'overview', label: 'Project' },
         AGENT_PAGE,
         { id: 'tools', label: 'Tools' },
+        { id: 'context', label: 'Instructions' },
     ];
     const browserPages: Page[] = [
         { id: 'appearance', label: 'Appearance' },
@@ -198,6 +199,8 @@ function scope(id: SettingsSection): string {
             return project.value
                 ? `Saved for ${project.value.name}, for everyone using its pins`
                 : 'Saved for this project';
+        case 'context':
+            return 'Sent to the agent with each new pin';
         case 'appearance':
         case 'shortcuts':
             // Tencil Cloud has no daemon to save them on.
@@ -221,6 +224,8 @@ function PageContent({ id }: { id: SettingsSection }) {
             return <AgentPage />;
         case 'tools':
             return <ToolsPage />;
+        case 'context':
+            return <ContextPage />;
         case 'appearance':
             return <AppearancePage />;
         case 'shortcuts':
@@ -306,6 +311,119 @@ function ToolsPage() {
                 }
             />
         </>
+    );
+}
+
+function ContextPage() {
+    const current = settings.value;
+    if (!current) return <p class="empty">Connecting…</p>;
+    const name = project.value?.name;
+    return (
+        <>
+            {current.globalContext !== undefined && (
+                <ContextField
+                    id="tencil-global-context"
+                    label="All projects"
+                    help="Applies to every project you use on this computer."
+                    placeholder="Run /frontend-design before making UI changes."
+                    value={current.globalContext}
+                    onSave={text => {
+                        if (send({ type: 'settings.update', globalContext: text })) {
+                            settings.value = { ...current, globalContext: text };
+                        }
+                    }}
+                />
+            )}
+            <ContextField
+                id="tencil-project-context"
+                label={name ? `For ${name} only` : 'This project only'}
+                help="Shared by everyone using this project's pins."
+                placeholder="Use Tailwind v4 classes. Avoid inline styles."
+                value={current.context}
+                onSave={text => {
+                    if (send({ type: 'settings.update', context: text })) {
+                        settings.value = { ...current, context: text };
+                    }
+                }}
+            />
+        </>
+    );
+}
+
+const CONTEXT_SAVE_DELAY_MS = 600;
+
+/**
+ * Free text saved a moment after typing stops, and when the field loses focus
+ * or the page closes. What the bridge sends back doesn't replace it mid-edit.
+ */
+function ContextField({
+    id,
+    label,
+    help,
+    placeholder,
+    value,
+    onSave,
+}: {
+    id: string;
+    label: string;
+    help: string;
+    placeholder: string;
+    value: string;
+    onSave: (text: string) => void;
+}) {
+    const [text, setText] = useState(value);
+    const editing = useRef(false);
+    const saved = useRef(value);
+    const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+    const save = useRef(() => {});
+    save.current = () => {
+        clearTimeout(timer.current);
+        if (text === saved.current) return;
+        saved.current = text;
+        onSave(text);
+    };
+
+    useEffect(() => {
+        if (editing.current) return;
+        saved.current = value;
+        setText(value);
+    }, [value]);
+    useEffect(() => () => save.current(), []);
+
+    return (
+        <div class="settings-section">
+            <label class="settings-label" for={id}>
+                {label}
+            </label>
+            <p class="settings-help" id={`${id}-help`}>
+                {help}
+            </p>
+            <textarea
+                id={id}
+                class="settings-textarea"
+                rows={5}
+                maxLength={CONTEXT_MAX}
+                placeholder={placeholder}
+                aria-describedby={`${id}-help`}
+                value={text}
+                onFocus={() => {
+                    editing.current = true;
+                }}
+                onBlur={() => {
+                    editing.current = false;
+                    save.current();
+                }}
+                onInput={event => {
+                    setText(event.currentTarget.value);
+                    clearTimeout(timer.current);
+                    timer.current = setTimeout(() => save.current(), CONTEXT_SAVE_DELAY_MS);
+                }}
+                // Typing here is for the field, not the overlay's shortcuts.
+                onKeyDown={event => {
+                    if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation();
+                }}
+            />
+        </div>
     );
 }
 
@@ -427,7 +545,7 @@ function useDialogFocus(panel: { current: HTMLElement | null }): void {
 function trapTab(event: KeyboardEvent, panel: HTMLElement): void {
     const focusable = [
         ...panel.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+            'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
         ),
     ].filter(element => element.tabIndex >= 0);
     const first = focusable[0];
