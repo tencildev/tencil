@@ -1,5 +1,11 @@
 # @tencildev/protocol
 
+## 0.8.0
+
+### Minor Changes
+
+- [#38](https://github.com/tencildev/tencil/pull/38) [`debe511`](https://github.com/tencildev/tencil/commit/debe511e7935d977843f5237a7a0fd8853d0abe9) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Settings has a new Instructions page: text that goes with every new pin, such as "run the /frontend-design skill first" or "we use Tailwind v4, never inline styles". Write it once for all your projects (saved on this computer) or for one project (saved with its pins). Both go to the agent with the element details, global first.
+
 ## 0.7.0
 
 ### Minor Changes
