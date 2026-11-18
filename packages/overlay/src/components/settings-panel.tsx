@@ -49,7 +49,7 @@ export function SettingsPanel() {
         { id: 'overview', label: 'Project' },
         AGENT_PAGE,
         { id: 'tools', label: 'Tools' },
-        { id: 'context', label: 'Pin instructions' },
+        { id: 'context', label: 'Instructions' },
     ];
     const browserPages: Page[] = [
         { id: 'appearance', label: 'Appearance' },
