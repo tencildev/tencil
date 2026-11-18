@@ -16,12 +16,19 @@ class RefusedSocket extends EventTarget {
     close(): void {}
 }
 
+let page: EventTarget;
+
 beforeEach(() => {
     vi.useFakeTimers();
     RefusedSocket.attempts = 0;
+    page = new EventTarget();
     vi.stubGlobal('WebSocket', RefusedSocket);
     vi.stubGlobal('location', { href: 'http://localhost:3000/' });
-    vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('window', page);
+    vi.stubGlobal(
+        'document',
+        Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState }),
+    );
 });
 
 afterEach(() => {
@@ -42,6 +49,24 @@ describe('connection', () => {
         expect(RefusedSocket.attempts).toBeGreaterThan(3);
         // Connecting once at the start, then offline without blinking back.
         expect(states.slice(states.indexOf('closed'))).not.toContain('connecting');
+    });
+
+    it('retries the daemon at least every 2 seconds', async () => {
+        connect('http://localhost:4747');
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        const before = RefusedSocket.attempts;
+        await vi.advanceTimersByTimeAsync(2_001);
+        expect(RefusedSocket.attempts).toBeGreaterThan(before);
+    });
+
+    it('tries again right away when the developer comes back to the page', async () => {
+        connect('http://localhost:4747');
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        const before = RefusedSocket.attempts;
+        page.dispatchEvent(new Event('focus'));
+        expect(RefusedSocket.attempts).toBe(before + 1);
     });
 
     it('shows a daemon restarting on a new version as connecting', async () => {
