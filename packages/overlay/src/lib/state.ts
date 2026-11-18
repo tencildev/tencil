@@ -31,6 +31,8 @@ export const rulerAnchor = signal<{
 } | null>(null);
 export const draft = signal<Draft | null>(null);
 export const openThreadId = signal<string | null>(null);
+/** An image from a thread, shown full size over the page. */
+export const viewedImage = signal<{ src: string; alt: string } | null>(null);
 export const inboxOpen = signal(false);
 export const settingsOpen = signal(false);
 export type SettingsSection =

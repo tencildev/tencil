@@ -86,6 +86,18 @@ export interface ProviderMessage {
     text: string;
     streaming: boolean;
     createdAt: string;
+    /**
+     * Images the agent took or read while it worked (a tool's screenshot), sent
+     * whole with every update of the message. A message may carry only images.
+     */
+    images?: ProviderImage[];
+}
+
+/** An image as the agent produced it. See `agentImage` for the types the overlay shows. */
+export interface ProviderImage {
+    /** `data:image/png;base64,…` */
+    dataUrl: string;
+    name?: string;
 }
 
 export interface ThreadSink {

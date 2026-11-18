@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ImageAttachment, ProviderMessage } from '@tencildev/protocol';
+import { type ImageAttachment, type ProviderMessage, toolOutputImages } from '@tencildev/protocol';
 import type { RpcSocket } from '../rpc-socket.ts';
 import {
     decodedSize,
@@ -126,10 +126,19 @@ interface WireMessage {
 
 interface WireTurnItem {
     type: string;
+    id?: string;
     messageId?: string;
     text?: string;
     streaming?: boolean;
     createdAt?: string;
+    /** Tool calls (`dynamic_tool`): MCP and app tools, e.g. a browser screenshot. */
+    status?: string;
+    output?: unknown;
+    /** The output (and any images in it) is only sent by `orchestration.getTurnItem`. */
+    outputOmitted?: boolean;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    updatedAt?: string;
 }
 
 type WireItem =
@@ -161,11 +170,14 @@ export class V2ThreadTracker implements ThreadTracker {
     #runs = new Map<string, WireRun>();
     #requests = new Map<string, WireRuntimeRequest>();
     #messages = new Map<string, ProviderMessage>();
+    /** Tool calls already looked at for images. */
+    #tools = new Set<string>();
     #lastStatusKey = '';
 
     apply(raw: unknown): TrackerUpdate {
         const item = raw as WireItem;
         const changed: ProviderMessage[] = [];
+        const toolItems: NonNullable<TrackerUpdate['toolItems']> = [];
         let gone = false;
 
         if (item.kind === 'snapshot') {
@@ -175,7 +187,7 @@ export class V2ThreadTracker implements ThreadTracker {
             for (const message of item.projection.messages ?? [])
                 this.#upsertMessage(message, changed);
             for (const turnItem of item.projection.turnItems ?? [])
-                this.#upsertTurnItem(turnItem, changed);
+                this.#upsertTurnItem(turnItem, changed, toolItems);
         } else if (item.kind === 'event') {
             const { type, payload } = item.event;
             if (type === 'run.created' || type === 'run.updated') {
@@ -187,13 +199,14 @@ export class V2ThreadTracker implements ThreadTracker {
             } else if (type === 'message.updated') {
                 this.#upsertMessage(payload as WireMessage, changed);
             } else if (type === 'turn-item.updated') {
-                this.#upsertTurnItem(payload as WireTurnItem, changed);
+                this.#upsertTurnItem(payload as WireTurnItem, changed, toolItems);
             } else if (type === 'thread.deleted') {
                 gone = true;
             }
         }
 
         const update: TrackerUpdate = { messages: changed };
+        if (toolItems.length) update.toolItems = toolItems;
         if (gone) update.gone = true;
         const status = this.status();
         const statusKey = `${status.status}:${status.detail ?? ''}`;
@@ -277,7 +290,15 @@ export class V2ThreadTracker implements ThreadTracker {
     }
 
     /** Assistant text streams as turn items before (or instead of) a message update. */
-    #upsertTurnItem(item: WireTurnItem, changed: ProviderMessage[]): void {
+    #upsertTurnItem(
+        item: WireTurnItem,
+        changed: ProviderMessage[],
+        toolItems: NonNullable<TrackerUpdate['toolItems']>,
+    ): void {
+        if (item.type === 'dynamic_tool') {
+            this.#toolItem(item, changed, toolItems);
+            return;
+        }
         if (item.type !== 'assistant_message' || !item.messageId) return;
         const existing = this.#messages.get(item.messageId);
         this.#set(
@@ -292,6 +313,24 @@ export class V2ThreadTracker implements ThreadTracker {
         );
     }
 
+    /** A finished tool call's images, or a note to read its output when T3 Code left it off. */
+    #toolItem(
+        item: WireTurnItem,
+        changed: ProviderMessage[],
+        toolItems: NonNullable<TrackerUpdate['toolItems']>,
+    ): void {
+        if (!item.id || item.status !== 'completed' || this.#tools.has(item.id)) return;
+        this.#tools.add(item.id);
+        const createdAt =
+            item.completedAt ?? item.startedAt ?? item.updatedAt ?? new Date().toISOString();
+        if (item.outputOmitted) {
+            toolItems.push({ id: item.id, createdAt });
+            return;
+        }
+        const message = toolImageMessage(item.id, item.output, createdAt);
+        if (message) this.#set(message, changed);
+    }
+
     #set(next: ProviderMessage, changed: ProviderMessage[]): void {
         const previous = this.#messages.get(next.id);
         if (previous && previous.text === next.text && previous.streaming === next.streaming)
@@ -301,4 +340,22 @@ export class V2ThreadTracker implements ThreadTracker {
         if (index === -1) changed.push(next);
         else changed[index] = next;
     }
+}
+
+/** The images in a tool call's output, as a message of their own keyed by the call. */
+export function toolImageMessage(
+    itemId: string,
+    output: unknown,
+    createdAt: string,
+): ProviderMessage | undefined {
+    const images = toolOutputImages(output);
+    if (images.length === 0) return undefined;
+    return {
+        id: `tool:${itemId}`,
+        role: 'assistant',
+        text: '',
+        images,
+        streaming: false,
+        createdAt,
+    };
 }

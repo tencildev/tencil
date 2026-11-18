@@ -158,6 +158,39 @@ describe.each([1, 2] as const)('T3 Code provider, protocol v%i', protocol => {
         expect(user?.attachments).toHaveLength(1);
     });
 
+    it('shows the screenshots the agent takes, where the protocol has them', async () => {
+        const { provider } = await setup(protocol);
+        await provider.start();
+        await ready(provider);
+        const { providerThreadId } = await provider.createThread({
+            title: 't',
+            text: 'Take a screenshot of the hero',
+            attachments: [],
+        });
+        const { sink, messages, statuses } = recordingSink();
+        provider.watch(providerThreadId, sink);
+        await waitFor(() => statuses.at(-1) === 'idle', { message: 'turn done' });
+        const shots = () => [...messages.values()].filter(m => m.images?.length);
+        if (protocol === 1) {
+            expect(shots()).toEqual([]);
+            return;
+        }
+        const [shot] = await waitFor(() => (shots().length ? shots() : undefined), {
+            message: 'screenshot message',
+        });
+        expect(shot).toMatchObject({
+            id: expect.stringMatching(/^tool:/),
+            role: 'assistant',
+            text: '',
+        });
+        expect(shot?.images?.[0]?.dataUrl).toMatch(/^data:image\/png;base64,iVBOR/);
+
+        // A new watcher gets it again from the snapshot.
+        const replay = recordingSink();
+        provider.watch(providerThreadId, replay.sink);
+        await waitFor(() => replay.messages.get(shot!.id), { message: 'replayed screenshot' });
+    });
+
     it("lists the project's threads with metadata", async () => {
         const { provider, server } = await setup(protocol);
         server.addThread({ projectId: 'proj-1', title: 'Existing work', branch: 'feature/x' });

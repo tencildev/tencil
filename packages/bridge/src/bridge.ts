@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
 import {
     ClientMessage,
+    dataUrlType,
     type ImageAttachment,
+    type MessageImage,
     PROTOCOL_VERSION,
     type ProjectSettings,
     type Provider,
@@ -13,6 +16,7 @@ import {
     type Viewer,
 } from '@tencildev/protocol';
 import type { GlobalContextStore } from './global-context.ts';
+import { type ImageStore, MemoryImageStore } from './image-store.ts';
 import type { ProjectProviders } from './project-providers.ts';
 import {
     batchTitle,
@@ -33,6 +37,8 @@ export interface BridgeClient {
 export interface BridgeOptions {
     providers: ProjectProviders;
     store: ThreadStore;
+    /** Where images in agent messages go; in memory when the host has nowhere to keep them. */
+    images?: ImageStore;
     project: { name: string; root: string };
     version: string;
     /**
@@ -64,6 +70,7 @@ export class Bridge {
     readonly #pendingBroadcast = new Map<string, ReturnType<typeof setTimeout>>();
     /** Screenshots of queued comments, kept in memory until the batch is sent. */
     readonly #draftAttachments = new Map<string, ImageAttachment[]>();
+    readonly #images: ImageStore;
     #offInfo: () => void = () => {};
     readonly #offDefault: () => void;
     readonly #offSettings: () => void;
@@ -71,6 +78,7 @@ export class Bridge {
 
     constructor(options: BridgeOptions) {
         this.#options = options;
+        this.#images = options.images ?? new MemoryImageStore();
         this.#followDefault();
         this.#offDefault = options.providers.onDefaultChange(() => {
             this.#followDefault();
@@ -207,11 +215,17 @@ export class Bridge {
                         anchor: message.anchor,
                     }));
                     return;
+                case 'image.get': {
+                    const dataUrl = await this.#images.get(message.id);
+                    client.send({ type: 'image', id: message.id, ...(dataUrl && { dataUrl }) });
+                    return;
+                }
                 case 'thread.delete': {
                     const thread = this.#options.store.get(message.threadId);
                     this.#draftAttachments.delete(message.threadId);
                     if (this.#options.store.delete(message.threadId)) {
                         this.#broadcast({ type: 'thread.removed', threadId: message.threadId });
+                        if (thread) this.#dropImages(thread);
                     }
                     if (!thread?.provider.threadId) return;
                     // Deleting the last open pin is done with the thread, as resolving it is.
@@ -249,7 +263,7 @@ export class Bridge {
         this.#offGlobalContext();
         for (const unwatch of this.#watches.values()) unwatch();
         for (const timer of this.#pendingBroadcast.values()) clearTimeout(timer);
-        await this.#options.store.flush();
+        await Promise.all([this.#options.store.flush(), this.#images.flush?.()]);
     }
 
     /* --------------------------------- actions --------------------------------- */
@@ -587,7 +601,10 @@ export class Bridge {
             }
         };
         const unwatch = provider.watch(providerThreadId, {
-            message: message => each(thread => mergeMessage(thread, message)),
+            message: message => {
+                const stored = this.#storeImages(message);
+                each(thread => mergeMessage(thread, stored));
+            },
             status: (status, statusDetail) => each(thread => ({ ...thread, status, statusDetail })),
             delivery: delivery => each(thread => ({ ...thread, delivery })),
             step: step => each(thread => mergeStep(thread, step)),
@@ -621,6 +638,32 @@ export class Bridge {
                     thread.provider.id === providerId &&
                     thread.provider.threadId === providerThreadId,
             );
+    }
+
+    /* --------------------------------- images ---------------------------------- */
+
+    /** Move a message's images into the image store; the thread keeps their ids. */
+    #storeImages({ images, ...message }: ProviderMessage): ThreadMessage {
+        if (!images?.length) return message;
+        const refs: MessageImage[] = [];
+        for (const image of images) {
+            const mimeType = dataUrlType(image.dataUrl);
+            if (!mimeType) continue;
+            const id = createHash('sha256').update(image.dataUrl).digest('hex').slice(0, 32);
+            this.#images.put(id, image.dataUrl);
+            refs.push({ id, mimeType, ...(image.name && { name: image.name }) });
+        }
+        return refs.length ? { ...message, images: refs } : message;
+    }
+
+    /** A pin was deleted: forget the images no other pin shows. */
+    #dropImages(deleted: Thread): void {
+        const ids = imageIds(deleted);
+        if (ids.size === 0) return;
+        for (const thread of this.#options.store.list()) {
+            for (const id of imageIds(thread)) ids.delete(id);
+        }
+        for (const id of ids) this.#images.delete(id);
     }
 
     /* -------------------------------- providers -------------------------------- */
@@ -711,6 +754,12 @@ function watchKey(providerId: string, providerThreadId: string): string {
     return `${providerId}:${providerThreadId}`;
 }
 
+function imageIds(thread: Thread): Set<string> {
+    return new Set(
+        thread.messages.flatMap(message => message.images?.map(image => image.id) ?? []),
+    );
+}
+
 function localMessage(text: string, createdAt: string): ThreadMessage {
     return {
         id: `${LOCAL_PREFIX}${crypto.randomUUID()}`,
@@ -721,7 +770,7 @@ function localMessage(text: string, createdAt: string): ThreadMessage {
     };
 }
 
-export function mergeMessage(thread: Thread, incoming: ProviderMessage): Thread {
+export function mergeMessage(thread: Thread, incoming: ThreadMessage): Thread {
     const message: ThreadMessage = {
         ...incoming,
         text: incoming.role === 'user' ? stripContext(incoming.text) : incoming.text,

@@ -16,11 +16,25 @@ export type ThreadStatus = z.infer<typeof ThreadStatus>;
 export const MessageRole = z.enum(['user', 'assistant', 'system']);
 export type MessageRole = z.infer<typeof MessageRole>;
 
+/**
+ * An image the agent took or looked at (a screenshot, an image file it read),
+ * by reference: the bridge keeps the bytes, the overlay asks for them with `image.get`.
+ */
+export const MessageImage = z.object({
+    /** Hash of the image, so the same one is stored once. */
+    id: z.string().regex(/^[a-f0-9]{32}$/),
+    mimeType: z.string(),
+    name: z.string().optional(),
+});
+export type MessageImage = z.infer<typeof MessageImage>;
+
 export const ThreadMessage = z.object({
     id: z.string(),
     role: MessageRole,
     /** Cumulative text; replaces the previous value on every update. */
     text: z.string(),
+    /** Images the agent showed in this message, in order; may come with empty `text`. */
+    images: z.array(MessageImage).optional(),
     streaming: z.boolean().default(false),
     createdAt: z.string(),
 });

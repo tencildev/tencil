@@ -42,6 +42,7 @@ import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.t
 import { AllowedOrigins, approvableOrigin } from './allowed-origins.ts';
 import { APPROVAL_HEADERS, allowedPage, confirmPage, errorPage } from './approval-page.ts';
 import { FileGlobalContext } from './global-context.ts';
+import { FileImageStore, projectImagesPath } from './image-store.ts';
 import { FilePreferences, preferencesPath } from './preferences.ts';
 import { type Detected, type Exec, ProjectResolver, projectKey } from './project-resolver.ts';
 import { FileProjectSettings, projectSettingsPath } from './project-settings.ts';
@@ -232,6 +233,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 const bridge = new Bridge({
                     providers,
                     store,
+                    images: new FileImageStore(projectImagesPath(key, dataDir)),
                     project: { name: basename(key), root: key },
                     version: VERSION,
                     update: () => updater?.status() ?? { state: 'idle' },

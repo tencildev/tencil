@@ -80,8 +80,16 @@ export type ThreadItem =
           tool: string;
           status: ItemStatus;
           error?: { message: string } | null;
+          /** MCP content blocks, e.g. `{ type: 'image', data, mimeType }` for a screenshot. */
+          result?: { content?: unknown[] } | null;
       }
-    | { type: 'dynamicToolCall'; id: string; tool: string; status: ItemStatus }
+    | {
+          type: 'dynamicToolCall';
+          id: string;
+          tool: string;
+          status: ItemStatus;
+          contentItems?: Array<{ type: string; text?: string; imageUrl?: string }> | null;
+      }
     | {
           type: 'collabAgentToolCall';
           id: string;

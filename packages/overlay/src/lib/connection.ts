@@ -54,6 +54,11 @@ export const projectChoices = signal<Array<{ root: string; title: string }> | nu
 export const originBlocked = signal<{ origin: string; approveUrl: string } | null>(null);
 /** What to do when there are no project choices. */
 export const projectChoicesHint = signal<string | undefined>(undefined);
+/**
+ * Images agent messages refer to, by id: a data URL once the bridge sent it,
+ * `null` while asked for, `false` when the bridge doesn't have it.
+ */
+export const images = signal<ReadonlyMap<string, string | null | false>>(new Map());
 export const lastError = signal<{ message: string; threadId?: string; at: number } | null>(null);
 
 let socket: WebSocket | undefined;
@@ -112,6 +117,21 @@ export function send(message: ClientMessageInput): boolean {
     }
     socket.send(JSON.stringify(message));
     return true;
+}
+
+/** Ask the bridge for an image a message shows, once. */
+export function requestImage(id: string): void {
+    if (images.value.has(id)) return;
+    images.value = new Map(images.value).set(id, null);
+    if (socket?.readyState === WebSocket.OPEN)
+        socket.send(JSON.stringify({ type: 'image.get', id }));
+}
+
+/** Ask again for images still on their way when the connection dropped. */
+function requestPendingImages(): void {
+    for (const [id, dataUrl] of images.value) {
+        if (dataUrl === null) socket?.send(JSON.stringify({ type: 'image.get', id }));
+    }
 }
 
 /** Optimistic insert so a new pin renders before the bridge round-trips. */
@@ -178,6 +198,7 @@ function handle(message: ServerMessage): void {
                 update.value = message.update ?? null;
                 threads.value = new Map(message.threads.map(thread => [thread.id, thread]));
             });
+            requestPendingImages();
             return;
         case 'origin.blocked':
             originBlocked.value = { origin: message.origin, approveUrl: message.approveUrl };
@@ -227,6 +248,9 @@ function handle(message: ServerMessage): void {
             return;
         case 'thread.upsert':
             upsertLocal(message.thread);
+            return;
+        case 'image':
+            images.value = new Map(images.value).set(message.id, message.dataUrl ?? false);
             return;
         case 'thread.removed': {
             const next = new Map(threads.value);

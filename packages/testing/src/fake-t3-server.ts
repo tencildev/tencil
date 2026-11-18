@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { testScreenshot } from './test-image.ts';
 
 /**
  * A small stand-in for a T3 Code server: the HTTP auth endpoints, the shell
@@ -19,6 +20,11 @@ export interface FakeT3Options {
     reply?: (text: string) => string;
     /** Delay between streamed reply chunks. */
     chunkDelayMs?: number;
+    /**
+     * V2: turns whose prompt this matches take a screenshot first, a tool call
+     * whose image only `orchestration.getTurnItem` returns. Prompts that say "screenshot" by default.
+     */
+    screenshot?: (text: string) => boolean;
     /** Agents in `server.getConfig`; one Codex instance by default. */
     providers?: FakeProvider[];
     /** Server settings in `server.getConfig`, e.g. `defaultModelSelection`. */
@@ -77,6 +83,8 @@ export interface FakeThread {
     messages: FakeMessage[];
     runOrdinal: number;
     activeRunId: string | null;
+    /** V2 tool calls (`dynamic_tool` turn items), with their full output. */
+    toolItems?: Array<Record<string, unknown> & { id: string; output: unknown }>;
     sessionStatus: 'idle' | 'running' | 'ready' | 'interrupted' | 'error';
 }
 
@@ -330,6 +338,12 @@ export class FakeT3Server {
                 });
             case 'orchestration.subscribeThread':
                 return this.#subscribe(String(payload.threadId), chunk);
+            case 'orchestration.getTurnItem': {
+                if (!v2) break;
+                const thread = this.threads.get(String(payload.threadId));
+                const item = thread?.toolItems?.find(tool => tool.id === payload.itemId);
+                return value({ item: item ?? null });
+            }
             case 'assets.persistChatAttachments': {
                 if (!v2) break;
                 const attachments = (payload.attachments as UploadAttachment[]).map(verifyUpload);
@@ -435,6 +449,8 @@ export class FakeT3Server {
 
         this.#emitMessage(thread, user);
         this.#emitRun(thread, runId, 'running');
+        const screenshot = this.#options.screenshot ?? ((t: string) => /screenshot/i.test(t));
+        if (this.#options.protocol === 2 && screenshot(text)) this.#takeScreenshot(thread, runId);
 
         const reply = (this.#options.reply ?? ((t: string) => `Done: ${t.split('\n')[0]}`))(text);
         const words = reply.split(/(?<=\s)/);
@@ -463,6 +479,30 @@ export class FakeT3Server {
             this.#emitRun(thread, runId, 'completed');
         };
         setTimeout(step, this.#options.chunkDelayMs);
+    }
+
+    #takeScreenshot(thread: FakeThread, runId: string): void {
+        const now = new Date().toISOString();
+        const item = {
+            type: 'dynamic_tool',
+            id: `item-${randomUUID()}`,
+            threadId: thread.id,
+            runId,
+            toolName: 'preview_screenshot',
+            status: 'completed',
+            startedAt: now,
+            completedAt: now,
+            updatedAt: now,
+            input: {},
+            output: {
+                content: [
+                    { type: 'text', text: 'Screenshot of the page' },
+                    { type: 'image', mimeType: 'image/png', data: testScreenshot() },
+                ],
+            },
+        };
+        thread.toolItems = [...(thread.toolItems ?? []), item];
+        this.#emit(thread.id, 'turn-item.updated', wireToolItem(item));
     }
 
     #interrupt(threadId: string): void {
@@ -510,7 +550,11 @@ export class FakeT3Server {
             return {
                 kind: 'snapshot',
                 snapshotSequence: this.#sequence,
-                projection: { runs, messages, turnItems: [] },
+                projection: {
+                    runs,
+                    messages,
+                    turnItems: (thread.toolItems ?? []).map(wireToolItem),
+                },
             };
         }
         return {
@@ -623,6 +667,11 @@ export class FakeT3Server {
             hasPendingUserInput: false,
         };
     }
+}
+
+/** T3 Code leaves a tool's output off the stream; `getTurnItem` has it. */
+function wireToolItem({ output: _, ...item }: Record<string, unknown>): Record<string, unknown> {
+    return { ...item, outputOmitted: true };
 }
 
 interface UploadAttachment {

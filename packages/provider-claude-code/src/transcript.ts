@@ -1,5 +1,5 @@
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderMessage, ThreadStatus } from '@tencildev/protocol';
+import { type ProviderMessage, type ThreadStatus, toolOutputImages } from '@tencildev/protocol';
 
 export type RunStatus = { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
 
@@ -26,7 +26,9 @@ interface Draft {
  * Folds the live SDK message stream of one session into cumulative
  * `ProviderMessage`s. Assistant messages are keyed by their API message id,
  * the same id the transcript on disk carries, so a replay lines up with them.
- * Subagent output and tool results stay out: the overlay shows the conversation.
+ * Subagent output and tool results stay out: the overlay shows the conversation,
+ * plus the images tool results carry (a screenshot, an image file Claude read),
+ * each as a message of its own keyed by the tool call.
  */
 export class TurnTracker {
     readonly #drafts = new Map<string, Draft>();
@@ -78,6 +80,11 @@ export class TurnTracker {
                 if (message.error === 'authentication_failed') {
                     update.unauthorized = 'Claude Code is not signed in. Run `claude` and log in.';
                 }
+                break;
+            }
+            case 'user': {
+                if (message.parent_tool_use_id) break;
+                update.messages.push(...toolImageMessages(message.message.content, now));
                 break;
             }
             case 'result': {
@@ -180,6 +187,7 @@ export function messagesFromTranscript(
             const text = userText(body?.content);
             if (text)
                 messages.push({ id: entry.uuid, role: 'user', text, streaming: false, createdAt });
+            messages.push(...toolImageMessages(body?.content, createdAt));
         } else if (entry.type === 'assistant') {
             const text = blockText(body?.content);
             if (!text) continue;
@@ -199,6 +207,26 @@ export function messagesFromTranscript(
                 messages.push(message);
             }
         }
+    }
+    return messages;
+}
+
+/** The images in a user message's tool results, one assistant message per tool call. */
+function toolImageMessages(content: unknown, createdAt: string): ProviderMessage[] {
+    if (!Array.isArray(content)) return [];
+    const messages: ProviderMessage[] = [];
+    for (const block of content) {
+        if (block?.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue;
+        const images = toolOutputImages(block.content);
+        if (images.length === 0) continue;
+        messages.push({
+            id: `tool:${block.tool_use_id}`,
+            role: 'assistant',
+            text: '',
+            images,
+            streaming: false,
+            createdAt,
+        });
     }
     return messages;
 }
