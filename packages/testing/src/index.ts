@@ -23,5 +23,6 @@ export {
     type FakeT3Options,
     FakeT3Server,
     type FakeThread,
+    type FakeToolCall,
 } from './fake-t3-server.ts';
 export { waitFor } from './wait-for.ts';

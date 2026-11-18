@@ -1,4 +1,9 @@
-import type { ImageAttachment, ProviderMessage, ThreadStatus } from '@tencildev/protocol';
+import type {
+    ImageAttachment,
+    ProviderMessage,
+    ThreadStatus,
+    ThreadStep,
+} from '@tencildev/protocol';
 import type { RpcSocket } from '../rpc-socket.ts';
 
 export type RuntimeMode = 'approval-required' | 'auto-accept-edits' | 'auto' | 'full-access';
@@ -13,6 +18,8 @@ export interface ModelSelection {
 export interface TrackerUpdate {
     messages: ProviderMessage[];
     status?: { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
+    /** Tool calls of the latest turn that started or changed (V2 only). */
+    steps?: ThreadStep[];
     gone?: boolean;
 }
 

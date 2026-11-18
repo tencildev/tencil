@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ImageAttachment, ProviderMessage } from '@tencildev/protocol';
+import type { ImageAttachment, ProviderMessage, ThreadStep } from '@tencildev/protocol';
 import type { RpcSocket } from '../rpc-socket.ts';
 import {
     decodedSize,
@@ -126,10 +126,28 @@ interface WireMessage {
 
 interface WireTurnItem {
     type: string;
+    id?: string;
+    runId?: string | null;
+    parentItemId?: string | null;
+    status?: string;
+    title?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    updatedAt?: string;
     messageId?: string;
     text?: string;
     streaming?: boolean;
     createdAt?: string;
+    /** `command_execution`: the command. */
+    input?: unknown;
+    /** `file_change` */
+    fileName?: string;
+    /** `file_search` */
+    pattern?: string;
+    /** `web_search` */
+    patterns?: string[];
+    /** `dynamic_tool` */
+    toolName?: string | null;
 }
 
 type WireItem =
@@ -161,11 +179,13 @@ export class V2ThreadTracker implements ThreadTracker {
     #runs = new Map<string, WireRun>();
     #requests = new Map<string, WireRuntimeRequest>();
     #messages = new Map<string, ProviderMessage>();
+    #steps = new Map<string, ThreadStep>();
     #lastStatusKey = '';
 
     apply(raw: unknown): TrackerUpdate {
         const item = raw as WireItem;
         const changed: ProviderMessage[] = [];
+        const steps: ThreadStep[] = [];
         let gone = false;
 
         if (item.kind === 'snapshot') {
@@ -174,8 +194,10 @@ export class V2ThreadTracker implements ThreadTracker {
                 this.#requests.set(request.id, request);
             for (const message of item.projection.messages ?? [])
                 this.#upsertMessage(message, changed);
-            for (const turnItem of item.projection.turnItems ?? [])
+            for (const turnItem of item.projection.turnItems ?? []) {
                 this.#upsertTurnItem(turnItem, changed);
+                this.#upsertStep(turnItem, steps);
+            }
         } else if (item.kind === 'event') {
             const { type, payload } = item.event;
             if (type === 'run.created' || type === 'run.updated') {
@@ -188,12 +210,14 @@ export class V2ThreadTracker implements ThreadTracker {
                 this.#upsertMessage(payload as WireMessage, changed);
             } else if (type === 'turn-item.updated') {
                 this.#upsertTurnItem(payload as WireTurnItem, changed);
+                this.#upsertStep(payload as WireTurnItem, steps);
             } else if (type === 'thread.deleted') {
                 gone = true;
             }
         }
 
         const update: TrackerUpdate = { messages: changed };
+        if (steps.length > 0) update.steps = steps;
         if (gone) update.gone = true;
         const status = this.status();
         const statusKey = `${status.status}:${status.detail ?? ''}`;
@@ -292,6 +316,40 @@ export class V2ThreadTracker implements ThreadTracker {
         );
     }
 
+    /** Tool calls of the latest run; earlier turns' stay in T3 Code. */
+    #upsertStep(item: WireTurnItem, steps: ThreadStep[]): void {
+        if (!item.id || (item.runId && item.runId !== this.#latestRun()?.id)) return;
+        const label = stepLabel(item);
+        if (!label) return;
+        const status = STEP_STATUS[item.status ?? ''] ?? 'running';
+        const startedAt =
+            item.startedAt ?? this.#steps.get(item.id)?.startedAt ?? item.updatedAt ?? now();
+        const step: ThreadStep = {
+            id: item.id,
+            label: status === 'running' ? label.running : label.done,
+            status,
+            kind: label.kind,
+            ...(label.detail ? { detail: label.detail } : {}),
+            ...(item.parentItemId ? { parentId: item.parentItemId } : {}),
+            startedAt,
+            ...(status !== 'running'
+                ? { endedAt: item.completedAt ?? item.updatedAt ?? now() }
+                : {}),
+        };
+        const previous = this.#steps.get(item.id);
+        if (
+            previous &&
+            previous.status === step.status &&
+            previous.label === step.label &&
+            previous.endedAt === step.endedAt
+        )
+            return;
+        this.#steps.set(item.id, step);
+        const index = steps.findIndex(s => s.id === step.id);
+        if (index === -1) steps.push(step);
+        else steps[index] = step;
+    }
+
     #set(next: ProviderMessage, changed: ProviderMessage[]): void {
         const previous = this.#messages.get(next.id);
         if (previous && previous.text === next.text && previous.streaming === next.streaming)
@@ -301,4 +359,73 @@ export class V2ThreadTracker implements ThreadTracker {
         if (index === -1) changed.push(next);
         else changed[index] = next;
     }
+}
+
+const STEP_STATUS: Record<string, ThreadStep['status']> = {
+    pending: 'running',
+    running: 'running',
+    waiting: 'running',
+    completed: 'done',
+    failed: 'failed',
+    cancelled: 'skipped',
+    interrupted: 'skipped',
+};
+
+/** How a tool turn item reads in the overlay; `undefined` for everything that isn't a tool call. */
+function stepLabel(
+    item: WireTurnItem,
+):
+    | { kind: NonNullable<ThreadStep['kind']>; running: string; done: string; detail?: string }
+    | undefined {
+    switch (item.type) {
+        case 'command_execution': {
+            const command = clip(
+                String(item.input ?? item.title ?? '').split('\n', 1)[0] ?? '',
+                48,
+            );
+            return { kind: 'command', running: `Running ${command}`, done: `Ran ${command}` };
+        }
+        case 'file_change': {
+            const file = basename(item.fileName ?? item.title ?? 'a file');
+            return { kind: 'edit', running: `Editing ${file}`, done: `Edited ${file}` };
+        }
+        case 'file_search': {
+            const pattern = clip(item.pattern ?? item.title ?? '', 40);
+            return {
+                kind: 'search',
+                running: `Searching for ${pattern}`,
+                done: `Searched for ${pattern}`,
+            };
+        }
+        case 'web_search': {
+            const query = clip(item.patterns?.[0] ?? item.title ?? '', 36);
+            return {
+                kind: 'web',
+                running: `Searching the web for ${query}`,
+                done: `Searched the web for ${query}`,
+            };
+        }
+        case 'dynamic_tool': {
+            const tool = item.toolName ?? item.title ?? 'a tool';
+            return { kind: 'tool', running: `Using ${tool}`, done: `Used ${tool}` };
+        }
+        case 'subagent': {
+            const what = item.title ?? 'a subagent';
+            return { kind: 'agent', running: `Delegating: ${what}`, done: `Delegated: ${what}` };
+        }
+        default:
+            return undefined;
+    }
+}
+
+function basename(path: string): string {
+    return path.split(/[\\/]/).pop() || path;
+}
+
+function clip(text: string, max: number): string {
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function now(): string {
+    return new Date().toISOString();
 }

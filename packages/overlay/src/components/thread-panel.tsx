@@ -1,20 +1,12 @@
-import type { Delivery, Thread, ThreadMessage, ThreadStep } from '@tencildev/protocol';
-import type { ComponentChildren } from 'preact';
+import type { Delivery, Thread, ThreadMessage } from '@tencildev/protocol';
+import { Fragment } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
-import {
-    CheckIcon,
-    ChevronIcon,
-    CloseIcon,
-    CodeIcon,
-    ExternalIcon,
-    StopIcon,
-    TrashIcon,
-    UndoIcon,
-} from './icons.tsx';
+import { Activity, Shimmer } from './activity.tsx';
+import { CheckIcon, CloseIcon, CodeIcon, ExternalIcon, TrashIcon, UndoIcon } from './icons.tsx';
 import { Markdown } from './markdown.tsx';
 import { pinNumbers, sendQueued } from './pins.tsx';
 import { PromptInput } from './prompt-input.tsx';
@@ -210,6 +202,7 @@ function Messages({ thread }: { thread: Thread }) {
     const following = useRef(true);
     const [scrolled, setScrolled] = useState(false);
     const last = thread.messages[thread.messages.length - 1];
+    const lastAsk = thread.messages.findLastIndex(message => message.role === 'user');
 
     // Sending a reply brings the conversation back to the bottom.
     useLayoutEffect(() => {
@@ -244,15 +237,18 @@ function Messages({ thread }: { thread: Thread }) {
             }}
         >
             <div ref={listRef} class="messages-list">
-                {thread.messages.map(message =>
+                {thread.messages.map((message, index) =>
                     message.role === 'user' ? (
-                        <div key={message.id} class="message message-user">
-                            {message.text}
-                        </div>
+                        <Fragment key={message.id}>
+                            <div class="message message-user">{message.text}</div>
+                            {/* The turn's tool calls sit between the ask and the answer. */}
+                            {index === lastAsk && <Activity thread={thread} rows={4} />}
+                        </Fragment>
                     ) : (
                         <AssistantMessage key={message.id} message={message} />
                     ),
                 )}
+                {lastAsk === -1 && <Activity thread={thread} rows={4} />}
             </div>
         </div>
     );
@@ -268,182 +264,19 @@ function AssistantMessage({ message }: { message: ThreadMessage }) {
     );
 }
 
-/** Per-character color wave; screen readers get the plain label. */
-function Shimmer({ text }: { text: string }) {
-    const characters = [...text];
-    return (
-        <span class="shimmer">
-            <span class="sr-only">{text}</span>
-            {characters.map((character, index) => (
-                <span
-                    key={index}
-                    aria-hidden="true"
-                    style={{ '--i': index, '--n': characters.length }}
-                >
-                    {character}
-                </span>
-            ))}
-        </span>
-    );
-}
-
-/** The status line, and the turn's steps behind it when the provider reports them. */
+/** Starting, working and waiting show as the turn's activity; this is what's left. */
 function RunStatus({ thread }: { thread: Thread }) {
-    const [open, setOpen] = useState(false);
-    const steps = thread.steps ?? [];
-    const toggle = steps.length > 0 ? { open, onToggle: () => setOpen(!open) } : undefined;
-    const working = thread.status === 'working';
     return (
         <>
-            {open && steps.length > 0 && <StepList steps={steps} follow={working} />}
-            <StatusLine thread={thread} steps={toggle} />
-            {toggle && !working && (
-                <div class="status-line">
-                    <StepsToggle {...toggle}>
-                        {steps.filter(step => !step.parentId).length} steps
-                        {elapsed(steps) ? ` · ${elapsed(steps)}` : ''}
-                    </StepsToggle>
-                </div>
+            <StatusLine thread={thread} />
+            {thread.delivery && thread.status !== 'working' && (
+                <DeliveryLine delivery={thread.delivery} />
             )}
-            {thread.delivery && !working && <DeliveryLine delivery={thread.delivery} />}
         </>
     );
 }
 
-interface Toggle {
-    open: boolean;
-    onToggle: () => void;
-}
-
-function StepsToggle({ open, onToggle, children }: Toggle & { children: ComponentChildren }) {
-    return (
-        <button
-            type="button"
-            class={`steps-toggle${open ? ' open' : ''}`}
-            aria-expanded={open}
-            title={open ? 'Hide steps' : 'Show steps'}
-            onClick={onToggle}
-        >
-            {children}
-            <ChevronIcon />
-        </button>
-    );
-}
-
-function StepList({ steps, follow }: { steps: ThreadStep[]; follow: boolean }) {
-    const ref = useRef<HTMLOListElement>(null);
-    const atEnd = useRef(true);
-    // Stay at the newest step while it's working, unless the user scrolled up.
-    useLayoutEffect(() => {
-        const element = ref.current;
-        if (element && follow && atEnd.current) element.scrollTop = element.scrollHeight;
-    });
-    return (
-        <ol
-            ref={ref}
-            class="steps"
-            onScroll={event => {
-                const element = event.currentTarget;
-                atEnd.current =
-                    element.scrollHeight - element.scrollTop - element.clientHeight < 16;
-            }}
-        >
-            {steps.map(step => (
-                <li
-                    key={step.id}
-                    class={`step step-${step.status}${step.parentId ? ' step-child' : ''}`}
-                    title={step.detail ? `${step.label}\n${step.detail}` : step.label}
-                >
-                    <span class="step-mark">
-                        {step.status === 'running' ? (
-                            <span class="live-dot" />
-                        ) : step.status === 'done' ? (
-                            <CheckIcon />
-                        ) : step.status === 'failed' ? (
-                            <CloseIcon />
-                        ) : (
-                            '–'
-                        )}
-                    </span>
-                    <span class="step-label">
-                        {step.label}
-                        {step.detail && <span class="step-detail">{step.detail}</span>}
-                    </span>
-                    {step.endedAt && <span class="step-time">{duration(step)}</span>}
-                </li>
-            ))}
-        </ol>
-    );
-}
-
-/** The step being worked on: the newest one still running (a tool call over the agent). */
-function currentStep(steps: ThreadStep[]): ThreadStep | undefined {
-    return steps.findLast(step => step.status === 'running');
-}
-
-function duration(step: ThreadStep): string {
-    if (!step.endedAt) return '';
-    return formatSeconds((Date.parse(step.endedAt) - Date.parse(step.startedAt)) / 1000);
-}
-
-/** From the first step's start to the last one's end. */
-function elapsed(steps: ThreadStep[]): string {
-    const first = steps[0];
-    const ends = steps.map(step => step.endedAt).filter((end): end is string => !!end);
-    if (!first || ends.length === 0) return '';
-    const last = ends.reduce((a, b) => (a > b ? a : b));
-    return formatSeconds((Date.parse(last) - Date.parse(first.startedAt)) / 1000);
-}
-
-function formatSeconds(seconds: number): string {
-    if (!Number.isFinite(seconds) || seconds < 1) return '';
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const minutes = Math.floor(seconds / 60);
-    return `${minutes}m ${String(Math.round(seconds % 60)).padStart(2, '0')}s`;
-}
-
-function StatusLine({ thread, steps }: { thread: Thread; steps?: Toggle }) {
-    if (thread.status === 'starting') {
-        return (
-            <div class="status-line">
-                <span class="live-dot" />
-                <Shimmer text={`Starting a thread in ${providerLabel(thread.provider.id)}…`} />
-            </div>
-        );
-    }
-    if (thread.status === 'working') {
-        return (
-            <div class="status-line">
-                <span class="live-dot" />
-                {steps ? (
-                    <StepsToggle {...steps}>
-                        <Shimmer text={`${currentStep(thread.steps ?? [])?.label ?? 'Working'}…`} />
-                    </StepsToggle>
-                ) : (
-                    <Shimmer text="Working…" />
-                )}
-                <button
-                    type="button"
-                    class="stop"
-                    onClick={() => send({ type: 'thread.interrupt', threadId: thread.id })}
-                >
-                    <StopIcon /> Stop
-                </button>
-            </div>
-        );
-    }
-    if (thread.status === 'waiting') {
-        return (
-            <div class="status-line status-waiting">
-                {thread.statusDetail ?? 'Waiting for input'}
-                {thread.provider.url && (
-                    <a href={thread.provider.url} target="_blank" rel="noreferrer">
-                        Open
-                    </a>
-                )}
-            </div>
-        );
-    }
+function StatusLine({ thread }: { thread: Thread }) {
     if (thread.status === 'error') {
         return (
             <div class="status-line status-error">
