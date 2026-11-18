@@ -7,7 +7,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { CredentialStore } from './auth.ts';
 import { T3CodeProvider, type T3CodeProviderOptions } from './t3code-provider.ts';
 
-const FAST = { httpMs: 300, rpcMs: 1_000, retryMinMs: 20, retryMaxMs: 100 };
+const FAST = {
+    httpMs: 300,
+    rpcMs: 1_000,
+    retryMinMs: 20,
+    retryMaxMs: 100,
+    remoteBusyMs: 50,
+    remoteIdleMs: 200,
+};
 const PNG =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
@@ -522,15 +529,70 @@ describe('T3 Code provider, linked machines', () => {
         await expect(provider.createThread(input)).rejects.toThrow(/no T3 Code project/);
     });
 
-    it('runs on this machine when the picked one is unknown', async () => {
+    it('never falls back to this machine when the picked one is gone', async () => {
+        const { provider, server } = await linked();
+        const input = { title: 't', text: 'x', attachments: [], machine: 'env-gone' };
+        await expect(provider.createThread(input)).rejects.toThrow(/no longer linked/);
+        expect(server.threads.size).toBe(0);
+        expect(server.remoteThreads.size).toBe(0);
+    });
+
+    it('fails a saved pick when T3 Code cannot be signed in to', async () => {
+        const { provider, server } = await setup(2, { createPairingCode: async () => undefined });
+        await provider.start();
+        await ready(provider);
+        const input = { title: 't', text: 'x', attachments: [], machine: 'env/mac' };
+        await expect(provider.createThread(input)).rejects.toThrow(/Couldn't reach the machine/);
+        expect(server.threads.size).toBe(0);
+    });
+
+    it('keeps following a long thread and stops when it is deleted there', async () => {
         const { provider, server } = await linked();
         const created = await provider.createThread({
             title: 't',
-            text: 'x',
+            text: 'one',
             attachments: [],
-            machine: 'env-gone',
+            machine: 'env/mac',
         });
-        expect(created.providerThreadId).not.toContain('/');
-        expect(server.remoteThreads.size).toBe(0);
+        const { sink, messages, isGone } = recordingSink();
+        provider.watch(created.providerThreadId, sink);
+        const replied = (text: string) =>
+            waitFor(() => [...messages.values()].some(m => m.text === `Done: ${text}`), {
+                message: `reply to ${text}`,
+            });
+        await replied('one');
+        for (const [text, previous] of [
+            ['two', 'one'],
+            ['three', 'two'],
+        ] as const) {
+            await replied(previous);
+            await provider.sendMessage({
+                providerThreadId: created.providerThreadId,
+                text,
+                attachments: [],
+            });
+        }
+        // Six items read in pages of two; the newest still arrives.
+        await waitFor(() => [...messages.values()].some(m => m.text === 'Done: three'), {
+            message: 'third reply',
+        });
+        expect([...messages.values()].map(m => m.text)).toEqual([
+            expect.stringContaining('one'),
+            'Done: one',
+            'two',
+            'Done: two',
+            'three',
+            'Done: three',
+        ]);
+        const [remote] = server.remoteThreads.keys();
+        server.remoteThreads.delete(remote!);
+        await provider
+            .sendMessage({
+                providerThreadId: created.providerThreadId,
+                text: 'four',
+                attachments: [],
+            })
+            .catch(() => undefined);
+        await waitFor(isGone, { message: 'gone' });
     });
 });

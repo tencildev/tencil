@@ -392,18 +392,28 @@ interface MachineChoices {
     fallback?: ProviderMachine;
 }
 
-/** Only offered when there's more than one machine to pick from. */
+/**
+ * Offered when there's more than one machine, or when a machine is still picked
+ * that's gone: new threads fail rather than run elsewhere, so it must stay changeable.
+ */
 function machineChoices(providerId: string | undefined): MachineChoices | undefined {
     const list = providerMachines.value;
-    if (!list || list.provider !== providerId || list.machines.length < 2) return undefined;
-    const find = (id: string | undefined) => list.machines.find(machine => machine.id === id);
-    // A pick that's gone falls back to the default, here and in the provider.
-    const picked = find(settings.value?.machine);
-    const fallback = find(list.defaultMachine);
+    if (!list || list.provider !== providerId || list.machines.length === 0) return undefined;
+    const saved = settings.value?.machine;
+    const fallback = list.machines.find(machine => machine.id === list.defaultMachine);
+    const pickedId = saved && saved !== fallback?.id ? saved : null;
+    const missing = pickedId && !list.machines.some(machine => machine.id === pickedId);
+    const machines = missing
+        ? [
+              ...list.machines,
+              { id: pickedId, label: 'Picked machine', reachable: false, detail: 'Not linked now' },
+          ]
+        : list.machines;
+    if (machines.length < 2) return undefined;
     return {
-        machines: list.machines,
-        current: picked ?? fallback,
-        picked: picked && picked.id !== fallback?.id ? picked.id : null,
+        machines,
+        current: machines.find(machine => machine.id === pickedId) ?? fallback,
+        picked: pickedId,
         fallback,
     };
 }
@@ -442,7 +452,11 @@ function MachineMenu({
                         )}
                         {!machine.reachable && (
                             <span class="target-option-meta">
-                                {/expired/i.test(machine.detail ?? '') ? 'Link expired' : 'Offline'}
+                                {/expired/i.test(machine.detail ?? '')
+                                    ? 'Link expired'
+                                    : /not linked/i.test(machine.detail ?? '')
+                                      ? 'Not linked'
+                                      : 'Offline'}
                             </span>
                         )}
                     </button>

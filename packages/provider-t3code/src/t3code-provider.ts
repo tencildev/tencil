@@ -60,7 +60,15 @@ export interface T3CodeProviderOptions {
     autoPair?: boolean;
     /** Mints a pairing code. Defaults to running the `t3` CLI matching the server version. */
     createPairingCode?: (baseUrl: string) => Promise<string | undefined>;
-    timeouts?: { httpMs?: number; rpcMs?: number; retryMinMs?: number; retryMaxMs?: number };
+    timeouts?: {
+        httpMs?: number;
+        rpcMs?: number;
+        retryMinMs?: number;
+        retryMaxMs?: number;
+        /** How often a thread on a linked machine is read while it works, and once idle. */
+        remoteBusyMs?: number;
+        remoteIdleMs?: number;
+    };
     log?: (message: string) => void;
 }
 
@@ -119,6 +127,8 @@ interface Connection {
     environmentId: string;
     /** The machine's name in T3 Code, e.g. `officebox`. */
     environmentLabel?: string;
+    /** This T3 Code can link machines; without it Tencil never signs in to `/mcp`. */
+    peerLinks: boolean;
     project: WireProject;
 }
 
@@ -153,10 +163,18 @@ interface WireRead {
     hasMore: boolean;
 }
 
-/** How often a linked machine's thread is read: quickly while it works, slower once idle. */
-const REMOTE_POLL = { busyMs: 2_000, idleMs: 15_000 };
+/** Item states that don't change any more. */
+const FINISHED_ITEMS = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 
-const DEFAULT_TIMEOUTS = { httpMs: 8_000, rpcMs: 30_000, retryMinMs: 1_000, retryMaxMs: 15_000 };
+const DEFAULT_TIMEOUTS = {
+    httpMs: 8_000,
+    rpcMs: 30_000,
+    retryMinMs: 1_000,
+    retryMaxMs: 15_000,
+    // A linked machine's thread is polled: quickly while it works, slower once idle.
+    remoteBusyMs: 2_000,
+    remoteIdleMs: 15_000,
+};
 
 export class T3CodeProvider implements Provider {
     readonly id = 't3code';
@@ -379,10 +397,12 @@ export class T3CodeProvider implements Provider {
             label: connection.environmentLabel ?? 'This machine',
             reachable: true,
         };
-        const links = await this.#links().catch((error: unknown) => {
-            this.#log(`No linked machines: ${errorMessage(error)}`);
-            return [];
-        });
+        const links = connection.peerLinks
+            ? await this.#links().catch((error: unknown) => {
+                  this.#log(`No linked machines: ${errorMessage(error)}`);
+                  return [];
+              })
+            : [];
         return {
             machines: [
                 here,
@@ -400,10 +420,19 @@ export class T3CodeProvider implements Provider {
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {
         const connection = this.#requireConnection();
         if (input.machine && input.machine !== connection.environmentId) {
-            const link = (await this.#links()).find(
-                candidate => candidate.environmentId === input.machine,
-            );
-            if (link) return this.#createRemoteThread(connection, link, input);
+            // Never quietly run somewhere else than the machine the user picked.
+            const links = await this.#links().catch((error: unknown) => {
+                throw new Error(
+                    `Couldn't reach the machine picked for new threads (${errorMessage(error)}). Pick another one in the composer.`,
+                );
+            });
+            const link = links.find(candidate => candidate.environmentId === input.machine);
+            if (!link) {
+                throw new Error(
+                    'The machine picked for new threads is no longer linked in T3 Code. Pick another one in the composer.',
+                );
+            }
+            return this.#createRemoteThread(connection, link, input);
         }
         const sources = await this.#modelSources(connection);
         const modelSelection =
@@ -437,7 +466,8 @@ export class T3CodeProvider implements Provider {
             await this.#requireMcp().call('t3_thread_send', {
                 environmentId: remote.environmentId,
                 threadId: remote.threadId,
-                message: withoutScreenshotNote(input.text, input.attachments.length),
+                // A reply is shown as sent, so no note; screenshots just stay here.
+                message: input.text,
                 mode: 'auto',
             });
             this.#remoteWatchers.get(input.providerThreadId)?.poke();
@@ -549,6 +579,7 @@ export class T3CodeProvider implements Provider {
             environmentId: string;
             label?: string;
             orchestrationProtocolVersion?: number;
+            capabilities?: { peerLinks?: boolean };
         }>(
             '/.well-known/t3/environment',
             undefined,
@@ -587,6 +618,7 @@ export class T3CodeProvider implements Provider {
                 protocol,
                 environmentId: environment.environmentId,
                 ...(environment.label ? { environmentLabel: environment.label } : {}),
+                peerLinks: environment.capabilities?.peerLinks === true,
                 project,
             };
         } catch (error) {
@@ -768,10 +800,12 @@ export class T3CodeProvider implements Provider {
         this.#remoteWatchers.get(providerThreadId)?.stop();
         const sent = new Map<string, string>();
         let lastStatus = '';
-        let loaded = false;
+        /** Reads start after this position: before the oldest open item, else after the newest. */
+        let cursor = -1;
+        let failing = false;
         let stopped = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        let delay = REMOTE_POLL.busyMs;
+        let delay = this.#timeouts.remoteBusyMs;
 
         const read = (args: Record<string, unknown>) =>
             this.#requireMcp().call<WireRead>('t3_thread_read', {
@@ -788,23 +822,22 @@ export class T3CodeProvider implements Provider {
             if (stopped) return;
             try {
                 if (!this.#connection) throw new Error('T3 Code is not connected yet');
+                // Pages come oldest first; the first read starts at the beginning.
                 const items: WireReadItem[] = [];
                 let result: WireRead;
-                if (loaded) {
-                    result = await read({});
+                let position = cursor;
+                do {
+                    result = await read({ afterPosition: position });
                     items.push(...result.items);
-                } else {
-                    // The first read pages from the start so the whole conversation shows.
-                    let position = -1;
-                    do {
-                        result = await read({ afterPosition: position });
-                        items.push(...result.items);
-                        if (result.nextPosition === null) break;
-                        position = result.nextPosition;
-                    } while (result.hasMore);
-                    loaded = true;
-                }
+                    if (result.nextPosition === null) break;
+                    position = result.nextPosition;
+                } while (result.hasMore);
                 if (stopped) return;
+                failing = false;
+                // A reply still being written is read again next time; finished ones aren't.
+                const open = items.filter(item => !FINISHED_ITEMS.has(item.status));
+                const newest = items.reduce((max, item) => Math.max(max, item.position), cursor);
+                cursor = open.length ? Math.min(...open.map(item => item.position)) - 1 : newest;
                 const working = result.thread.activeRunId !== null;
                 for (const item of items.sort((a, b) => a.position - b.position)) {
                     const message = remoteMessage(item, working);
@@ -819,17 +852,19 @@ export class T3CodeProvider implements Provider {
                     lastStatus = status;
                     sink.status(status);
                 }
-                delay = status === 'idle' ? REMOTE_POLL.idleMs : REMOTE_POLL.busyMs;
+                delay =
+                    status === 'idle' ? this.#timeouts.remoteIdleMs : this.#timeouts.remoteBusyMs;
             } catch (error) {
-                if (
-                    error instanceof McpToolError &&
-                    /not.?found/i.test(`${error.code} ${error.message}`)
-                ) {
+                if (error instanceof McpToolError && error.code === 'thread_not_found') {
                     stopped = true;
                     sink.gone();
                     return;
                 }
-                this.#log(`Couldn't read a thread on another machine: ${errorMessage(error)}`);
+                // Once per outage, not on every retry of a machine that's asleep.
+                if (!failing) {
+                    this.#log(`Couldn't read a thread on another machine: ${errorMessage(error)}`);
+                }
+                failing = true;
                 delay = Math.min(delay * 2, this.#timeouts.retryMaxMs);
             }
             if (!stopped) timer = setTimeout(() => void tick(), delay);
@@ -838,10 +873,13 @@ export class T3CodeProvider implements Provider {
         const watcher: RemoteWatcher = {
             sink,
             poke: () => {
-                delay = REMOTE_POLL.busyMs;
+                delay = this.#timeouts.remoteBusyMs;
                 if (timer) {
                     clearTimeout(timer);
-                    timer = setTimeout(() => void tick(), 500);
+                    timer = setTimeout(
+                        () => void tick(),
+                        Math.min(500, this.#timeouts.remoteBusyMs),
+                    );
                 }
             },
             stop: () => {
@@ -970,7 +1008,8 @@ function remoteMessage(item: WireReadItem, working: boolean): ProviderMessage | 
 }
 
 function remoteStatus(thread: WireRead['thread']): 'working' | 'waiting' | 'idle' | 'error' {
-    if ((thread.pendingRequestCount ?? 0) > 0 || thread.status === 'waiting') return 'waiting';
+    // T3 Code reports a finished turn as `waiting` too; only open requests need the user.
+    if ((thread.pendingRequestCount ?? 0) > 0) return 'waiting';
     if (thread.activeRunId !== null) return 'working';
     if (thread.status === 'failed') return 'error';
     return 'idle';

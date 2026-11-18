@@ -62,7 +62,10 @@ export interface CreateThreadInput {
     attachments: ImageAttachment[];
     /** A `ProviderModel.id` the user picked; the provider's default when absent or unknown. */
     model?: string;
-    /** A `ProviderMachine.id` the user picked; the provider's default when absent or unknown. */
+    /**
+     * A `ProviderMachine.id` the user picked; the provider's default when absent. One that
+     * can't be reached fails, so a thread never runs on a machine the user didn't pick.
+     */
     machine?: string;
 }
 

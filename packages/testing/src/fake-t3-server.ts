@@ -264,6 +264,7 @@ export class FakeT3Server {
             return json(200, {
                 environmentId: this.environmentId,
                 ...(this.#options.label ? { label: this.#options.label } : {}),
+                capabilities: { peerLinks: true },
                 serverVersion: this.#options.serverVersion,
                 ...(this.#options.protocol === 2 ? { orchestrationProtocolVersion: 2 } : {}),
             });
@@ -408,7 +409,7 @@ export class FakeT3Server {
         };
         const thread = (id: unknown) => {
             const found = this.remoteThreads.get(String(id));
-            if (!found) throw new Error('not_found: Thread not found.');
+            if (!found) throw new Error('thread_not_found: Thread is no longer available.');
             return found;
         };
         switch (name) {
@@ -471,22 +472,26 @@ export class FakeT3Server {
                 machine(args.environmentId);
                 const remote = thread(args.threadId);
                 const after = typeof args.afterPosition === 'number' ? args.afterPosition : -1;
-                const items = remote.items
-                    .map((item, position) => ({
+                // Oldest first, a page at a time; pages are tiny here so paging gets exercised.
+                const later = remote.items
+                    .map((item, index) => ({
                         ...item,
-                        position,
+                        // Positions are sparse, as in T3 Code's messages view.
+                        position: index * 10,
                         updatedAt: new Date().toISOString(),
                     }))
                     .filter(item => item.position > after);
+                const items = later.slice(0, Math.min(Number(args.limit ?? 50), 2));
                 return {
                     thread: {
-                        status: remote.activeRunId ? 'running' : 'idle',
+                        // A finished turn reads as `waiting`, as on a real T3 Code.
+                        status: remote.activeRunId ? 'running' : 'waiting',
                         activeRunId: remote.activeRunId,
                         pendingRequestCount: 0,
                     },
                     items,
                     nextPosition: items.at(-1)?.position ?? null,
-                    hasMore: false,
+                    hasMore: later.length > items.length,
                 };
             }
             default:
