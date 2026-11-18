@@ -124,7 +124,11 @@ export function upsertLocal(thread: Thread): void {
 function open(): void {
     const wsUrl = new URL('/ws', bridgeUrl);
     wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-    bridgeState.value = 'connecting';
+    // A retry stays offline until it connects, so the offline hint doesn't blink on every
+    // attempt. A daemon restarting on a new version is expected back: show it as connecting.
+    if (bridgeState.value !== 'closed' || update.value?.state === 'restarting') {
+        bridgeState.value = 'connecting';
+    }
     const ws = new WebSocket(wsUrl);
     socket = ws;
 

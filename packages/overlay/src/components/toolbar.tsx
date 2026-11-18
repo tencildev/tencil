@@ -231,7 +231,7 @@ function connectionStatus(): ConnectionStatus {
             hint:
                 bridgeState.value === 'connecting'
                     ? undefined
-                    : 'The Tencil daemon stopped. Start it again with npx tencil start.',
+                    : 'Run npx tencil start. The overlay will reconnect on its own.',
         };
     }
     const required = signInRequired.value;
