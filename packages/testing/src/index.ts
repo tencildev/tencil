@@ -17,9 +17,11 @@ export {
 export { FakeRegistry, type FakeRegistryOptions } from './fake-registry.ts';
 export {
     CODEX_PROVIDER,
+    type FakeLinkedMachine,
     type FakeMessage,
     type FakeProject,
     type FakeProvider,
+    type FakeRemoteThread,
     type FakeT3Options,
     FakeT3Server,
     type FakeThread,

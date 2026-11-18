@@ -10,6 +10,8 @@ const SettingsFile = z.object({
     provider: z.string().optional(),
     /** Model picked per provider for new threads; unset means the provider's default. */
     models: z.record(z.string(), z.string()).optional(),
+    /** Machine picked per provider for new threads; unset means the provider's default. */
+    machines: z.record(z.string(), z.string()).optional(),
     /** Queue new comments and send them together. */
     batch: z.boolean().optional(),
     /** Offer the ruler in the overlay's toolbar. */
@@ -23,7 +25,7 @@ export function projectSettingsPath(projectRoot: string, dataDir = defaultDataDi
     return projectStorePath(projectRoot, dataDir).replace(/\.json$/, '.settings.json');
 }
 
-/** A project's overlay settings (provider, models, batching, ruler, context) in a JSON file. */
+/** A project's overlay settings (provider, models, machines, batching, ruler, context) in a JSON file. */
 export class FileProjectSettings implements ProjectSettingsStore {
     constructor(readonly path: string) {}
 
@@ -43,6 +45,7 @@ export class FileProjectSettings implements ProjectSettingsStore {
                     version: 1,
                     provider: settings.provider,
                     models: settings.models,
+                    machines: settings.machines,
                     batch: settings.batch,
                     ruler: settings.ruler,
                     context: settings.context,

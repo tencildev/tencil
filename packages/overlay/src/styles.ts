@@ -328,17 +328,20 @@ kbd {
 .target-option.selected { background: var(--n-100); }
 .target-option-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .target-option-meta { color: var(--n-500); flex: none; }
+.target-option:disabled { opacity: 0.5; cursor: default; }
+.target-option-icon { display: flex; flex: none; color: var(--n-500); }
 .target-empty { margin: 0; padding: 7px 8px; color: var(--n-500); font-size: 12px; }
 .menu-group {
   display: flex; align-items: center; gap: 6px; margin: 0;
   padding: 8px 8px 3px; color: var(--n-500); font-size: 11px; font-weight: 500;
 }
-.model-toggle { min-width: 0; max-width: 150px; font-size: 12px; }
+.model-toggle, .machine-toggle { min-width: 0; max-width: 150px; font-size: 12px; }
 .composer-batch { color: var(--accent-text); }
 .model-toggle-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.model-toggle svg:last-child { flex: none; transition: transform 150ms var(--ease-out); }
-.model-toggle.open { color: var(--n-950); background: var(--n-100); }
-.model-toggle.open svg:last-child { transform: rotate(180deg); }
+.model-toggle svg, .machine-toggle svg { flex: none; }
+.model-toggle svg:last-child, .machine-toggle svg:last-child { transition: transform 150ms var(--ease-out); }
+.model-toggle.open, .machine-toggle.open { color: var(--n-950); background: var(--n-100); }
+.model-toggle.open svg:last-child, .machine-toggle.open svg:last-child { transform: rotate(180deg); }
 .thread-dot { width: 7px; height: 7px; border-radius: 999px; flex: none; background: var(--n-400); }
 .inbox-item .thread-dot { margin: 7px 4px 0 2px; }
 .thread-dot-working, .thread-dot-starting { background: var(--live); animation: live 1.6s ease-in-out infinite; }

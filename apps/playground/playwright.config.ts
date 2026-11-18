@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
@@ -9,6 +9,13 @@ const APP_PORT = 5190;
 const FAKE_REGISTRY_PORT = 47392;
 // Fresh credentials and pin store per run, so local state never leaks in.
 const configHome = mkdtempSync(join(tmpdir(), 'tencil-e2e-'));
+// A stand-in for T3 Code's `t3` CLI that mints the fake's pairing code, as the real one would.
+const PAIRING_CODE = 'E2E-PAIRING';
+const t3Home = join(configHome, 't3');
+const t3Cli = join(t3Home, 'runtime', 'versions', '0.0.45', 't3');
+mkdirSync(join(t3Cli, '..'), { recursive: true });
+writeFileSync(t3Cli, `#!/bin/sh\necho "Token: ${PAIRING_CODE}"\n`);
+chmodSync(t3Cli, 0o755);
 
 export default defineConfig({
     testDir: 'e2e',
@@ -25,7 +32,7 @@ export default defineConfig({
         {
             command: 'node --experimental-strip-types --no-warnings e2e/fake-t3-server.ts',
             url: `http://127.0.0.1:${FAKE_T3_PORT}/.well-known/t3/environment`,
-            env: { FAKE_T3_PORT: String(FAKE_T3_PORT) },
+            env: { FAKE_T3_PORT: String(FAKE_T3_PORT), FAKE_T3_PAIRING_CODE: PAIRING_CODE },
             reuseExistingServer: false,
         },
         {
@@ -43,6 +50,7 @@ export default defineConfig({
                 TENCIL_T3_URL: `http://127.0.0.1:${FAKE_T3_PORT}`,
                 TENCIL_T3_TOKEN: 'test-token',
                 XDG_CONFIG_HOME: configHome,
+                T3CODE_HOME: t3Home,
                 // Update checks go to the fake registry, on CI too.
                 TENCIL_REGISTRY_URL: `http://127.0.0.1:${FAKE_REGISTRY_PORT}`,
                 CI: '',

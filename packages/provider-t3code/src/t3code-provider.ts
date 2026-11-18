@@ -6,6 +6,8 @@ import type {
     CreateThreadInput,
     Provider,
     ProviderInfo,
+    ProviderMachines,
+    ProviderMessage,
     ProviderModels,
     ProviderProject,
     ProviderThreadSummary,
@@ -21,6 +23,7 @@ import {
     requestWebSocketTicket,
     UnauthorizedError,
 } from './auth.ts';
+import { McpClient, McpToolError } from './mcp-client.ts';
 import {
     type ModelSources,
     modelId,
@@ -66,7 +69,13 @@ interface WireProject {
     title: string;
     workspaceRoot: string;
     defaultModelSelection?: ModelSelection | null;
-    repositoryIdentity?: { owner?: string; name?: string; displayName?: string } | null;
+    repositoryIdentity?: {
+        canonicalKey?: string;
+        origin?: { canonicalKey?: string };
+        owner?: string;
+        name?: string;
+        displayName?: string;
+    } | null;
     projectIcon?: { kind: 'emoji'; emoji: string } | { kind: string } | null;
 }
 
@@ -108,8 +117,44 @@ interface Connection {
     socket: RpcSocket;
     protocol: ProtocolAdapter;
     environmentId: string;
+    /** The machine's name in T3 Code, e.g. `officebox`. */
+    environmentLabel?: string;
     project: WireProject;
 }
+
+/** A thread on a linked machine; T3 Code only reaches it through `/mcp`, so it's polled. */
+interface RemoteWatcher {
+    sink: ThreadSink;
+    /** Read again now, e.g. right after a message was sent. */
+    poke: () => void;
+    stop: () => void;
+}
+
+interface WireLink {
+    environmentId: string;
+    label: string;
+    status: 'reachable' | 'unreachable' | 'expired';
+    lastError?: string | null;
+}
+
+interface WireReadItem {
+    position: number;
+    itemId: string;
+    type: string;
+    status: string;
+    text: string | null;
+    updatedAt: string;
+}
+
+interface WireRead {
+    thread: { status: string; activeRunId: string | null; pendingRequestCount?: number };
+    items: WireReadItem[];
+    nextPosition: number | null;
+    hasMore: boolean;
+}
+
+/** How often a linked machine's thread is read: quickly while it works, slower once idle. */
+const REMOTE_POLL = { busyMs: 2_000, idleMs: 15_000 };
 
 const DEFAULT_TIMEOUTS = { httpMs: 8_000, rpcMs: 30_000, retryMinMs: 1_000, retryMaxMs: 15_000 };
 
@@ -124,6 +169,10 @@ export class T3CodeProvider implements Provider {
     #infoListeners = new Set<(info: ProviderInfo) => void>();
     #connection: Connection | undefined;
     #watchers = new Map<string, Watcher>();
+    #remoteWatchers = new Map<string, RemoteWatcher>();
+    #mcp: McpClient | undefined;
+    /** Linked machine → its project for this repository. */
+    #remoteProjects = new Map<string, string>();
     readonly #timeouts: typeof DEFAULT_TIMEOUTS;
     #retryDelay: number;
     #retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -319,8 +368,43 @@ export class T3CodeProvider implements Provider {
         };
     }
 
+    /**
+     * This machine, plus the machines T3 Code links to (Settings → Labs →
+     * Linked environments). Only this machine when linking is off or unreachable.
+     */
+    async listMachines(): Promise<ProviderMachines> {
+        const connection = this.#requireConnection();
+        const here = {
+            id: connection.environmentId,
+            label: connection.environmentLabel ?? 'This machine',
+            reachable: true,
+        };
+        const links = await this.#links().catch((error: unknown) => {
+            this.#log(`No linked machines: ${errorMessage(error)}`);
+            return [];
+        });
+        return {
+            machines: [
+                here,
+                ...links.map(link => ({
+                    id: link.environmentId,
+                    label: link.label,
+                    reachable: link.status === 'reachable',
+                    ...(link.status === 'reachable' ? {} : { detail: linkDetail(link) }),
+                })),
+            ],
+            defaultMachine: here.id,
+        };
+    }
+
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {
         const connection = this.#requireConnection();
+        if (input.machine && input.machine !== connection.environmentId) {
+            const link = (await this.#links()).find(
+                candidate => candidate.environmentId === input.machine,
+            );
+            if (link) return this.#createRemoteThread(connection, link, input);
+        }
         const sources = await this.#modelSources(connection);
         const modelSelection =
             pickedSelection(sources.providers, input.model) ??
@@ -347,6 +431,18 @@ export class T3CodeProvider implements Provider {
     }
 
     async sendMessage(input: SendMessageInput): Promise<void> {
+        const remote = parseRemoteId(input.providerThreadId);
+        if (remote) {
+            this.#requireConnection();
+            await this.#requireMcp().call('t3_thread_send', {
+                environmentId: remote.environmentId,
+                threadId: remote.threadId,
+                message: withoutScreenshotNote(input.text, input.attachments.length),
+                mode: 'auto',
+            });
+            this.#remoteWatchers.get(input.providerThreadId)?.poke();
+            return;
+        }
         const connection = this.#requireConnection();
         const tracker = this.#watchers.get(input.providerThreadId)?.tracker;
         await connection.protocol.sendMessage(connection.socket, {
@@ -360,6 +456,16 @@ export class T3CodeProvider implements Provider {
     }
 
     async interrupt(providerThreadId: string): Promise<void> {
+        const remote = parseRemoteId(providerThreadId);
+        if (remote) {
+            this.#requireConnection();
+            await this.#requireMcp().call('t3_thread_interrupt', {
+                environmentId: remote.environmentId,
+                threadId: remote.threadId,
+            });
+            this.#remoteWatchers.get(providerThreadId)?.poke();
+            return;
+        }
         const connection = this.#requireConnection();
         const turnId = this.#watchers.get(providerThreadId)?.tracker.activeTurnId();
         if (!turnId) return;
@@ -367,6 +473,8 @@ export class T3CodeProvider implements Provider {
     }
 
     watch(providerThreadId: string, sink: ThreadSink): () => void {
+        const remote = parseRemoteId(providerThreadId);
+        if (remote) return this.#watchRemote(providerThreadId, remote, sink);
         this.#watchers.get(providerThreadId)?.cancel?.();
         const watcher: Watcher = {
             sink,
@@ -386,6 +494,8 @@ export class T3CodeProvider implements Provider {
         clearTimeout(this.#retryTimer);
         for (const watcher of this.#watchers.values()) watcher.cancel?.();
         this.#watchers.clear();
+        for (const watcher of this.#remoteWatchers.values()) watcher.stop();
+        this.#remoteWatchers.clear();
         this.#connection?.socket.close();
         this.#connection = undefined;
     }
@@ -437,6 +547,7 @@ export class T3CodeProvider implements Provider {
         }
         const environment = await this.#fetchJson<{
             environmentId: string;
+            label?: string;
             orchestrationProtocolVersion?: number;
         }>(
             '/.well-known/t3/environment',
@@ -475,6 +586,7 @@ export class T3CodeProvider implements Provider {
                 socket,
                 protocol,
                 environmentId: environment.environmentId,
+                ...(environment.label ? { environmentLabel: environment.label } : {}),
                 project,
             };
         } catch (error) {
@@ -566,9 +678,196 @@ export class T3CodeProvider implements Provider {
         });
     }
 
+    /* ----------------------------- linked machines ----------------------------- */
+
+    #requireMcp(): McpClient {
+        // Same server as the WebSocket; rebuilt if pairing moved to another one.
+        if (this.#mcp?.baseUrl !== this.#baseUrl) {
+            this.#remoteProjects.clear();
+            this.#mcp = new McpClient({
+                baseUrl: this.#baseUrl,
+                credentials: this.#credentials,
+                createPairingCode: this.#options.createPairingCode ?? createLocalPairingCode,
+                timeoutMs: this.#timeouts.rpcMs,
+                log: message => this.#log(message),
+            });
+        }
+        return this.#mcp;
+    }
+
+    async #links(): Promise<WireLink[]> {
+        const result = await this.#requireMcp().call<{ links: WireLink[] }>(
+            't3_environment_links',
+            {},
+        );
+        return result.links;
+    }
+
+    async #createRemoteThread(
+        connection: Connection,
+        link: WireLink,
+        input: CreateThreadInput,
+    ): Promise<CreatedThread> {
+        if (link.status !== 'reachable') {
+            throw new Error(`${link.label} can't be reached: ${linkDetail(link)}`);
+        }
+        const projectId = await this.#remoteProject(connection, link);
+        this.#log(`New thread on ${link.label}`);
+        const launched = await this.#requireMcp().call<{ threadId: string }>('t3_thread_launch', {
+            environmentId: link.environmentId,
+            projectId,
+            title: input.title,
+            // T3 Code can't send attachments to another machine yet.
+            message: withoutScreenshotNote(input.text, input.attachments.length),
+            runtimeMode: this.#runtimeMode(),
+            interactionMode: this.#options.interactionMode ?? 'default',
+        });
+        const providerThreadId = remoteId(link.environmentId, launched.threadId);
+        return {
+            providerThreadId,
+            url: this.#remoteThreadUrl(link.environmentId, launched.threadId),
+        };
+    }
+
+    /** The linked machine's project for the same repository as this one. */
+    async #remoteProject(connection: Connection, link: WireLink): Promise<string> {
+        const known = this.#remoteProjects.get(link.environmentId);
+        if (known) return known;
+        const key = repositoryKey(connection.project);
+        if (!key) {
+            throw new Error(
+                `"${connection.project.title}" has no git remote, so Tencil can't find it on ${link.label}.`,
+            );
+        }
+        for (let cursor: number | null = 0; cursor !== null; ) {
+            const page: { projects: WireProject[]; nextCursor: number | null } =
+                await this.#requireMcp().call('t3_project_list', {
+                    environmentId: link.environmentId,
+                    limit: 100,
+                    cursor,
+                });
+            const match = page.projects.find(project => repositoryKey(project) === key);
+            if (match) {
+                this.#remoteProjects.set(link.environmentId, match.id);
+                return match.id;
+            }
+            cursor = page.nextCursor ?? null;
+        }
+        throw new Error(`${link.label} has no T3 Code project for ${key}. Add it there first.`);
+    }
+
+    /**
+     * Polls a linked machine's thread: T3 Code forwards reads to it, but no
+     * subscription. Fast while it works, slower when idle, again fast after a send.
+     */
+    #watchRemote(
+        providerThreadId: string,
+        remote: { environmentId: string; threadId: string },
+        sink: ThreadSink,
+    ): () => void {
+        this.#remoteWatchers.get(providerThreadId)?.stop();
+        const sent = new Map<string, string>();
+        let lastStatus = '';
+        let loaded = false;
+        let stopped = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let delay = REMOTE_POLL.busyMs;
+
+        const read = (args: Record<string, unknown>) =>
+            this.#requireMcp().call<WireRead>('t3_thread_read', {
+                environmentId: remote.environmentId,
+                threadId: remote.threadId,
+                view: 'messages',
+                limit: 100,
+                maxCharsPerItem: 20_000,
+                ...args,
+            });
+
+        const tick = async () => {
+            timer = undefined;
+            if (stopped) return;
+            try {
+                if (!this.#connection) throw new Error('T3 Code is not connected yet');
+                const items: WireReadItem[] = [];
+                let result: WireRead;
+                if (loaded) {
+                    result = await read({});
+                    items.push(...result.items);
+                } else {
+                    // The first read pages from the start so the whole conversation shows.
+                    let position = -1;
+                    do {
+                        result = await read({ afterPosition: position });
+                        items.push(...result.items);
+                        if (result.nextPosition === null) break;
+                        position = result.nextPosition;
+                    } while (result.hasMore);
+                    loaded = true;
+                }
+                if (stopped) return;
+                const working = result.thread.activeRunId !== null;
+                for (const item of items.sort((a, b) => a.position - b.position)) {
+                    const message = remoteMessage(item, working);
+                    if (!message) continue;
+                    const fingerprint = `${message.text}\u0000${message.streaming}`;
+                    if (sent.get(message.id) === fingerprint) continue;
+                    sent.set(message.id, fingerprint);
+                    sink.message(message);
+                }
+                const status = remoteStatus(result.thread);
+                if (status !== lastStatus) {
+                    lastStatus = status;
+                    sink.status(status);
+                }
+                delay = status === 'idle' ? REMOTE_POLL.idleMs : REMOTE_POLL.busyMs;
+            } catch (error) {
+                if (
+                    error instanceof McpToolError &&
+                    /not.?found/i.test(`${error.code} ${error.message}`)
+                ) {
+                    stopped = true;
+                    sink.gone();
+                    return;
+                }
+                this.#log(`Couldn't read a thread on another machine: ${errorMessage(error)}`);
+                delay = Math.min(delay * 2, this.#timeouts.retryMaxMs);
+            }
+            if (!stopped) timer = setTimeout(() => void tick(), delay);
+        };
+
+        const watcher: RemoteWatcher = {
+            sink,
+            poke: () => {
+                delay = REMOTE_POLL.busyMs;
+                if (timer) {
+                    clearTimeout(timer);
+                    timer = setTimeout(() => void tick(), 500);
+                }
+            },
+            stop: () => {
+                stopped = true;
+                clearTimeout(timer);
+            },
+        };
+        this.#remoteWatchers.set(providerThreadId, watcher);
+        void tick();
+        return () => {
+            watcher.stop();
+            if (this.#remoteWatchers.get(providerThreadId) === watcher) {
+                this.#remoteWatchers.delete(providerThreadId);
+            }
+        };
+    }
+
+    #remoteThreadUrl(environmentId: string, threadId: string): string {
+        return `${this.#baseUrl}/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}`;
+    }
+
     /* --------------------------------- helpers --------------------------------- */
 
     #threadUrl(connection: Connection, threadId: string): string {
+        const remote = parseRemoteId(threadId);
+        if (remote) return this.#remoteThreadUrl(remote.environmentId, remote.threadId);
         return `${this.#baseUrl}/${connection.environmentId}/${threadId}`;
     }
 
@@ -618,6 +917,63 @@ export class T3CodeProvider implements Provider {
     #log(message: string): void {
         this.#options.log?.(message);
     }
+}
+
+/**
+ * A thread on a linked machine is `<environmentId>/<threadId>`; this machine's
+ * stay bare, so existing pins keep working. Pins only store this id, so it
+ * routes them after a restart too.
+ */
+export function remoteId(environmentId: string, threadId: string): string {
+    return `${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}`;
+}
+
+export function parseRemoteId(
+    providerThreadId: string,
+): { environmentId: string; threadId: string } | undefined {
+    const slash = providerThreadId.indexOf('/');
+    if (slash <= 0) return undefined;
+    return {
+        environmentId: decodeURIComponent(providerThreadId.slice(0, slash)),
+        threadId: decodeURIComponent(providerThreadId.slice(slash + 1)),
+    };
+}
+
+/** Forks share the upstream's key, as T3 Code groups them. */
+function repositoryKey(project: WireProject): string | undefined {
+    const identity = project.repositoryIdentity;
+    return identity?.origin?.canonicalKey ?? identity?.canonicalKey;
+}
+
+function linkDetail(link: WireLink): string {
+    if (link.status === 'expired') return 'The link expired. Link it again in T3 Code.';
+    return link.lastError ?? 'It does not answer right now.';
+}
+
+/** The prompt says when a screenshot didn't come along, so the agent doesn't look for it. */
+function withoutScreenshotNote(text: string, attachments: number): string {
+    if (attachments === 0) return text;
+    return `${text}\n\n(Screenshots can't be sent to this machine, so none are attached.)`;
+}
+
+function remoteMessage(item: WireReadItem, working: boolean): ProviderMessage | undefined {
+    if (item.text === null) return undefined;
+    const role = item.type === 'user_message' ? 'user' : 'assistant';
+    const open = item.status === 'running' || item.status === 'pending';
+    return {
+        id: item.itemId,
+        role,
+        text: item.text,
+        streaming: role === 'assistant' && working && open,
+        createdAt: item.updatedAt,
+    };
+}
+
+function remoteStatus(thread: WireRead['thread']): 'working' | 'waiting' | 'idle' | 'error' {
+    if ((thread.pendingRequestCount ?? 0) > 0 || thread.status === 'waiting') return 'waiting';
+    if (thread.activeRunId !== null) return 'working';
+    if (thread.status === 'failed') return 'error';
+    return 'idle';
 }
 
 function summaryStatus(thread: WireShellThread): ProviderThreadSummary['status'] {

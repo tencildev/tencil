@@ -145,6 +145,18 @@ export const ProviderModel = z.object({
 });
 export type ProviderModel = z.infer<typeof ProviderModel>;
 
+/** A machine a provider can start threads on, e.g. a computer T3 Code links to. */
+export const ProviderMachine = z.object({
+    /** Opaque to the overlay; the provider parses it back. */
+    id: z.string(),
+    label: z.string(),
+    /** Answers right now; threads can't start on a machine that doesn't. */
+    reachable: z.boolean(),
+    /** Why it can't be used, e.g. an expired link. */
+    detail: z.string().optional(),
+});
+export type ProviderMachine = z.infer<typeof ProviderMachine>;
+
 /** How the provider presents the project the threads belong to. */
 export const ProviderProject = z.object({
     name: z.string(),
