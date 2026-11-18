@@ -49,7 +49,7 @@ export function SettingsPanel() {
         { id: 'overview', label: 'Project' },
         AGENT_PAGE,
         { id: 'tools', label: 'Tools' },
-        { id: 'context', label: 'Instructions' },
+        { id: 'context', label: 'Pin instructions' },
     ];
     const browserPages: Page[] = [
         { id: 'appearance', label: 'Appearance' },
@@ -200,7 +200,7 @@ function scope(id: SettingsSection): string {
                 ? `Saved for ${project.value.name}, for everyone using its pins`
                 : 'Saved for this project';
         case 'context':
-            return 'Sent with every new pin, after the element details';
+            return 'Sent to the agent with each new pin';
         case 'appearance':
         case 'shortcuts':
             // Tencil Cloud has no daemon to save them on.
@@ -323,9 +323,9 @@ function ContextPage() {
             {current.globalContext !== undefined && (
                 <ContextField
                     id="tencil-global-context"
-                    label="For all your projects"
-                    help="Saved on this computer. Goes first."
-                    placeholder="Run the /frontend-design skill before you change any UI."
+                    label="All projects"
+                    help="Applies to every project you use on this computer."
+                    placeholder="Run /frontend-design before making UI changes."
                     value={current.globalContext}
                     onSave={text => {
                         if (send({ type: 'settings.update', globalContext: text })) {
@@ -336,9 +336,9 @@ function ContextPage() {
             )}
             <ContextField
                 id="tencil-project-context"
-                label={name ? `For ${name}` : 'For this project'}
-                help="Saved with the project, for everyone using its pins."
-                placeholder="We use Tailwind v4. Never add inline styles."
+                label={name ? `For ${name} only` : 'This project only'}
+                help="Shared by everyone using this project's pins."
+                placeholder="Use Tailwind v4 classes. Avoid inline styles."
                 value={current.context}
                 onSave={text => {
                     if (send({ type: 'settings.update', context: text })) {
