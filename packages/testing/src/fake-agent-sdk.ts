@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { testScreenshot } from './test-image.ts';
 
 /** A user message as the Agent SDK receives it on its input stream. */
 interface InputMessage {
@@ -33,6 +34,8 @@ export class FakeAgentSdk {
     holdTurns = false;
     /** Make the next turn's process die mid-turn. */
     crashNextTurn = false;
+    /** Turns whose prompt this matches take a screenshot first (a tool result with an image). */
+    screenshot: (text: string) => boolean = text => /screenshot/i.test(text);
     #gates = new Set<() => void>();
 
     release(): void {
@@ -123,6 +126,34 @@ export class FakeAgentSdk {
 
             yield { type: 'system', subtype: 'init', ...base, uuid: randomUUID() };
             yield { type: 'system', subtype: 'session_state_changed', state: 'running', ...base };
+            if (this.screenshot(text)) {
+                const result = {
+                    type: 'user',
+                    ...base,
+                    uuid: randomUUID(),
+                    message: {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'tool_result',
+                                tool_use_id: `toolu_${randomUUID()}`,
+                                content: [
+                                    {
+                                        type: 'image',
+                                        source: {
+                                            type: 'base64',
+                                            media_type: 'image/png',
+                                            data: testScreenshot(),
+                                        },
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                };
+                session.entries.push({ ...result, timestamp: new Date().toISOString() });
+                yield result;
+            }
             const messageId = `msg_${randomUUID()}`;
             const reply = this.reply(text);
             const half = Math.ceil(reply.length / 2);

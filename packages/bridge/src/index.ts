@@ -1,5 +1,6 @@
 export { Bridge, type BridgeClient, type BridgeOptions, mergeMessage } from './bridge.ts';
 export { type GlobalContextStore, MemoryGlobalContext } from './global-context.ts';
+export { type ImageStore, MemoryImageStore } from './image-store.ts';
 export {
     ProjectProviders,
     type ProjectProvidersOptions,

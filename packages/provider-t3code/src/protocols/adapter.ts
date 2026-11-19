@@ -12,6 +12,11 @@ export interface ModelSelection {
 
 export interface TrackerUpdate {
     messages: ProviderMessage[];
+    /**
+     * Finished tool calls whose output T3 Code left off the stream; images in it
+     * show once read with `orchestration.getTurnItem` (V2 only).
+     */
+    toolItems?: Array<{ id: string; createdAt: string }>;
     status?: { status: Exclude<ThreadStatus, 'starting' | 'draft'>; detail?: string };
     gone?: boolean;
 }

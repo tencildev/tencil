@@ -1,4 +1,5 @@
 import type { ProviderMessage, ThreadStatus, ThreadStep } from '@tencildev/protocol';
+import { itemImages } from './item-images.ts';
 import type { CodexTurn, ThreadItem, ThreadItemEntry, TurnError } from './protocol.ts';
 import { finishedDetail, itemLabel, itemStatus, reasoningLabel } from './tool-steps.ts';
 
@@ -171,6 +172,8 @@ export class TurnTracker {
             this.#reasoning(item.id, summary, endedAt, update, endedAt);
             return;
         }
+        const image = imageMessage(item, endedAt);
+        if (image) update.messages.push(image);
         const label = itemLabel(item);
         if (!label) return;
         const status = itemStatus(item);
@@ -265,7 +268,17 @@ export function messagesFromHistory(
                 streaming: false,
                 createdAt,
             });
+        } else {
+            const image = imageMessage(item, createdAt);
+            if (image) messages.push(image);
         }
     }
     return messages;
+}
+
+/** The images a tool call showed Codex, as a message of their own keyed by the item. */
+function imageMessage(item: ThreadItem, createdAt: string): ProviderMessage | undefined {
+    const images = itemImages(item);
+    if (images.length === 0) return undefined;
+    return { id: item.id, role: 'assistant', text: '', images, streaming: false, createdAt };
 }

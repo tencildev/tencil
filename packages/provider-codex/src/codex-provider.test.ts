@@ -317,6 +317,34 @@ describe('Codex provider', () => {
         await waitFor(() => second.lastStatus() === 'idle', { message: 'replayed as idle' });
     });
 
+    it('shows the screenshots Codex takes, live and after a restart', async () => {
+        const codex = new FakeCodexAppServer();
+        codex.items = [
+            {
+                type: 'mcpToolCall',
+                server: 'browser',
+                tool: 'take_screenshot',
+                status: 'completed',
+                result: {
+                    content: [{ type: 'image', mimeType: 'image/png', data: PNG.split(',')[1] }],
+                },
+            },
+        ] as FakeCodexItem[];
+        const { provider, create } = setup({}, codex);
+        const first = recordingSink();
+        const { providerThreadId } = await provider.createThread(newThread());
+        provider.watch(providerThreadId, first.sink);
+        await waitFor(() => first.lastStatus() === 'idle', { message: 'idle' });
+        const shot = [...first.messages.values()].find(m => m.images?.length);
+        expect(shot).toMatchObject({ role: 'assistant', text: '', images: [{ dataUrl: PNG }] });
+        await provider.dispose();
+
+        const second = recordingSink();
+        create().watch(providerThreadId, second.sink);
+        await waitFor(() => second.messages.has(shot!.id), { message: 'replayed screenshot' });
+        expect(second.messages.get(shot!.id)?.images).toEqual([{ dataUrl: PNG }]);
+    });
+
     it('reads the whole thread when Codex has no paginated history for it', async () => {
         const { provider, codex, root } = setup();
         const thread = codex.addThread({

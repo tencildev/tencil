@@ -193,6 +193,31 @@ describe('Claude Code provider', () => {
         expect(sdk.queries).toHaveLength(1);
     });
 
+    it('shows the screenshots Claude takes, live and after a restart', async () => {
+        const { provider, create } = setup();
+        const created = await provider.createThread({
+            title: 't',
+            text: 'Take a screenshot',
+            attachments: [],
+        });
+        const live = recordingSink();
+        provider.watch(created.providerThreadId, live.sink);
+        await waitFor(() => live.statuses.at(-1) === 'idle' && live.messages.size === 3, {
+            message: 'turn with a screenshot',
+        });
+        const shot = [...live.messages.values()].find(m => m.images?.length);
+        expect(shot).toMatchObject({ role: 'assistant', text: '' });
+        expect(shot?.images?.[0]?.dataUrl).toMatch(/^data:image\/png;base64,iVBOR/);
+        await provider.dispose();
+
+        const restarted = create();
+        cleanup.push(() => restarted.dispose());
+        const replay = recordingSink();
+        restarted.watch(created.providerThreadId, replay.sink);
+        await waitFor(() => replay.messages.size === 3, { message: 'replayed screenshot' });
+        expect(replay.messages.get(shot!.id)?.images).toEqual(shot?.images);
+    });
+
     it('replays the conversation to every new watcher', async () => {
         const { provider } = setup();
         const created = await provider.createThread({ title: 't', text: 'first', attachments: [] });

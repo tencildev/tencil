@@ -214,7 +214,9 @@ export function ProjectIcon({ project }: { project: ProviderProject }) {
 function InboxItem({ thread }: { thread: Thread }) {
     const pinned = Boolean(thread.anchor && thread.pageUrl);
     const samePage = !pinned || pageKey(thread.pageUrl!) === currentPage.value;
-    const last = [...thread.messages].reverse().find(message => message.role === 'assistant');
+    const last = [...thread.messages]
+        .reverse()
+        .find(message => message.role === 'assistant' && message.text.trim());
     const open = () => {
         if (!samePage) {
             sessionStorage.setItem(PENDING_OPEN_KEY, thread.id);

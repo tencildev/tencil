@@ -1,7 +1,12 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { messagesFromHistory, TurnTracker } from './transcript.ts';
 
 const NOW = '2026-11-06T12:00:00.000Z';
+const PNG_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const turn = (status: string, error: unknown = null) => ({ turn: { id: 't1', status, error } });
 
 describe('TurnTracker', () => {
@@ -190,6 +195,55 @@ describe('TurnTracker', () => {
         expect(unauthorized('usageLimitExceeded')).toBeUndefined();
     });
 
+    it('shows the images a tool call showed Codex, as a message of their own', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'tencil-codex-'));
+        const png = join(dir, 'shot.png');
+        writeFileSync(png, Buffer.from(PNG_BASE64, 'base64'));
+        const notImage = join(dir, 'fake.png');
+        writeFileSync(notImage, '<svg/>');
+        const tracker = new TurnTracker();
+        tracker.apply('turn/started', turn('inProgress'), NOW);
+        const viewed = tracker.apply(
+            'item/completed',
+            { item: { type: 'imageView', id: 'iv_1', path: png } },
+            NOW,
+        );
+        expect(viewed.messages).toEqual([
+            {
+                id: 'iv_1',
+                role: 'assistant',
+                text: '',
+                images: [{ dataUrl: `data:image/png;base64,${PNG_BASE64}`, name: 'shot.png' }],
+                streaming: false,
+                createdAt: NOW,
+            },
+        ]);
+        const mcp = tracker.apply(
+            'item/completed',
+            {
+                item: {
+                    type: 'mcpToolCall',
+                    id: 'mcp_1',
+                    server: 'browser',
+                    tool: 'screenshot',
+                    status: 'completed',
+                    result: {
+                        content: [{ type: 'image', mimeType: 'image/jpeg', data: '/9j/4A==' }],
+                    },
+                },
+            },
+            NOW,
+        );
+        expect(mcp.messages[0]?.images).toEqual([{ dataUrl: 'data:image/jpeg;base64,/9j/4A==' }]);
+        expect(mcp.steps).toHaveLength(1);
+        const fake = tracker.apply(
+            'item/completed',
+            { item: { type: 'imageView', id: 'iv_2', path: notImage } },
+            NOW,
+        );
+        expect(fake.messages).toEqual([]);
+    });
+
     it('ignores what it has no use for', () => {
         const tracker = new TurnTracker();
         const update = tracker.apply('thread/tokenUsage/updated', { tokenUsage: {} });
@@ -223,6 +277,19 @@ describe('messagesFromHistory', () => {
                 },
                 { startedAtMs: 4000, item: { type: 'agentMessage', id: 'msg_1', text: 'Hi' } },
                 { startedAtMs: 5000, item: { type: 'agentMessage', id: 'empty', text: '  ' } },
+                {
+                    startedAtMs: 6000,
+                    item: {
+                        type: 'dynamicToolCall',
+                        id: 'dyn_1',
+                        tool: 'screenshot',
+                        status: 'completed',
+                        contentItems: [
+                            { type: 'inputText', text: 'Here' },
+                            { type: 'inputImage', imageUrl: `data:image/png;base64,${PNG_BASE64}` },
+                        ],
+                    },
+                },
             ],
             NOW,
         );
@@ -240,6 +307,14 @@ describe('messagesFromHistory', () => {
                 text: 'Hi',
                 streaming: false,
                 createdAt: new Date(4000).toISOString(),
+            },
+            {
+                id: 'dyn_1',
+                role: 'assistant',
+                text: '',
+                images: [{ dataUrl: `data:image/png;base64,${PNG_BASE64}` }],
+                streaming: false,
+                createdAt: new Date(6000).toISOString(),
             },
         ]);
     });

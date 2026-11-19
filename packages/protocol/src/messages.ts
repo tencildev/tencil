@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { Anchor, ElementContext, ImageAttachment } from './context.ts';
-import type { ProviderModel, ProviderProject, ProviderThreadSummary, Thread } from './thread.ts';
+import {
+    MessageImage,
+    type ProviderModel,
+    type ProviderProject,
+    type ProviderThreadSummary,
+    type Thread,
+} from './thread.ts';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -155,6 +161,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
         attachments: z.array(ImageAttachment).max(4).default([]),
     }),
     z.object({ type: z.literal('thread.interrupt'), threadId: z.string() }),
+    /** The bytes of an image a message refers to (`MessageImage`). */
+    z.object({ type: z.literal('image.get'), id: MessageImage.shape.id }),
     z.object({ type: z.literal('thread.resolve'), threadId: z.string(), resolved: z.boolean() }),
     z.object({ type: z.literal('thread.delete'), threadId: z.string() }),
     /** Re-anchor a pin that was dragged somewhere else. */
@@ -278,6 +286,8 @@ export type ServerMessage =
       }
     | { type: 'thread.upsert'; thread: Thread }
     | { type: 'thread.removed'; threadId: string }
+    /** The answer to `image.get`; no `dataUrl` when the bridge doesn't have it (any more). */
+    | { type: 'image'; id: string; dataUrl?: string }
     | { type: 'provider.threads'; project: ProviderProject; threads: ProviderThreadSummary[] }
     | {
           type: 'provider.models';
