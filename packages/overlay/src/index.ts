@@ -3,6 +3,7 @@ import { h, render } from 'preact';
 import { App } from './components/app.tsx';
 import { connect } from './lib/connection.ts';
 import { installPicker } from './lib/element-picker.ts';
+import { isolateEvents } from './lib/isolate-events.ts';
 import { watchNextIndicator } from './lib/next-devtools.ts';
 import { setHost } from './lib/overlay-host.ts';
 import { labels } from './lib/shortcuts.ts';
@@ -89,6 +90,7 @@ function mount(bridgeUrl: string, build: BuildInfo | undefined, root: string | u
     keepAlive.observe(document.body, { childList: true });
 
     const uninstall = installPicker(host);
+    const unisolate = isolateEvents(host);
     const unwatchNext = watchNextIndicator();
     render(h(App, {}), container);
     connect(bridgeUrl, build, root);
@@ -101,6 +103,7 @@ function mount(bridgeUrl: string, build: BuildInfo | undefined, root: string | u
         destroy() {
             keepAlive.disconnect();
             uninstall();
+            unisolate();
             unwatchNext();
             render(null, container);
             host.remove();

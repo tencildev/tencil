@@ -1,3 +1,5 @@
+import { DetailsSheet } from './details-sheet.tsx';
+
 export function Hero() {
     return (
         <section className="hero">
@@ -10,6 +12,7 @@ export function Hero() {
                 <button type="button" className="button button-ghost">
                     Book a demo
                 </button>
+                <DetailsSheet />
             </div>
         </section>
     );
