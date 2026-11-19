@@ -1,5 +1,13 @@
 # tencil
 
+## 0.14.1
+
+### Patch Changes
+
+- [#47](https://github.com/tencildev/tencil/pull/47) [`1c3e072`](https://github.com/tencildev/tencil/commit/1c3e0724b3fb01fc179d7e32f2cee461db32bdbe) Thanks [@frans-slabbekoorn](https://github.com/frans-slabbekoorn)! - Using Tencil no longer closes an open modal or sheet on the page. Clicking the toolbar, typing a comment, pressing Escape and scrolling Tencil's panels now work while a dialog is open.
+
+- [#42](https://github.com/tencildev/tencil/pull/42) [`836d269`](https://github.com/tencildev/tencil/commit/836d26963fe23f9e24e13e874de00f0ef3586517) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Fix flickering in the offline hint while the overlay retries and clarify that the overlay reconnects on its own after you start Tencil. It now reconnects as soon as you come back to the page, retries the daemon at least every 2 seconds, and the hint has a Retry button.
+
 ## 0.14.0
 
 ### Minor Changes
