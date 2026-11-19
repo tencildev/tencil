@@ -656,3 +656,42 @@ test('resolves every done pin on the page at once', async ({ page }) => {
     await expect(overlay(page).locator('.inbox-item')).toHaveCount(0);
     await expect(overlay(page).locator('.pin:not(.pin-leaving)')).toHaveCount(0);
 });
+
+test('comments inside a modal sheet without closing it', async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'View details' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Account details' });
+    await expect(sheet).toBeVisible();
+
+    // The toolbar is outside the sheet, but pressing it is no reason to close it.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole('button', { name: 'Approve account' }).click();
+    await expect(sheet).toBeVisible();
+
+    // The sheet traps focus; the composer still keeps it.
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this green');
+    await expect(composer).toHaveValue('Make this green');
+    await expect(sheet).toBeVisible();
+
+    // The sheet locks scrolling outside itself; Tencil's panels still scroll.
+    const blocked = await composer.evaluate(
+        element =>
+            !element.dispatchEvent(
+                new WheelEvent('wheel', {
+                    deltaY: 40,
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true,
+                }),
+            ),
+    );
+    expect(blocked).toBe(false);
+
+    // Escape cancels the comment and leaves the sheet open.
+    await composer.press('Escape');
+    await expect(overlay(page).locator('.composer')).toHaveCount(0);
+    await expect(sheet).toBeVisible();
+});
