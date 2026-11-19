@@ -10,6 +10,7 @@ import {
     projectChoices,
     provider,
     reconnect,
+    retryNow,
     send,
 } from '../lib/connection.ts';
 import { dock, moveDockBy, startDrag } from '../lib/dock.ts';
@@ -231,7 +232,9 @@ function connectionStatus(): ConnectionStatus {
             hint:
                 bridgeState.value === 'connecting'
                     ? undefined
-                    : 'The Tencil daemon stopped. Start it again with npx tencil start.',
+                    : 'Run npx tencil start. The overlay will reconnect on its own.',
+            action:
+                bridgeState.value === 'connecting' ? undefined : { label: 'Retry', run: retryNow },
         };
     }
     const required = signInRequired.value;
