@@ -15,10 +15,23 @@ export interface Draft {
     context: Promise<ElementContext>;
     /** Measured against with Alt: the pin's context gets the spacing to it. */
     measuredTo?: { element: Element; label: string; parent: boolean };
+    /** Made by dragging a box: `element` is the one holding everything in it. */
+    area?: DraftArea;
+}
+
+export interface DraftArea {
+    /** The box as fractions of `element`'s rect (0..1), so it follows scrolling. */
+    fractions: { left: number; top: number; right: number; bottom: number };
+    /** The listed elements one level in, outlined while the comment is open. */
+    parts: Element[];
 }
 
 export const mode = signal<Mode>('idle');
 export const hovered = signal<Element | null>(null);
+/** The box being dragged while picking, in viewport pixels. */
+export const marquee = signal<{ left: number; top: number; right: number; bottom: number } | null>(
+    null,
+);
 /** Alt is held: hovering measures distances instead of showing the box model. */
 export const measuring = signal(false);
 /**
@@ -184,4 +197,5 @@ export function startPicking(): void {
 export function stopPicking(): void {
     mode.value = 'idle';
     hovered.value = null;
+    marquee.value = null;
 }

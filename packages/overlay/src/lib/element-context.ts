@@ -118,6 +118,17 @@ const PRIORITY_ATTRIBUTES = [
 
 export function htmlPreview(element: Element): string {
     const tag = element.tagName.toLowerCase();
+    const childCount = element.children.length;
+    const inner =
+        childCount > 0
+            ? `…${childCount} element${childCount === 1 ? '' : 's'}…`
+            : truncate(element.textContent?.trim() ?? '', 100);
+    return `${openTag(element)}${inner}</${tag}>`;
+}
+
+/** The element's opening tag, with its most telling attributes. */
+export function openTag(element: Element): string {
+    const tag = element.tagName.toLowerCase();
     const attributes = [...element.attributes]
         .filter(attribute => !attribute.name.startsWith('data-tencil'))
         .sort((a, b) => rank(a.name) - rank(b.name))
@@ -128,13 +139,7 @@ export function htmlPreview(element: Element): string {
                 ? `${attribute.name}="${truncate(attribute.value, limit)}"`
                 : attribute.name;
         });
-    const open = `<${[tag, ...attributes].join(' ')}>`;
-    const childCount = element.children.length;
-    const inner =
-        childCount > 0
-            ? `…${childCount} element${childCount === 1 ? '' : 's'}…`
-            : truncate(element.textContent?.trim() ?? '', 100);
-    return `${open}${inner}</${tag}>`;
+    return `<${[tag, ...attributes].join(' ')}>`;
 }
 
 function rank(name: string): number {
@@ -142,14 +147,14 @@ function rank(name: string): number {
     return index === -1 ? PRIORITY_ATTRIBUTES.length : index;
 }
 
-function visibleText(element: Element): string | undefined {
+export function visibleText(element: Element, max = 200): string | undefined {
     const text = (element as HTMLElement).innerText?.replace(/\s+/g, ' ').trim();
-    return text ? truncate(text, 200) : undefined;
+    return text ? truncate(text, max) : undefined;
 }
 
 /* ------------------------------ react components ------------------------------ */
 
-async function componentFrames(element: Element): Promise<ComponentFrame[]> {
+export async function componentFrames(element: Element): Promise<ComponentFrame[]> {
     // A Tencil Cloud build tagged its elements: that beats production React's
     // owner stack, which only has minified names (`F`) and no files.
     const tagged = taggedFrames(element);

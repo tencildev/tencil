@@ -1,4 +1,5 @@
 import type { Anchor } from '@tencildev/protocol';
+import { captureArea } from './area.ts';
 import { threads } from './connection.ts';
 import { captureContext, quickLabel } from './element-context.ts';
 import { offsetsIn } from './position.ts';
@@ -11,6 +12,7 @@ import {
     hovered,
     inboxOpen,
     layoutTick,
+    marquee,
     measuring,
     mode,
     openThreadId,
@@ -24,6 +26,11 @@ import {
     stopPicking,
     toggleRuler,
 } from './state.ts';
+
+/** How far the pointer moves, pressed, before a click becomes a dragged box. */
+const DRAG_THRESHOLD = 5;
+/** Room a pin needs from the window's edges (twice that on the right, where it's drawn). */
+const PIN_EDGE = 24;
 
 const BLOCKED_WHILE_PICKING = [
     'pointerdown',
@@ -58,6 +65,14 @@ export function installPicker(host: HTMLElement): () => void {
     const capturing = () => mode.value === 'picking' || (measuring.value && rulerOn.value);
 
     let pointer: { x: number; y: number; ours: boolean } | null = null;
+    /** Where the pointer went down on the page while picking; a drag from there draws a box. */
+    let press: { x: number; y: number } | null = null;
+    /** A box was just dragged: the click the browser fires after it isn't a pick. */
+    let swallowClick = false;
+    const cancelDrag = () => {
+        press = null;
+        if (marquee.value) marquee.value = null;
+    };
     /** The element last measured against the ruler's anchor; `C` sends the spacing to it. */
     let measuredFromAnchor: Element | null = null;
     const track = () => {
@@ -94,8 +109,77 @@ export function installPicker(host: HTMLElement): () => void {
         };
     };
 
+    /** Comment on everything under the dragged box. */
+    const openAreaDraft = (box: NonNullable<typeof marquee.value>) => {
+        const capture = captureArea(box, host);
+        if (!capture) return;
+        const { root, parts, area } = capture;
+        const rect = root.getBoundingClientRect();
+        const fraction = (value: number, start: number, size: number) =>
+            size > 0 ? Math.min(1, Math.max(0, (value - start) / size)) : 0;
+        // Top right, so the comment box opens beside the area, nudged inside the window.
+        const corner = {
+            x: Math.max(PIN_EDGE, Math.min(box.right, window.innerWidth - PIN_EDGE * 2)),
+            y: Math.max(PIN_EDGE, box.top),
+        };
+        stopPicking();
+        rulerAnchor.value = null;
+        const context = captureContext(root);
+        draft.value = {
+            element: root,
+            label: quickLabel(root),
+            anchor: { selector: '', ...offsetsIn(root, corner) },
+            context: Promise.all([context, area]).then(([resolved, described]) => ({
+                ...resolved,
+                area: described,
+            })),
+            area: {
+                fractions: {
+                    left: fraction(box.left, rect.left, rect.width),
+                    top: fraction(box.top, rect.top, rect.height),
+                    right: fraction(box.right, rect.left, rect.width),
+                    bottom: fraction(box.bottom, rect.top, rect.height),
+                },
+                parts,
+            },
+        };
+    };
+
+    /** Dragging while picking: the box follows the pointer, and letting go comments on it. */
+    const dragTo = (event: PointerEvent): boolean => {
+        if (!press || mode.value !== 'picking') {
+            cancelDrag();
+            return false;
+        }
+        // Released outside the window: the pointerup never came.
+        if (event.buttons === 0) {
+            finishDrag();
+            return true;
+        }
+        const dx = event.clientX - press.x;
+        const dy = event.clientY - press.y;
+        if (!marquee.value && Math.hypot(dx, dy) < DRAG_THRESHOLD) return false;
+        marquee.value = {
+            left: Math.min(press.x, event.clientX),
+            top: Math.min(press.y, event.clientY),
+            right: Math.max(press.x, event.clientX),
+            bottom: Math.max(press.y, event.clientY),
+        };
+        if (hovered.value) hovered.value = null;
+        return true;
+    };
+
+    const finishDrag = () => {
+        const box = marquee.value;
+        cancelDrag();
+        if (!box) return;
+        swallowClick = true;
+        openAreaDraft(box);
+    };
+
     const onPointerMove = (event: PointerEvent) => {
         pointer = { x: event.clientX, y: event.clientY, ours: isOurs(event) };
+        if (dragTo(event)) return;
         measuring.value = holding(shortcuts.value.measure, event);
         track();
     };
@@ -109,11 +193,14 @@ export function installPicker(host: HTMLElement): () => void {
         track();
     };
     const onBlur = () => {
+        cancelDrag();
         measuring.value = false;
         track();
     };
 
     const block = (event: Event) => {
+        // A new press: the click after a drag never came (released outside the window).
+        if (event.type === 'pointerdown') swallowClick = false;
         // Clicking the page dismisses an open pin (the page still gets the click).
         if (!capturing() && event.type === 'pointerdown' && !isOurs(event)) {
             settingsOpen.value = false;
@@ -125,9 +212,24 @@ export function installPicker(host: HTMLElement): () => void {
         if (!capturing() || isOurs(event)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (mode.value !== 'picking') return;
+        if (event.type === 'pointerdown') {
+            const { button, clientX, clientY } = event as PointerEvent;
+            press = button === 0 ? { x: clientX, y: clientY } : null;
+        } else if (event.type === 'pointerup') {
+            if (marquee.value) finishDrag();
+            else press = null;
+        }
     };
 
     const onClick = (event: MouseEvent) => {
+        // Picking already stopped when the box was let go: the page mustn't get this click.
+        if (swallowClick && !isOurs(event)) {
+            swallowClick = false;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
         if (!capturing() || isOurs(event)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -178,7 +280,11 @@ export function installPicker(host: HTMLElement): () => void {
         // closing settings) shouldn't turn the shortcuts off.
         if ((isOurs(event) && !onToolbar(event)) || dockHidden.value) return;
         if (event.key === 'Escape') {
-            if (mode.value === 'picking') stopPicking();
+            if (marquee.value) {
+                // Letting go after this mustn't pick what's under the pointer.
+                cancelDrag();
+                swallowClick = true;
+            } else if (mode.value === 'picking') stopPicking();
             else if (draft.value) draft.value = null;
             else if (rulerAnchor.value) rulerAnchor.value = null;
             else if (openThreadId.value) openThreadId.value = null;

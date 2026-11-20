@@ -56,6 +56,39 @@ export const Spacing = z.object({
 export type Spacing = z.infer<typeof Spacing>;
 
 /**
+ * One element under a dragged area. Nodes come outermost first, in document
+ * order, with `depth` giving the nesting (0 is the element holding the area).
+ */
+export const AreaNode = z.object({
+    depth: z.number().int().min(0).max(32),
+    tagName: z.string(),
+    /** Opening tag only, trimmed like `ElementContext.html`. */
+    html: z.string().max(600),
+    /** Its nearest component, when it differs from its parent node's. */
+    component: ComponentFrame.optional(),
+    /** Visible text, only on nodes with no listed children. */
+    text: z.string().max(200).optional(),
+    rect: Rect,
+    /** How much of the element lies inside the area, 0..1. */
+    inside: z.number().min(0).max(1),
+    box: BoxModel.optional(),
+    /** `display` (plus flex direction), only on nodes with listed children. */
+    layout: z.string().max(40).optional(),
+    /** Comes right after the node listed before it at the same depth, nothing rendered between. */
+    adjacent: z.boolean().optional(),
+});
+export type AreaNode = z.infer<typeof AreaNode>;
+
+/** A box the user dragged over the page, and the elements it touches. */
+export const Area = z.object({
+    rect: Rect,
+    nodes: z.array(AreaNode).max(40),
+    /** Elements the box touches that were left out to keep the list short. */
+    omitted: z.number().int().min(0).optional(),
+});
+export type Area = z.infer<typeof Area>;
+
+/**
  * Everything the overlay knows about the picked element. Captured once when
  * the pin is placed and forwarded to the agent as context.
  */
@@ -73,6 +106,8 @@ export const ElementContext = z.object({
     selection: z.string().optional(),
     box: BoxModel.optional(),
     spacing: Spacing.optional(),
+    /** The pin was made by dragging a box: this element is the one holding all of it. */
+    area: Area.optional(),
 });
 export type ElementContext = z.infer<typeof ElementContext>;
 

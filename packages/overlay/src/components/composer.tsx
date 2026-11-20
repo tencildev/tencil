@@ -23,7 +23,7 @@ import { newId } from '../lib/id.ts';
 import { boxOf, measureBetween, toSpacing } from '../lib/measure.ts';
 import { getHost } from '../lib/overlay-host.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
-import { captureElement } from '../lib/screenshot.ts';
+import { captureArea, captureElement } from '../lib/screenshot.ts';
 import {
     batchAvailable,
     batchMode,
@@ -37,6 +37,7 @@ import {
     startPicking,
 } from '../lib/state.ts';
 import { AgentIcon } from './agent-icons.tsx';
+import { areaBox } from './area-selection.tsx';
 import { CameraIcon, ChevronIcon, CloseIcon, CodeIcon, LayersIcon } from './icons.tsx';
 import { timeAgo } from './inbox.tsx';
 import { PromptInput } from './prompt-input.tsx';
@@ -54,7 +55,9 @@ export function Composer() {
     const pending = draft.value;
     const ref = useRef<HTMLDivElement>(null);
     const [height, setHeight] = useState(140);
-    const [withScreenshot, setWithScreenshot] = useState(false);
+    const [elementShot, setElementShot] = useState(false);
+    // The point of dragging a box is often how it looks: attach it unless turned off.
+    const [areaShot, setAreaShot] = useState(true);
     const [busy, setBusy] = useState(false);
     const [menu, setMenu] = useState<'target' | 'model' | null>(null);
 
@@ -75,6 +78,9 @@ export function Composer() {
     });
 
     if (!pending) return null;
+    const area = pending.area;
+    const withScreenshot = area ? areaShot : elementShot;
+    const setWithScreenshot = area ? setAreaShot : setElementShot;
     const point = resolveAnchor(pending.anchor, pending.element);
     if (!point) return null;
     const { left, top, origin } = popoverPosition(point, { width: WIDTH, height });
@@ -92,7 +98,13 @@ export function Composer() {
             const context = withSpacing(await pending.context, pending);
             const attachments: ImageAttachment[] = [];
             if (withScreenshot) {
-                const shot = await captureElement(pending.element, getHost());
+                const shot = area
+                    ? await captureArea(
+                          pending.element,
+                          areaBox(pending.element, area.fractions),
+                          getHost(),
+                      )
+                    : await captureElement(pending.element, getHost());
                 if (shot) attachments.push(shot);
             }
             const id = newId();
@@ -156,9 +168,9 @@ export function Composer() {
             }}
         >
             <div class="composer-target">
-                <span class="chip">
+                <span class="chip" title={area ? `Inside ${pending.label}` : undefined}>
                     <CodeIcon />
-                    {pending.label}
+                    {area ? areaLabel(area.parts.length) : pending.label}
                 </span>
                 {target && batching && (
                     <span class="composer-provider composer-batch">
@@ -204,7 +216,7 @@ export function Composer() {
                         : !ready
                           ? 'Waiting for the agent connection…'
                           : existing
-                            ? 'Continue the thread with this element…'
+                            ? `Continue the thread with this ${area ? 'area' : 'element'}…`
                             : 'What should change here?'
                 }
                 autoFocus
@@ -262,6 +274,10 @@ export function Composer() {
             {!ready && target?.detail && <p class="hint">{target.detail}</p>}
         </div>
     );
+}
+
+function areaLabel(parts: number): string {
+    return parts > 1 ? `Area · ${parts} elements` : 'Area';
 }
 
 const SIDE_WORDS = { top: 'above', right: 'right', bottom: 'below', left: 'left' };

@@ -1,5 +1,6 @@
 import type { ImageAttachment } from '@tencildev/protocol';
-import { domToJpeg } from 'modern-screenshot';
+import { domToCanvas, domToJpeg } from 'modern-screenshot';
+import type { Box } from './measure.ts';
 
 const MAX_EDGE = 1600;
 const PADDING = 24;
@@ -36,6 +37,98 @@ export async function captureElement(
         return { name: 'tencil-element.jpg', mimeType: 'image/jpeg', dataUrl };
     } catch (error) {
         console.warn('[tencil] screenshot failed', error);
+        return null;
+    }
+}
+
+/** Canvas pixels we're willing to render the holding element at, to then crop the area out of. */
+const MAX_RENDER_PIXELS = 24_000_000;
+const MAX_CANVAS_EDGE = 16_000;
+const AREA_PADDING = 12;
+/** The smallest picture of an area, in CSS pixels, so a tiny box still shows something. */
+const MIN_AREA_SHOT = { width: 240, height: 120 };
+
+/** The box plus padding, widened around its center to at least `min`. */
+function grow(box: Box, padding: number, min: { width: number; height: number }): Box {
+    const width = Math.max(box.right - box.left + padding * 2, min.width);
+    const height = Math.max(box.bottom - box.top + padding * 2, min.height);
+    const x = (box.left + box.right) / 2;
+    const y = (box.top + box.bottom) / 2;
+    return {
+        left: x - width / 2,
+        top: y - height / 2,
+        right: x + width / 2,
+        bottom: y + height / 2,
+    };
+}
+
+function tooSmall(rect: DOMRect): boolean {
+    return rect.width < MIN_AREA_SHOT.width || rect.height < MIN_AREA_SHOT.height;
+}
+
+/**
+ * A dragged area: renders the element holding it (the DOM can't be rendered
+ * in part), then crops to the box plus a little around it.
+ */
+export async function captureArea(
+    element: Element,
+    area: Box,
+    host: Element,
+): Promise<ImageAttachment | null> {
+    // A small box gets some surroundings, from a parent big enough to show them.
+    const wanted = grow(area, AREA_PADDING, MIN_AREA_SHOT);
+    let target = element;
+    while (
+        target.parentElement &&
+        target.parentElement !== document.documentElement &&
+        tooSmall(target.getBoundingClientRect())
+    ) {
+        target = target.parentElement;
+    }
+    const rect = target.getBoundingClientRect();
+    const crop = {
+        left: Math.max(rect.left, wanted.left),
+        top: Math.max(rect.top, wanted.top),
+        right: Math.min(rect.right, wanted.right),
+        bottom: Math.min(rect.bottom, wanted.bottom),
+    };
+    const width = crop.right - crop.left;
+    const height = crop.bottom - crop.top;
+    if (width < 1 || height < 1) return null;
+    const scale = Math.min(
+        window.devicePixelRatio || 1,
+        MAX_EDGE / Math.max(width, height),
+        Math.sqrt(MAX_RENDER_PIXELS / Math.max(1, rect.width * rect.height)),
+        MAX_CANVAS_EDGE / Math.max(rect.width, rect.height, 1),
+    );
+    try {
+        const canvas = await domToCanvas(target, {
+            scale,
+            backgroundColor: resolveBackground(target),
+            filter: node => node !== host,
+            timeout: 8000,
+        });
+        // The canvas can round differently than `scale`; measure from it.
+        const ratio = canvas.width / Math.max(1, rect.width);
+        const out = document.createElement('canvas');
+        out.width = Math.max(1, Math.round(width * ratio));
+        out.height = Math.max(1, Math.round(height * ratio));
+        out.getContext('2d')?.drawImage(
+            canvas,
+            (crop.left - rect.left) * ratio,
+            (crop.top - rect.top) * ratio,
+            width * ratio,
+            height * ratio,
+            0,
+            0,
+            out.width,
+            out.height,
+        );
+        const dataUrl = out.toDataURL('image/jpeg', 0.85);
+        if (!dataUrl.startsWith('data:image/jpeg')) return null;
+        return { name: 'tencil-area.jpg', mimeType: 'image/jpeg', dataUrl };
+    } catch (error) {
+        console.warn('[tencil] area screenshot failed', error);
         return null;
     }
 }
