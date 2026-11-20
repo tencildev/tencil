@@ -480,21 +480,21 @@ test('measures spacing with Alt and sends it with the comment', async ({ page })
     await button.hover();
     await expect(overlay(page).locator('.band-value-padding')).toHaveText(['12', '20', '12', '20']);
     await card.hover({ position: { x: 4, y: 4 } });
-    await expect(overlay(page).locator('.band-value-gap').first()).toHaveText('12');
+    await expect(overlay(page).locator('.band-value-gap').first()).toHaveText('8');
 
     // Alt: distances to the parent instead, without moving the mouse.
     await button.hover();
     await page.keyboard.down('Alt');
     await expect(overlay(page).locator('.band')).toHaveCount(0);
-    // The card's 1px border plus its 24px padding.
-    await expect(overlay(page).locator('.guide-value').filter({ hasText: /^25$/ })).toHaveCount(3);
+    // The card's 1px border plus its 16px padding.
+    await expect(overlay(page).locator('.guide-value').filter({ hasText: /^17$/ })).toHaveCount(3);
 
     // Alt-click pins it with the spacing to its parent.
     await button.click({ modifiers: ['Alt'] });
     await page.keyboard.up('Alt');
     const measured = overlay(page).locator('.composer-measure');
     await expect(measured).toContainText('Parent');
-    await expect(measured).toContainText('25 right, 25 below, 25 left');
+    await expect(measured).toContainText('17 right, 17 below, 17 left');
 
     // With the comment open, Alt-click another element to measure against it instead.
     const heading = card.getByRole('heading', { name: 'Pro' });
@@ -572,7 +572,7 @@ test('measures with Alt outside comment mode and comments on the selection', asy
     await expect(overlay(page).locator('.highlight')).toHaveCount(0);
     await page.keyboard.down('Alt');
     await expect(overlay(page).locator('.band-value-padding')).toHaveText(['12', '20', '12', '20']);
-    await expect(overlay(page).locator('.guide-value').filter({ hasText: /^25$/ })).toHaveCount(3);
+    await expect(overlay(page).locator('.guide-value').filter({ hasText: /^17$/ })).toHaveCount(3);
 
     // Alt-click selects the button to measure from; Alt-hover measures to the heading.
     await button.click({ modifiers: ['Alt'] });
