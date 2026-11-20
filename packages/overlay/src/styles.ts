@@ -117,6 +117,15 @@ kbd {
 }
 .highlight-size { opacity: 0.75; }
 
+/* A box dragged while picking, and the elements it caught. */
+.area-box {
+  position: fixed; left: 0; top: 0;
+  border: 1.5px dashed var(--accent);
+  background: var(--accent-soft);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
 /* -------------------------------- measuring ------------------------------- */
 /* Box model colours follow browser devtools; distances are Figma's red. */
 .band, .guide, .measure-box, .measure-target {

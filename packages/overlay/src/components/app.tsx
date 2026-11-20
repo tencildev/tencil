@@ -10,6 +10,7 @@ import {
     settingsOpen,
 } from '../lib/state.ts';
 import { dark } from '../lib/theme.ts';
+import { AreaSelection } from './area-selection.tsx';
 import { Composer } from './composer.tsx';
 import { Highlight } from './highlight.tsx';
 import { Inbox, PENDING_OPEN_KEY, revealAnchor } from './inbox.tsx';
@@ -33,6 +34,7 @@ export function App() {
             class={`root${mode.value === 'picking' ? ' picking' : ''}${dark.value ? ' dark' : ''}`}
         >
             <Highlight />
+            <AreaSelection />
             <MeasureGuides />
             <Pins />
             <Composer />
