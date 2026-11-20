@@ -5,6 +5,56 @@ import { dirname, join } from 'node:path';
 
 export const DEFAULT_T3_URL = 'http://127.0.0.1:3773';
 
+/** Where T3 Code keeps its data: `$T3CODE_HOME`, else `~/.t3`. */
+export function t3Home(): string {
+    return process.env.T3CODE_HOME ?? join(homedir(), '.t3');
+}
+
+/**
+ * The T3 Code server this user runs, from the `userdata/server-runtime.json`
+ * it writes on start (the `t3` CLI finds its server the same way). Undefined
+ * when the file is missing or its process is gone (stale after a crash).
+ * Checking the file matters on shared machines, where 3773 can be someone else's.
+ */
+export async function runningT3Url(baseDir = t3Home()): Promise<string | undefined> {
+    try {
+        const runtime = JSON.parse(
+            await readFile(join(baseDir, 'userdata', 'server-runtime.json'), 'utf8'),
+        ) as { pid?: unknown; origin?: unknown };
+        if (typeof runtime.origin !== 'string' || !isAlive(runtime.pid)) return undefined;
+        return normalizeBaseUrl(runtime.origin);
+    } catch {
+        return undefined;
+    }
+}
+
+function isAlive(pid: unknown): boolean {
+    // 0 and below signal a process group, which always "succeeds".
+    if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        // EPERM: the process exists, it just isn't ours to signal.
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+}
+
+/**
+ * The T3 Code to talk to: the configured URL, else the server paired with
+ * last, else the one running for this user, else localhost:3773.
+ */
+export async function resolveT3Url(
+    options: { baseUrl?: string; credentials?: CredentialStore; baseDir?: string } = {},
+): Promise<string> {
+    return normalizeBaseUrl(
+        options.baseUrl ??
+            (await (options.credentials ?? new CredentialStore()).lastBaseUrl()) ??
+            (await runningT3Url(options.baseDir)) ??
+            DEFAULT_T3_URL,
+    );
+}
+
 /** Scopes Tencil needs: read thread state and launch/steer threads. */
 const SCOPES = 'orchestration:read orchestration:operate';
 
@@ -110,7 +160,7 @@ export function withoutNpmEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.Proc
 
 export async function createLocalPairingCode(
     baseUrl: string,
-    baseDir = process.env.T3CODE_HOME ?? join(homedir(), '.t3'),
+    baseDir = t3Home(),
 ): Promise<string | undefined> {
     const { hostname } = new URL(baseUrl);
     if (!['localhost', '127.0.0.1', '[::1]'].includes(hostname)) return undefined;
@@ -239,9 +289,7 @@ export async function listT3Projects(
     options: { baseUrl?: string; credentials?: CredentialStore; token?: string } = {},
 ): Promise<T3ProjectSummary[]> {
     const credentials = options.credentials ?? new CredentialStore();
-    const baseUrl = normalizeBaseUrl(
-        options.baseUrl ?? (await credentials.lastBaseUrl()) ?? DEFAULT_T3_URL,
-    );
+    const baseUrl = await resolveT3Url({ baseUrl: options.baseUrl, credentials });
     const token = options.token ?? (await credentials.get(baseUrl))?.token;
     if (!token) return [];
     try {

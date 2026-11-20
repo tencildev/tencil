@@ -5,8 +5,8 @@ import { EnsembleClient, EnsembleCredentialStore } from '@tencildev/provider-ens
 import {
     CredentialStore,
     createLocalPairingCode,
-    DEFAULT_T3_URL,
     exchangePairingCredential,
+    resolveT3Url,
 } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 import type { ProviderName } from '../daemon/agents.ts';
@@ -30,7 +30,7 @@ async function pairWithLocalT3(
     log: (message: string) => void,
 ): Promise<void> {
     const store = new CredentialStore();
-    const baseUrl = t3Url ?? (await store.lastBaseUrl()) ?? DEFAULT_T3_URL;
+    const baseUrl = await resolveT3Url({ baseUrl: t3Url, credentials: store });
     if (await store.get(baseUrl)) return log(`  ${pc.green('✓')} Paired with T3 Code.`);
     const code = await createLocalPairingCode(baseUrl).catch(() => undefined);
     if (!code) {

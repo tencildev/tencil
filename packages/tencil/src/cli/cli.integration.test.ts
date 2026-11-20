@@ -31,6 +31,7 @@ describe.skipIf(!existsSync(CLI))(
         it('starts in the background, reports status, reuses a running daemon and stops', async () => {
             const env = {
                 XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'tencil-cli-')),
+                T3CODE_HOME: mkdtempSync(join(tmpdir(), 'tencil-t3-')),
                 TENCIL_PORT: String(48_500 + Math.floor(Math.random() * 400)),
             };
             try {
@@ -54,6 +55,7 @@ describe.skipIf(!existsSync(CLI))(
         it('keeps the daemon flags across restarts unless new ones are given', async () => {
             const env = {
                 XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'tencil-cli-')),
+                T3CODE_HOME: mkdtempSync(join(tmpdir(), 'tencil-t3-')),
                 TENCIL_PORT: String(48_900 + Math.floor(Math.random() * 400)),
             };
             const flags = async () =>
