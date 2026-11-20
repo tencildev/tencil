@@ -161,8 +161,8 @@ export function touchedTree(root: Element, hits: Element[]): Touched<Element> {
 export interface AreaCapture {
     /** The element holding everything in the area: the pin goes on it. */
     root: Element;
-    /** The listed elements one level below the root, to outline on the page. */
-    parts: Element[];
+    /** How many listed elements sit one level below the root. */
+    parts: number;
     /** Layout is read now; component names resolve later. */
     area: Promise<Area>;
 }
@@ -195,7 +195,7 @@ export function captureArea(area: Box, host: Element): AreaCapture | null {
     });
     return {
         root,
-        parts: described.filter(node => node.depth === 1).map(node => node.element),
+        parts: described.filter(node => node.depth === 1).length,
         area: (async () => {
             const components = await Promise.all(
                 described.map(node => componentFrames(node.element).catch(() => [])),

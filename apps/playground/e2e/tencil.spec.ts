@@ -758,7 +758,6 @@ test('drags a box over parts of two sections and comments on the area', async ({
     await page.mouse.up();
 
     await expect(overlay(page).locator('.composer .chip')).toHaveText('Area · 2 elements');
-    await expect(overlay(page).locator('.area-part')).toHaveCount(2);
     const composer = overlay(page).locator('.composer textarea');
     await expect(composer).toBeFocused();
     await composer.fill('Make this take less space vertically');

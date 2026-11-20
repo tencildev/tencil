@@ -125,14 +125,6 @@ kbd {
   border-radius: 2px;
   pointer-events: none;
 }
-.area-part {
-  position: fixed; left: 0; top: 0;
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-  border-radius: 2px;
-  opacity: 0.6;
-  pointer-events: none;
-}
 
 /* -------------------------------- measuring ------------------------------- */
 /* Box model colours follow browser devtools; distances are Figma's red. */

@@ -170,7 +170,7 @@ export function Composer() {
             <div class="composer-target">
                 <span class="chip" title={area ? `Inside ${pending.label}` : undefined}>
                     <CodeIcon />
-                    {area ? areaLabel(area.parts.length) : pending.label}
+                    {area ? areaLabel(area.parts) : pending.label}
                 </span>
                 {target && batching && (
                     <span class="composer-provider composer-batch">

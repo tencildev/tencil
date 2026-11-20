@@ -25,8 +25,8 @@ export interface DraftArea {
      * scrolling. Can reach past the element, into empty space below a short page.
      */
     offset: { left: number; top: number; right: number; bottom: number };
-    /** The listed elements one level in, outlined while the comment is open. */
-    parts: Element[];
+    /** How many listed elements sit one level in, for the chip. */
+    parts: number;
 }
 
 export const mode = signal<Mode>('idle');
