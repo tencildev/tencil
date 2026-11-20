@@ -2,7 +2,7 @@ import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import type { ProviderOption } from '@tencildev/protocol';
-import { CredentialStore, DEFAULT_T3_URL } from '@tencildev/provider-t3code';
+import { CredentialStore, resolveT3Url } from '@tencildev/provider-t3code';
 import { z } from 'zod';
 import { defaultDataDir } from './thread-store.ts';
 
@@ -66,7 +66,7 @@ export async function machineProvider(
 
 async function hasT3Code(t3Url: string | undefined): Promise<boolean> {
     const store = new CredentialStore();
-    const baseUrl = t3Url ?? (await store.lastBaseUrl()) ?? DEFAULT_T3_URL;
+    const baseUrl = await resolveT3Url({ baseUrl: t3Url, credentials: store });
     if (await store.get(baseUrl)) return true;
     try {
         const response = await fetch(new URL('/.well-known/t3/environment', baseUrl), {
