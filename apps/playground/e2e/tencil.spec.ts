@@ -696,6 +696,23 @@ test('comments inside a modal sheet without closing it', async ({ page }) => {
     await expect(sheet).toBeVisible();
 });
 
+test('keeps a box that reaches below a page shorter than the window', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await openPlayground(page);
+    const pageBottom = await page.evaluate(() => document.body.getBoundingClientRect().bottom);
+    expect(pageBottom).toBeLessThan(1000);
+    await page.keyboard.press('c');
+    await page.mouse.move(200, pageBottom - 100);
+    await page.mouse.down();
+    await page.mouse.move(900, pageBottom + 300, { steps: 3 });
+    await page.mouse.up();
+    await expect(overlay(page).locator('.composer .chip')).toHaveText(/^Area/);
+    const box = (await overlay(page).locator('.area-box').boundingBox())!;
+    expect(box.y).toBeCloseTo(pageBottom - 100, 0);
+    expect(box.height).toBeCloseTo(400, 0);
+    await page.keyboard.press('Escape');
+});
+
 test('drags a box over parts of two sections and comments on the area', async ({ page }) => {
     const sent: string[] = [];
     page.on('websocket', socket =>

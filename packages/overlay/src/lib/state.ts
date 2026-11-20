@@ -20,8 +20,11 @@ export interface Draft {
 }
 
 export interface DraftArea {
-    /** The box as fractions of `element`'s rect (0..1), so it follows scrolling. */
-    fractions: { left: number; top: number; right: number; bottom: number };
+    /**
+     * The box in CSS pixels from `element`'s top left corner, so it follows
+     * scrolling. Can reach past the element, into empty space below a short page.
+     */
+    offset: { left: number; top: number; right: number; bottom: number };
     /** The listed elements one level in, outlined while the comment is open. */
     parts: Element[];
 }

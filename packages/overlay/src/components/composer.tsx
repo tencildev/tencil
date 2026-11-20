@@ -101,7 +101,7 @@ export function Composer() {
                 const shot = area
                     ? await captureArea(
                           pending.element,
-                          areaBox(pending.element, area.fractions),
+                          areaBox(pending.element, area.offset),
                           getHost(),
                       )
                     : await captureElement(pending.element, getHost());

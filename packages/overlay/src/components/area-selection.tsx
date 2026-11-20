@@ -12,7 +12,7 @@ export function AreaSelection() {
     if (dragging) return <div class="area-box" style={boxStyle(dragging)} />;
     const pending = draft.value;
     if (!pending?.area || !pending.element.isConnected) return null;
-    const area = areaBox(pending.element, pending.area.fractions);
+    const area = areaBox(pending.element, pending.area.offset);
     return (
         <>
             {pending.area.parts
@@ -25,14 +25,14 @@ export function AreaSelection() {
     );
 }
 
-/** The dragged box now, from where it sat inside its element. */
-export function areaBox(element: Element, fractions: Box): Box {
+/** The dragged box now, from where it sat relative to its element. */
+export function areaBox(element: Element, offset: Box): Box {
     const rect = element.getBoundingClientRect();
     return {
-        left: rect.left + rect.width * fractions.left,
-        top: rect.top + rect.height * fractions.top,
-        right: rect.left + rect.width * fractions.right,
-        bottom: rect.top + rect.height * fractions.bottom,
+        left: rect.left + offset.left,
+        top: rect.top + offset.top,
+        right: rect.left + offset.right,
+        bottom: rect.top + offset.bottom,
     };
 }
 

@@ -115,8 +115,6 @@ export function installPicker(host: HTMLElement): () => void {
         if (!capture) return;
         const { root, parts, area } = capture;
         const rect = root.getBoundingClientRect();
-        const fraction = (value: number, start: number, size: number) =>
-            size > 0 ? Math.min(1, Math.max(0, (value - start) / size)) : 0;
         // Top right, so the comment box opens beside the area, nudged inside the window.
         const corner = {
             x: Math.max(PIN_EDGE, Math.min(box.right, window.innerWidth - PIN_EDGE * 2)),
@@ -134,11 +132,11 @@ export function installPicker(host: HTMLElement): () => void {
                 area: described,
             })),
             area: {
-                fractions: {
-                    left: fraction(box.left, rect.left, rect.width),
-                    top: fraction(box.top, rect.top, rect.height),
-                    right: fraction(box.right, rect.left, rect.width),
-                    bottom: fraction(box.bottom, rect.top, rect.height),
+                offset: {
+                    left: box.left - rect.left,
+                    top: box.top - rect.top,
+                    right: box.right - rect.left,
+                    bottom: box.bottom - rect.top,
                 },
                 parts,
             },
