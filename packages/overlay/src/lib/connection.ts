@@ -6,6 +6,7 @@ import type {
     ProjectSettings,
     ProjectSource,
     ProviderInfo,
+    ProviderMachine,
     ProviderModel,
     ProviderProject,
     ProviderThreadSummary,
@@ -47,6 +48,12 @@ export const providerModels = signal<{
     provider: string;
     models: ProviderModel[];
     defaultModel?: string;
+} | null>(null);
+/** Machines the default provider can start threads on (null until fetched or unsupported). */
+export const providerMachines = signal<{
+    provider: string;
+    machines: ProviderMachine[];
+    defaultMachine?: string;
 } | null>(null);
 /** Set when the daemon can't tell which project this page belongs to. */
 export const projectChoices = signal<Array<{ root: string; title: string }> | null>(null);
@@ -240,6 +247,7 @@ function handle(message: ServerMessage): void {
                 providerThreads.value = null;
                 providerProject.value = null;
                 providerModels.value = null;
+                providerMachines.value = null;
             });
             return;
         case 'thread.upsert':
@@ -256,6 +264,13 @@ function handle(message: ServerMessage): void {
                 provider: message.provider,
                 models: message.models,
                 defaultModel: message.defaultModel,
+            };
+            return;
+        case 'provider.machines':
+            providerMachines.value = {
+                provider: message.provider,
+                machines: message.machines,
+                defaultMachine: message.defaultMachine,
             };
             return;
         case 'provider.threads':
@@ -288,6 +303,12 @@ export function refreshProviderThreads(): void {
 export function refreshProviderModels(): void {
     if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'provider.models' }));
+    }
+}
+
+export function refreshProviderMachines(): void {
+    if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'provider.machines' }));
     }
 }
 

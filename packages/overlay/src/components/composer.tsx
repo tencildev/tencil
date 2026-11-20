@@ -2,6 +2,7 @@ import { signal } from '@preact/signals';
 import type {
     ElementContext,
     ImageAttachment,
+    ProviderMachine,
     ProviderModel,
     ProviderThreadSummary,
     Thread,
@@ -10,8 +11,10 @@ import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
     provider,
+    providerMachines,
     providerModels,
     providerThreads,
+    refreshProviderMachines,
     refreshProviderModels,
     refreshProviderThreads,
     send,
@@ -37,7 +40,7 @@ import {
     startPicking,
 } from '../lib/state.ts';
 import { AgentIcon } from './agent-icons.tsx';
-import { CameraIcon, ChevronIcon, CloseIcon, CodeIcon, LayersIcon } from './icons.tsx';
+import { CameraIcon, ChevronIcon, CloseIcon, CodeIcon, LayersIcon, MachineIcon } from './icons.tsx';
 import { timeAgo } from './inbox.tsx';
 import { PromptInput } from './prompt-input.tsx';
 
@@ -56,7 +59,7 @@ export function Composer() {
     const [height, setHeight] = useState(140);
     const [withScreenshot, setWithScreenshot] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [menu, setMenu] = useState<'target' | 'model' | null>(null);
+    const [menu, setMenu] = useState<'target' | 'model' | 'machine' | null>(null);
 
     const providerReady = provider.value?.state === 'ready';
     const providerId = provider.value?.id;
@@ -64,6 +67,7 @@ export function Composer() {
         if (!pending || !providerReady) return;
         refreshProviderThreads();
         refreshProviderModels();
+        refreshProviderMachines();
     }, [pending, providerReady, providerId]);
     // A thread picked from the previous provider's list can't take the pin.
     useEffect(() => {
@@ -83,8 +87,11 @@ export function Composer() {
     const batching = batchMode.value;
     // A batch always starts its own thread.
     const existing = batching ? null : composerTarget.value;
-    // A continued thread keeps its own model; only new threads can pick one.
-    const models = existing ? undefined : modelChoices(target?.id);
+    // A continued thread keeps its own machine and model; only new threads can pick them.
+    const machines = existing ? undefined : machineChoices(target?.id);
+    // Models are this machine's; another machine runs its project's default.
+    const elsewhere = machines?.current && machines.current.id !== machines.fallback?.id;
+    const models = existing || elsewhere ? undefined : modelChoices(target?.id);
 
     const submit = async (prompt: string) => {
         setBusy(true);
@@ -188,6 +195,15 @@ export function Composer() {
                     }}
                 />
             )}
+            {menu === 'machine' && machines && (
+                <MachineMenu
+                    choices={machines}
+                    onPick={machine => {
+                        send({ type: 'machine.select', machine });
+                        setMenu(null);
+                    }}
+                />
+            )}
             {menu === 'model' && models && (
                 <ModelMenu
                     choices={models}
@@ -244,6 +260,20 @@ export function Composer() {
                         <LayersIcon />
                     </button>
                 )}
+                {machines && (
+                    <button
+                        type="button"
+                        class={`toggle machine-toggle${menu === 'machine' ? ' open' : ''}`}
+                        onClick={() => setMenu(menu === 'machine' ? null : 'machine')}
+                        title="Machine the new thread runs on"
+                    >
+                        <MachineIcon />
+                        <span class="model-toggle-label">
+                            {machines.current?.label ?? 'This machine'}
+                        </span>
+                        <ChevronIcon />
+                    </button>
+                )}
                 {models && (
                     <button
                         type="button"
@@ -260,6 +290,12 @@ export function Composer() {
                 )}
             </PromptInput>
             {!ready && target?.detail && <p class="hint">{target.detail}</p>}
+            {elsewhere && !batching && (
+                <p class="hint">
+                    Runs in this repository on {machines?.current?.label}, with its default model.
+                    Screenshots stay here.
+                </p>
+            )}
         </div>
     );
 }
@@ -346,6 +382,88 @@ function modelChoices(providerId: string | undefined): ModelChoices | undefined 
         picked: picked?.id ?? null,
         fallback,
     };
+}
+
+interface MachineChoices {
+    machines: ProviderMachine[];
+    /** The machine new threads run on: the picked one, else the provider's default. */
+    current?: ProviderMachine;
+    picked: string | null;
+    fallback?: ProviderMachine;
+}
+
+/**
+ * Offered when there's more than one machine, or when a machine is still picked
+ * that's gone: new threads fail rather than run elsewhere, so it must stay changeable.
+ */
+function machineChoices(providerId: string | undefined): MachineChoices | undefined {
+    const list = providerMachines.value;
+    if (!list || list.provider !== providerId || list.machines.length === 0) return undefined;
+    const saved = settings.value?.machine;
+    const fallback = list.machines.find(machine => machine.id === list.defaultMachine);
+    const pickedId = saved && saved !== fallback?.id ? saved : null;
+    const missing = pickedId && !list.machines.some(machine => machine.id === pickedId);
+    const machines = missing
+        ? [
+              ...list.machines,
+              { id: pickedId, label: 'Picked machine', reachable: false, detail: 'Not linked now' },
+          ]
+        : list.machines;
+    if (machines.length < 2) return undefined;
+    return {
+        machines,
+        current: machines.find(machine => machine.id === pickedId) ?? fallback,
+        picked: pickedId,
+        fallback,
+    };
+}
+
+function MachineMenu({
+    choices,
+    onPick,
+}: {
+    choices: MachineChoices;
+    onPick: (machine: string | null) => void;
+}) {
+    return (
+        <div class="target-menu" role="listbox">
+            {choices.machines.map(machine => {
+                const isDefault = machine.id === choices.fallback?.id;
+                const selected = isDefault
+                    ? choices.picked === null
+                    : choices.picked === machine.id;
+                return (
+                    <button
+                        key={machine.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        disabled={!machine.reachable}
+                        title={machine.detail}
+                        class={`target-option${selected ? ' selected' : ''}`}
+                        onClick={() => onPick(isDefault ? null : machine.id)}
+                    >
+                        <span class="target-option-icon">
+                            <MachineIcon />
+                        </span>
+                        <span class="target-option-title">{machine.label}</span>
+                        {isDefault && machine.label !== 'This machine' && (
+                            <span class="target-option-meta">This machine</span>
+                        )}
+                        {!machine.reachable && (
+                            <span class="target-option-meta">
+                                {/expired/i.test(machine.detail ?? '')
+                                    ? 'Link expired'
+                                    : /not linked/i.test(machine.detail ?? '')
+                                      ? 'Not linked'
+                                      : 'Offline'}
+                            </span>
+                        )}
+                    </button>
+                );
+            })}
+        </div>
+    );
 }
 
 function ModelMenu({

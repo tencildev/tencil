@@ -6,6 +6,8 @@ export interface SavedProjectSettings {
     provider?: string;
     /** Model picked per provider for new threads; unset means the provider's default. */
     models?: Record<string, string>;
+    /** Machine picked per provider for new threads; unset means the provider's default. */
+    machines?: Record<string, string>;
     /** Queue new comments and send them together; on when unset. */
     batch?: boolean;
     /** Offer the ruler in the overlay's toolbar; on when unset. */
@@ -48,6 +50,7 @@ export class ProjectProviders {
     readonly #settingsListeners = new Set<() => void>();
     #chosen: string | undefined;
     #models: Record<string, string> = {};
+    #machines: Record<string, string> = {};
     /** On unless the project turns it off. */
     #batch = true;
     /** On unless the project turns it off. */
@@ -82,6 +85,7 @@ export class ProjectProviders {
         if (saved) {
             this.#chosen = saved.provider;
             this.#models = saved.models ?? {};
+            this.#machines = saved.machines ?? {};
             this.#batch = saved.batch ?? true;
             this.#ruler = saved.ruler ?? true;
             this.#context = saved.context ?? '';
@@ -139,6 +143,19 @@ export class ProjectProviders {
         for (const listener of this.#settingsListeners) listener();
     }
 
+    /** The machine picked for a provider's new threads, if any. */
+    machineFor(id: string): string | undefined {
+        return this.#machines[id];
+    }
+
+    async setMachine(id: string, machine: string | null): Promise<void> {
+        if ((this.#machines[id] ?? null) === machine) return;
+        const { [id]: _previous, ...rest } = this.#machines;
+        this.#machines = machine ? { ...rest, [id]: machine } : rest;
+        await this.#save();
+        for (const listener of this.#settingsListeners) listener();
+    }
+
     get batch(): boolean {
         return this.#batch;
     }
@@ -173,7 +190,7 @@ export class ProjectProviders {
         for (const listener of this.#settingsListeners) listener();
     }
 
-    /** Fires when a picked model, batching, the ruler or the context changes. */
+    /** Fires when a picked model or machine, batching, the ruler or the context changes. */
     onSettingsChange(listener: () => void): () => void {
         this.#settingsListeners.add(listener);
         return () => this.#settingsListeners.delete(listener);
@@ -193,6 +210,7 @@ export class ProjectProviders {
         await this.#options.settings?.save({
             provider: this.#chosen,
             models: this.#models,
+            machines: this.#machines,
             batch: this.#batch,
             ruler: this.#ruler,
             ...(this.#context ? { context: this.#context } : {}),

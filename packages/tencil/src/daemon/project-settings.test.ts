@@ -32,6 +32,7 @@ describe('FileProjectSettings', () => {
         await providers.load();
         await providers.setDefault('claude-code');
         await providers.setModel('t3code', 'claudeAgent/claude-opus-5-5');
+        await providers.setMachine('t3code', 'env-mac');
         await providers.setBatch(false);
         await providers.setRuler(false);
         await providers.setContext('Use Tailwind');
@@ -39,6 +40,7 @@ describe('FileProjectSettings', () => {
             version: 1,
             provider: 'claude-code',
             models: { t3code: 'claudeAgent/claude-opus-5-5' },
+            machines: { t3code: 'env-mac' },
             batch: false,
             ruler: false,
             context: 'Use Tailwind',
@@ -48,6 +50,7 @@ describe('FileProjectSettings', () => {
         await reloaded.load();
         expect(reloaded.defaultId).toBe('claude-code');
         expect(reloaded.modelFor('t3code')).toBe('claudeAgent/claude-opus-5-5');
+        expect(reloaded.machineFor('t3code')).toBe('env-mac');
         expect(reloaded.batch).toBe(false);
         expect(reloaded.ruler).toBe(false);
         expect(reloaded.context).toBe('Use Tailwind');

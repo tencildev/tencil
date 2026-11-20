@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { Anchor, ElementContext, ImageAttachment } from './context.ts';
-import type { ProviderModel, ProviderProject, ProviderThreadSummary, Thread } from './thread.ts';
+import type {
+    ProviderMachine,
+    ProviderModel,
+    ProviderProject,
+    ProviderThreadSummary,
+    Thread,
+} from './thread.ts';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -142,6 +148,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     z.object({ type: z.literal('provider.threads') }),
     /** The models new threads of the default provider can run on. */
     z.object({ type: z.literal('provider.models') }),
+    /** The machines new threads of the default provider can run on. */
+    z.object({ type: z.literal('provider.machines') }),
     /** List the projects this page could belong to, to switch (local daemon only). */
     z.object({ type: z.literal('project.choices') }),
     /** Attach this page to a project folder (answer to `project.unknown`, or a switch). */
@@ -172,6 +180,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     }),
     /** Run new threads of the default provider on this model; null goes back to its default. */
     z.object({ type: z.literal('model.select'), model: z.string().min(1).nullable() }),
+    /** Run new threads of the default provider on this machine; null goes back to its default. */
+    z.object({ type: z.literal('machine.select'), machine: z.string().min(1).nullable() }),
     /** Install the latest Tencil and restart the daemon on it (local daemon only). */
     z.object({ type: z.literal('update.start') }),
     /** Save some preferences on this machine (local daemon only); unnamed ones stay. */
@@ -205,6 +215,8 @@ export const ProjectSettings = z.object({
     providers: z.array(ProviderOption),
     /** Model picked for the provider's new threads; unset means the provider's default. */
     model: z.string().optional(),
+    /** Machine picked for the provider's new threads; unset means the provider's default. */
+    machine: z.string().optional(),
     /** New comments are queued and sent together. */
     batch: z.boolean(),
     /** The toolbar offers the ruler: spacing while picking, distances with Alt. */
@@ -285,5 +297,12 @@ export type ServerMessage =
           models: ProviderModel[];
           /** What new threads run on when no model is picked. */
           defaultModel?: string;
+      }
+    | {
+          type: 'provider.machines';
+          provider: string;
+          machines: ProviderMachine[];
+          /** Where new threads run when no machine is picked. */
+          defaultMachine?: string;
       }
     | { type: 'error'; message: string; threadId?: string };

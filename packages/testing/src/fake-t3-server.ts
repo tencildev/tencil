@@ -25,6 +25,12 @@ export interface FakeT3Options {
     settings?: Record<string, unknown>;
     /** Accept connections but never answer (a server mid-restart). */
     stall?: boolean;
+    /** Machines this one links to; only reachable through `/mcp`, as in T3 Code. */
+    linkedMachines?: FakeLinkedMachine[];
+    /** Machine name in `/.well-known/t3/environment`. */
+    label?: string;
+    /** A pairing code that always works, for a stand-in `t3` CLI to print. */
+    pairingCode?: string;
     port?: number;
 }
 
@@ -33,8 +39,26 @@ export interface FakeProject {
     title: string;
     workspaceRoot: string;
     defaultModelSelection?: { instanceId: string; model: string } | null;
-    repositoryIdentity?: { owner?: string; name?: string } | null;
+    repositoryIdentity?: { canonicalKey?: string; owner?: string; name?: string } | null;
     projectIcon?: { kind: 'emoji'; emoji: string } | null;
+}
+
+/** Another machine T3 Code links to (Settings → Labs → Linked environments). */
+export interface FakeLinkedMachine {
+    environmentId: string;
+    label: string;
+    status?: 'reachable' | 'unreachable' | 'expired';
+    projects: FakeProject[];
+}
+
+/** A thread on a linked machine, as `/mcp`'s `t3_thread_read` shows it. */
+export interface FakeRemoteThread {
+    id: string;
+    environmentId: string;
+    projectId: string;
+    title: string;
+    items: Array<{ itemId: string; type: string; text: string; status: string }>;
+    activeRunId: string | null;
 }
 
 export interface FakeProvider {
@@ -100,6 +124,9 @@ export class FakeT3Server {
     readonly calls: RecordedCall[] = [];
     readonly projects: FakeProject[];
     readonly threads = new Map<string, FakeThread>();
+    /** Threads started on linked machines, by thread id. */
+    readonly remoteThreads = new Map<string, FakeRemoteThread>();
+    linkedMachines: FakeLinkedMachine[];
     providers: FakeProvider[];
     settings: Record<string, unknown>;
     stall: boolean;
@@ -115,6 +142,8 @@ export class FakeT3Server {
     readonly #subscribers = new Map<string, Set<(item: unknown) => void>>();
     readonly #sockets = new Set<Socket>();
     readonly #cancelled = new Set<string>();
+    readonly #mcpCodes = new Set<string>();
+    readonly #mcpSessions = new Set<string>();
     #sequence = 0;
     #port = 0;
 
@@ -128,6 +157,7 @@ export class FakeT3Server {
         };
         this.stall = options.stall ?? false;
         this.projects = options.projects ?? [];
+        this.linkedMachines = options.linkedMachines ?? [];
         this.providers = options.providers ?? [CODEX_PROVIDER];
         this.settings = options.settings ?? { defaultModelSelection: null };
         this.#http = createServer((request, response) => void this.#route(request, response));
@@ -167,6 +197,16 @@ export class FakeT3Server {
 
     get token(): string {
         return this.#options.token;
+    }
+
+    /** The token `/mcp` accepts; the WebSocket token is refused there, as in T3 Code. */
+    get mcpToken(): string {
+        return `mcp-${this.#options.token}`;
+    }
+
+    /** Forget every `/mcp` session, as a restarting T3 Code would. */
+    dropMcpSessions(): void {
+        this.#mcpSessions.clear();
     }
 
     issuePairingCode(): string {
@@ -223,6 +263,8 @@ export class FakeT3Server {
         if (request.method === 'GET' && url.pathname === '/.well-known/t3/environment') {
             return json(200, {
                 environmentId: this.environmentId,
+                ...(this.#options.label ? { label: this.#options.label } : {}),
+                capabilities: { peerLinks: true },
                 serverVersion: this.#options.serverVersion,
                 ...(this.#options.protocol === 2 ? { orchestrationProtocolVersion: 2 } : {}),
             });
@@ -253,12 +295,233 @@ export class FakeT3Server {
                 threads: [...this.threads.values()].map(thread => this.#shellThread(thread)),
             });
         }
+        if (request.method === 'POST' && url.pathname === '/oauth/mcp/register') {
+            return json(201, { client_id: `client-${randomUUID()}` });
+        }
+        if (request.method === 'POST' && url.pathname === '/oauth/mcp/decision') {
+            const body = JSON.parse(await readBody(request)) as {
+                authorization: { redirect_uri: string; state: string };
+                decision: { _tag: string; code: string };
+            };
+            const code = body.decision.code;
+            if (code !== this.#options.pairingCode && !this.#pairingCodes.delete(code)) {
+                return json(400, {
+                    _tag: 'AuthMcpApprovalError',
+                    message: 'That pairing code is unknown, expired, or already used.',
+                });
+            }
+            const authorization = randomUUID();
+            this.#mcpCodes.add(authorization);
+            const redirect = new URL(body.authorization.redirect_uri);
+            redirect.searchParams.set('code', authorization);
+            redirect.searchParams.set('state', body.authorization.state);
+            return json(200, { redirectTo: redirect.toString() });
+        }
+        if (request.method === 'POST' && url.pathname === '/oauth/mcp/token') {
+            const form = new URLSearchParams(await readBody(request));
+            if (!this.#mcpCodes.delete(form.get('code') ?? '')) {
+                return json(400, { error: 'invalid_grant' });
+            }
+            return json(200, {
+                access_token: this.mcpToken,
+                token_type: 'Bearer',
+                expires_in: 30 * 24 * 3600,
+                scope: 'orchestration:read orchestration:operate',
+            });
+        }
+        if (request.method === 'POST' && url.pathname === '/mcp') {
+            return this.#serveMcp(request, response);
+        }
         if (request.method === 'GET' && url.pathname.startsWith('/api/assets/')) {
             response.writeHead(200, { 'content-type': 'image/png' });
             response.end(PNG_1PX);
             return;
         }
         json(404, { error: 'not_found' });
+    }
+
+    /* ----------------------------------- mcp ---------------------------------- */
+
+    async #serveMcp(request: IncomingMessage, response: ServerResponse): Promise<void> {
+        if (request.headers.authorization !== `Bearer ${this.mcpToken}`) {
+            response.writeHead(401).end();
+            return;
+        }
+        const message = JSON.parse(await readBody(request)) as {
+            id?: number;
+            method: string;
+            params?: { name: string; arguments: Record<string, unknown> };
+        };
+        if (message.method === 'initialize') {
+            const session = randomUUID();
+            this.#mcpSessions.add(session);
+            response.writeHead(200, {
+                'content-type': 'application/json',
+                'mcp-session-id': session,
+            });
+            response.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }));
+            return;
+        }
+        const session = request.headers['mcp-session-id'];
+        if (typeof session !== 'string' || !this.#mcpSessions.has(session)) {
+            response.writeHead(404).end();
+            return;
+        }
+        if (message.id === undefined) {
+            response.writeHead(202).end();
+            return;
+        }
+        const { name, arguments: args } = message.params ?? { name: '', arguments: {} };
+        this.calls.push({ tag: `mcp:${name}`, payload: args });
+        let result: Record<string, unknown>;
+        try {
+            result = {
+                isError: false,
+                structuredContent: this.#mcpTool(name, args),
+                content: [],
+            };
+        } catch (error) {
+            const [code, text] = (error as Error).message.split(': ', 2);
+            result = {
+                isError: true,
+                content: [{ type: 'text', text: JSON.stringify({ code, message: text }) }],
+            };
+        }
+        const reply = JSON.stringify({ jsonrpc: '2.0', id: message.id, result });
+        // T3 Code answers a call still running when first flushed as SSE; reads take that path.
+        if (name === 't3_thread_read') {
+            response.writeHead(200, { 'content-type': 'text/event-stream' });
+            response.end(`event: message\ndata: ${reply}\n\n`);
+            return;
+        }
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(reply);
+    }
+
+    #mcpTool(name: string, args: Record<string, unknown>): unknown {
+        const machine = (id: unknown) => {
+            const found = this.linkedMachines.find(m => m.environmentId === id);
+            if (!found) throw new Error('invalid_request: No linked environment with that id.');
+            if ((found.status ?? 'reachable') !== 'reachable') {
+                throw new Error(`orchestration_error: ${found.label} is unreachable.`);
+            }
+            return found;
+        };
+        const thread = (id: unknown) => {
+            const found = this.remoteThreads.get(String(id));
+            if (!found) throw new Error('thread_not_found: Thread is no longer available.');
+            return found;
+        };
+        switch (name) {
+            case 't3_environment_links':
+                return {
+                    environmentId: this.environmentId,
+                    links: this.linkedMachines.map(m => ({
+                        environmentId: m.environmentId,
+                        label: m.label,
+                        status: m.status ?? 'reachable',
+                        access: 'full-access',
+                        expiresAt: null,
+                        lastError: null,
+                    })),
+                };
+            case 't3_project_list':
+                return { projects: machine(args.environmentId).projects, nextCursor: null };
+            case 't3_thread_launch': {
+                const target = machine(args.environmentId);
+                if (!target.projects.some(p => p.id === args.projectId)) {
+                    throw new Error('invalid_request: Unknown project.');
+                }
+                const remote: FakeRemoteThread = {
+                    id: randomUUID(),
+                    environmentId: target.environmentId,
+                    projectId: String(args.projectId),
+                    title: String(args.title),
+                    items: [],
+                    activeRunId: null,
+                };
+                this.remoteThreads.set(remote.id, remote);
+                this.#runRemote(remote, String(args.message ?? ''));
+                return {
+                    threadId: remote.id,
+                    projectId: remote.projectId,
+                    runId: remote.activeRunId,
+                };
+            }
+            case 't3_thread_send': {
+                machine(args.environmentId);
+                const remote = thread(args.threadId);
+                this.#runRemote(remote, String(args.message));
+                return { threadId: remote.id, runId: remote.activeRunId, delivery: 'started' };
+            }
+            case 't3_thread_interrupt': {
+                machine(args.environmentId);
+                const remote = thread(args.threadId);
+                const runId = remote.activeRunId;
+                remote.activeRunId = null;
+                for (const item of remote.items) {
+                    if (item.status === 'running') item.status = 'interrupted';
+                }
+                return {
+                    threadId: remote.id,
+                    runId,
+                    status: runId ? 'interrupt_requested' : 'no_active_run',
+                };
+            }
+            case 't3_thread_read': {
+                machine(args.environmentId);
+                const remote = thread(args.threadId);
+                const after = typeof args.afterPosition === 'number' ? args.afterPosition : -1;
+                // Oldest first, a page at a time; pages are tiny here so paging gets exercised.
+                const later = remote.items
+                    .map((item, index) => ({
+                        ...item,
+                        // Positions are sparse, as in T3 Code's messages view.
+                        position: index * 10,
+                        updatedAt: new Date().toISOString(),
+                    }))
+                    .filter(item => item.position > after);
+                const items = later.slice(0, Math.min(Number(args.limit ?? 50), 2));
+                return {
+                    thread: {
+                        // A finished turn reads as `waiting`, as on a real T3 Code.
+                        status: remote.activeRunId ? 'running' : 'waiting',
+                        activeRunId: remote.activeRunId,
+                        pendingRequestCount: 0,
+                    },
+                    items,
+                    nextPosition: items.at(-1)?.position ?? null,
+                    hasMore: later.length > items.length,
+                };
+            }
+            default:
+                throw new Error(`invalid_request: Unknown tool ${name}.`);
+        }
+    }
+
+    /** A turn on a linked machine: the user's message, then a reply that finishes shortly after. */
+    #runRemote(remote: FakeRemoteThread, text: string): void {
+        const runId = randomUUID();
+        remote.activeRunId = runId;
+        remote.items.push({
+            itemId: randomUUID(),
+            type: 'user_message',
+            text,
+            status: 'completed',
+        });
+        const reply = {
+            itemId: randomUUID(),
+            type: 'assistant_message',
+            text: '',
+            status: 'running',
+        };
+        remote.items.push(reply);
+        setTimeout(() => {
+            if (remote.activeRunId !== runId) return;
+            reply.text = this.#options.reply?.(text) ?? `Done: ${text.split('\n')[0]}`;
+            reply.status = 'completed';
+            remote.activeRunId = null;
+        }, this.#options.chunkDelayMs * 10);
     }
 
     /* ----------------------------------- rpc ---------------------------------- */
