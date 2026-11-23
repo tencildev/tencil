@@ -62,6 +62,33 @@ test('pins a prompt on an element and streams the reply into it', async ({ page 
     await expect(overlay(page).locator('.pin.pin-done')).toHaveCount(1);
 });
 
+test('shows the screenshot the agent takes and opens it full size', async ({ page }) => {
+    await openPlayground(page);
+    await pinElement(page, 'Choose Pro', 'Take a screenshot after making it green');
+
+    const thread = overlay(page).locator('.thread');
+    const shot = thread.locator('.message-image img');
+    await expect(shot).toBeVisible({ timeout: 10_000 });
+    await expect(shot).toHaveAttribute('src', /^data:image\/png;base64,/);
+    await expect(thread.locator('.message-assistant').last()).toContainText('Updated it.');
+
+    await thread.locator('.message-image').click();
+    const viewer = overlay(page).getByRole('dialog', { name: 'Screenshot from the agent' });
+    await expect(viewer.locator('img')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+    await expect(thread).toBeVisible();
+
+    // Still there after a reload, from the daemon's image store.
+    await page.reload();
+    await expect(overlay(page).locator('.status-dot.status-ok')).toBeVisible({ timeout: 15_000 });
+    await overlay(page).locator('.pin .pin-body').last().click();
+    await expect(overlay(page).locator('.thread .message-image img')).toBeVisible();
+    // Later tests count the pins on the page.
+    await overlay(page).getByRole('button', { name: 'Delete' }).click();
+    await expect(overlay(page).locator('.pin')).toHaveCount(1);
+});
+
 test('continues the conversation and keeps pins across reloads', async ({ page }) => {
     await openPlayground(page);
     // The pin itself is a 0×0 anchor; its body is what you see and click.

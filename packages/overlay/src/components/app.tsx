@@ -12,6 +12,7 @@ import {
 import { dark } from '../lib/theme.ts';
 import { Composer } from './composer.tsx';
 import { Highlight } from './highlight.tsx';
+import { ImageViewer } from './image-viewer.tsx';
 import { Inbox, PENDING_OPEN_KEY, revealAnchor } from './inbox.tsx';
 import { MeasureGuides } from './measure-guides.tsx';
 import { Pins } from './pins.tsx';
@@ -41,6 +42,7 @@ export function App() {
             <Toast />
             <Toolbar />
             {settingsOpen.value && mode.value !== 'picking' && <SettingsPanel />}
+            <ImageViewer />
         </div>
     );
 }

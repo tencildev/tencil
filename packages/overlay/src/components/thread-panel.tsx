@@ -1,10 +1,23 @@
-import type { Delivery, Thread, ThreadMessage, ThreadStep } from '@tencildev/protocol';
+import type {
+    Delivery,
+    MessageImage,
+    Thread,
+    ThreadMessage,
+    ThreadStep,
+} from '@tencildev/protocol';
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
-import { providerLabel, send, threads } from '../lib/connection.ts';
+import { images, providerLabel, requestImage, send, threads } from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
-import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
+import {
+    inboxOpen,
+    layoutTick,
+    openThreadId,
+    pinDrag,
+    queuedThreads,
+    viewedImage,
+} from '../lib/state.ts';
 import {
     CheckIcon,
     ChevronIcon,
@@ -263,8 +276,37 @@ function AssistantMessage({ message }: { message: ThreadMessage }) {
     const [animate] = useState(message.streaming);
     return (
         <div class="message message-assistant">
-            <Markdown text={message.text} animate={animate} />
+            {message.text.trim() && <Markdown text={message.text} animate={animate} />}
+            {message.images?.length ? (
+                <div class="message-images">
+                    {message.images.map(image => (
+                        <AgentImage key={image.id} image={image} />
+                    ))}
+                </div>
+            ) : null}
         </div>
+    );
+}
+
+/** A screenshot the agent took, loaded from the bridge; opens full size. */
+function AgentImage({ image }: { image: MessageImage }) {
+    useEffect(() => requestImage(image.id), [image.id]);
+    const src = images.value.get(image.id);
+    const alt = image.name ?? 'Screenshot from the agent';
+    if (src === false)
+        return <div class="message-image message-image-missing">Image not available</div>;
+    return (
+        <button
+            type="button"
+            class="message-image"
+            aria-label={`Open ${alt} full size`}
+            disabled={!src}
+            onClick={() => {
+                if (src) viewedImage.value = { src, alt };
+            }}
+        >
+            {src && <img src={src} alt={alt} />}
+        </button>
     );
 }
 

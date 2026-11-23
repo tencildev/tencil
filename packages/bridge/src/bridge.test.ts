@@ -2,6 +2,7 @@ import type { ServerMessage, Thread } from '@tencildev/protocol';
 import { FakeAgentProvider, waitFor } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, mergeMessage } from './bridge.ts';
+import { MemoryImageStore } from './image-store.ts';
 import { ProjectProviders } from './project-providers.ts';
 import { isDeployed, renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';
 import { MemoryThreadStore } from './thread-store.ts';
@@ -447,6 +448,66 @@ describe('Bridge', () => {
         await bridge.handle(client, { type: 'thread.delete', threadId: 'pin3' });
         expect(provider.archived).toEqual(['fake-1', 'fake-2']);
         expect(provider.sinks.size).toBe(0);
+        await bridge.dispose();
+    });
+
+    it("keeps the agent's images out of the thread and hands them out by id", async () => {
+        const provider = new FakeAgentProvider();
+        const store = new MemoryThreadStore();
+        const images = new MemoryImageStore();
+        const bridge = new Bridge({
+            providers: ProjectProviders.of(provider),
+            store,
+            images,
+            project: { name: 'acme', root: '/projects/acme' },
+            version: '0',
+        });
+        const received: ServerMessage[] = [];
+        const client = { send: (message: ServerMessage) => received.push(message) };
+        const pin = (id: string) => ({
+            type: 'thread.create' as const,
+            id,
+            pageUrl: 'http://localhost:3000/',
+            prompt: 'Make it red',
+            anchor: { selector: 'button', offsetX: 0.5, offsetY: 0.5 },
+            context,
+        });
+        await bridge.handle(client, pin('pin1'));
+        await bridge.handle(client, {
+            type: 'thread.open',
+            id: 'pin2',
+            providerThreadId: 'fake-1',
+        });
+
+        const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+        const shot = {
+            id: 'tool:1',
+            role: 'assistant' as const,
+            text: '',
+            images: [{ dataUrl: PNG }, { dataUrl: 'data:image/svg+xml;base64,PHN2Zz4=' }],
+            streaming: false,
+            createdAt: new Date(Date.now() + 1000).toISOString(),
+        };
+        const sink = provider.sinks.get('fake-1')!;
+        sink.message(shot);
+        sink.message(shot);
+        const [image] = store.get('pin1')!.messages.at(-1)!.images!;
+        expect(store.get('pin1')!.messages.at(-1)!.images).toEqual([
+            { id: expect.stringMatching(/^[a-f0-9]{32}$/), mimeType: 'image/png' },
+        ]);
+        expect(JSON.stringify(store.list())).not.toContain('base64');
+        expect(images.size).toBe(1);
+
+        await bridge.handle(client, { type: 'image.get', id: image!.id });
+        expect(received.at(-1)).toEqual({ type: 'image', id: image!.id, dataUrl: PNG });
+
+        // Another pin still shows it; the last one to go takes it along.
+        await bridge.handle(client, { type: 'thread.delete', threadId: 'pin1' });
+        expect(images.size).toBe(1);
+        await bridge.handle(client, { type: 'thread.delete', threadId: 'pin2' });
+        expect(images.size).toBe(0);
+        await bridge.handle(client, { type: 'image.get', id: image!.id });
+        expect(received.at(-1)).toEqual({ type: 'image', id: image!.id });
         await bridge.dispose();
     });
 });

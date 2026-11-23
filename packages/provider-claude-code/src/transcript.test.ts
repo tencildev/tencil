@@ -48,6 +48,56 @@ describe('TurnTracker', () => {
         ]);
     });
 
+    it('shows the images a tool result carries as a message of their own', () => {
+        const tracker = new TurnTracker();
+        const toolResult = (parent: string | null) =>
+            ({
+                type: 'user',
+                ...base,
+                parent_tool_use_id: parent,
+                message: {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'toolu_1',
+                            content: [
+                                { type: 'text', text: 'Took a screenshot' },
+                                {
+                                    type: 'image',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: 'image/png',
+                                        data: 'iVBORw0KGgo=',
+                                    },
+                                },
+                                {
+                                    type: 'image',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: 'image/svg+xml',
+                                        data: 'PHN2Zz4=',
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+            }) as unknown as SDKMessage;
+        const update = tracker.apply(toolResult(null), '2026-01-01T00:00:00.000Z');
+        expect(update.messages).toEqual([
+            {
+                id: 'tool:toolu_1',
+                role: 'assistant',
+                text: '',
+                images: [{ dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
+                streaming: false,
+                createdAt: '2026-01-01T00:00:00.000Z',
+            },
+        ]);
+        expect(tracker.apply(toolResult('toolu_parent')).messages).toEqual([]);
+    });
+
     it('skips subagent output', () => {
         const tracker = new TurnTracker();
         const update = tracker.apply(
@@ -136,7 +186,26 @@ describe('messagesFromTranscript', () => {
             entry({
                 type: 'user',
                 uuid: 'u2',
-                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                timestamp: '2026-01-01T00:00:03.000Z',
+                message: {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 't1',
+                            content: [
+                                {
+                                    type: 'image',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: 'image/jpeg',
+                                        data: '/9j/4A==',
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
             }),
             entry({
                 type: 'assistant',
@@ -164,6 +233,14 @@ describe('messagesFromTranscript', () => {
                 text: 'On it.\n\nDone.',
                 streaming: false,
                 createdAt: '2026-01-01T00:00:02.000Z',
+            },
+            {
+                id: 'tool:t1',
+                role: 'assistant',
+                text: '',
+                images: [{ dataUrl: 'data:image/jpeg;base64,/9j/4A==' }],
+                streaming: false,
+                createdAt: '2026-01-01T00:00:03.000Z',
             },
         ]);
     });

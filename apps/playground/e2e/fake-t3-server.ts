@@ -4,6 +4,8 @@ import { CODEX_PROVIDER, FakeT3Server } from '@tencildev/testing';
 const port = Number(process.env.FAKE_T3_PORT ?? 47390);
 const server = await FakeT3Server.start({
     port,
+    // The orchestration protocol current T3 Code builds speak: it has the agent's screenshots.
+    protocol: 2,
     chunkDelayMs: 25,
     providers: [
         CODEX_PROVIDER,

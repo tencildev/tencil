@@ -6,6 +6,7 @@ import type {
     CreateThreadInput,
     Provider,
     ProviderInfo,
+    ProviderMessage,
     ProviderModels,
     ProviderProject,
     ProviderThreadSummary,
@@ -37,7 +38,7 @@ import type {
     ThreadTracker,
 } from './protocols/adapter.ts';
 import { v1 } from './protocols/v1.ts';
-import { v2 } from './protocols/v2.ts';
+import { toolImageMessage, v2 } from './protocols/v2.ts';
 import { RpcError, RpcSocket } from './rpc-socket.ts';
 
 export interface T3CodeProviderOptions {
@@ -124,6 +125,8 @@ export class T3CodeProvider implements Provider {
     #infoListeners = new Set<(info: ProviderInfo) => void>();
     #connection: Connection | undefined;
     #watchers = new Map<string, Watcher>();
+    /** Tool calls being read with `getTurnItem`, and those that had no images. */
+    readonly #toolImages = new Map<string, Promise<ProviderMessage | undefined>>();
     readonly #timeouts: typeof DEFAULT_TIMEOUTS;
     #retryDelay: number;
     #retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -554,6 +557,13 @@ export class T3CodeProvider implements Provider {
             item => {
                 const update = watcher.tracker.apply(item);
                 for (const message of update.messages) watcher.sink.message(message);
+                for (const tool of update.toolItems ?? []) {
+                    void this.#toolImage(connection, threadId, tool).then(message => {
+                        if (message && this.#watchers.get(threadId) === watcher) {
+                            watcher.sink.message(message);
+                        }
+                    });
+                }
                 if (update.status) watcher.sink.status(update.status.status, update.status.detail);
                 if (update.gone) watcher.sink.gone();
             },
@@ -564,6 +574,38 @@ export class T3CodeProvider implements Provider {
                 watcher.sink.gone();
             }
         });
+    }
+
+    /** The images in a tool call T3 Code sent without its output; read once per call. */
+    #toolImage(
+        connection: Connection,
+        threadId: string,
+        tool: { id: string; createdAt: string },
+    ): Promise<ProviderMessage | undefined> {
+        let pending = this.#toolImages.get(tool.id);
+        if (!pending) {
+            pending = connection.socket
+                .request<{ item: { output?: unknown } | null }>('orchestration.getTurnItem', {
+                    threadId,
+                    itemId: tool.id,
+                })
+                .then(
+                    ({ item }) => {
+                        const message = toolImageMessage(tool.id, item?.output, tool.createdAt);
+                        // Remember only the calls without images; images aren't kept here.
+                        if (message) this.#toolImages.delete(tool.id);
+                        return message;
+                    },
+                    (error: unknown) => {
+                        // Try again on the next replay.
+                        this.#toolImages.delete(tool.id);
+                        this.#log(`Couldn't read tool call ${tool.id}: ${String(error)}`);
+                        return undefined;
+                    },
+                );
+            this.#toolImages.set(tool.id, pending);
+        }
+        return pending;
     }
 
     /* --------------------------------- helpers --------------------------------- */

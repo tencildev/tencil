@@ -452,6 +452,39 @@ kbd {
   @starting-style { opacity: 0; transform: translateY(8px); filter: blur(4px); }
 }
 .message-assistant { color: var(--n-950); }
+.message-assistant > * + * { margin-top: 0.75rem; }
+.message-images { display: grid; gap: 8px; }
+.message-image {
+  display: block; width: 100%; min-height: 64px; max-height: 240px; overflow: hidden;
+  border-radius: 10px; background: var(--n-100); box-shadow: 0 0 0 1px var(--n-200);
+  cursor: zoom-in; transition: box-shadow 150ms var(--ease-out);
+}
+.message-image:disabled { cursor: default; }
+.message-image:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--n-400); }
+.message-image img { display: block; width: 100%; max-height: 240px; object-fit: cover; object-position: top; }
+.message-image-missing {
+  display: grid; place-items: center; cursor: default; color: var(--n-600); font-size: 12px;
+}
+.image-viewer-scrim {
+  position: fixed; inset: 0; pointer-events: auto; background: rgba(0, 0, 0, 0.6);
+  transition: opacity 180ms var(--ease-out);
+  @starting-style { opacity: 0; }
+}
+.image-viewer {
+  position: fixed; inset: 0; display: grid; place-items: center; padding: 48px 16px;
+  pointer-events: auto;
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+  @starting-style { opacity: 0; transform: scale(0.98); }
+}
+.image-viewer img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  border-radius: 10px; box-shadow: var(--shadow); background: var(--n-50);
+}
+.image-viewer-close {
+  position: fixed; top: 12px; right: 12px; width: 32px; height: 32px;
+  color: #fff; background: rgba(0, 0, 0, 0.4);
+}
+.image-viewer-close:hover { background: rgba(0, 0, 0, 0.6); }
 
 /* Markdown, after the Eyes assistant: quiet weight, generous leading. */
 .md { font-size: 13px; }
@@ -991,6 +1024,7 @@ kbd {
 /* Reduced motion keeps fades (they aid comprehension) but drops movement. */
 @media (prefers-reduced-motion: reduce) {
   .popover, .inbox, .toast, .toolbar-hint, .settings-panel, .message-user, .pin-body,
+  .image-viewer,
   .tool, .icon-button, .toggle, .stop, .send, .segmented button, .inbox-item {
     transition-property: opacity, background-color, color;
   }
