@@ -202,7 +202,7 @@ tencil connect [pairing-link] Pair with T3 Code (automatic for a local T3 Code)
 
 --port <n>              Port (default 4747, env TENCIL_PORT)
 --provider <name>       Agent for projects without their own: t3code (default) | claude-code | codex | ensemble
---t3-url <url>          T3 Code server (default: last paired, then your running T3 Code, then http://127.0.0.1:3773)
+--t3-url <url>          T3 Code server (default: your running T3 Code or last paired, then http://127.0.0.1:3773)
 --model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
                         Claude Code: a model, e.g. claude-opus-5-5 (default: its default)
                         Codex: a model, e.g. gpt-6.1-sol (default: its default)

@@ -45,8 +45,8 @@ export interface T3CodeProviderOptions {
     /** Directory the dev site lives in; mapped to a T3 Code project by workspace root. */
     projectRoot: string;
     /**
-     * Defaults to the server paired with last, then the T3 Code running for this
-     * user (its `server-runtime.json`), then localhost:3773.
+     * Defaults to the T3 Code running for this user (its `server-runtime.json`) or
+     * the server paired with last, then localhost:3773. See `resolveT3Url`.
      */
     baseUrl?: string;
     /** Explicit bearer token. Defaults to the one stored by `tencil connect`. */

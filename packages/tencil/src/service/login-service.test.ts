@@ -63,6 +63,7 @@ describe('login service definitions', () => {
                     '/usr/bin',
                 ].join(separator),
                 XDG_CONFIG_HOME: '/custom/config',
+                T3CODE_HOME: '/custom/t3',
             },
         );
         expect(env.PATH?.split(separator)).toEqual([
@@ -71,9 +72,10 @@ describe('login service definitions', () => {
             '/usr/bin',
         ]);
         expect(env.XDG_CONFIG_HOME).toBe('/custom/config');
-        expect(serviceEnvironment(command, { PATH: '/usr/bin' })).not.toHaveProperty(
-            'XDG_CONFIG_HOME',
-        );
+        expect(env.T3CODE_HOME).toBe('/custom/t3');
+        const bare = serviceEnvironment(command, { PATH: '/usr/bin' });
+        expect(bare).not.toHaveProperty('XDG_CONFIG_HOME');
+        expect(bare).not.toHaveProperty('T3CODE_HOME');
 
         const plist = launchdPlist(command, '/tmp/d.log', { PATH: '/nvm/bin:/usr/bin' });
         expect(plist).toContain('<key>EnvironmentVariables</key>');

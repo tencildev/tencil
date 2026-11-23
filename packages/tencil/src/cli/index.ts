@@ -39,7 +39,7 @@ ${pc.dim('Usage')}
 ${pc.dim('Daemon options')}
   --port <n>              Port (default ${DEFAULT_PORT}, env TENCIL_PORT)
   --provider <name>       t3code | claude-code | codex | ensemble: this machine's agent (setup asks when unset)
-  --t3-url <url>          T3 Code server (default: last paired, then yours, then ${DEFAULT_T3_URL}; env TENCIL_T3_URL)
+  --t3-url <url>          T3 Code server (default: your running one or last paired, then ${DEFAULT_T3_URL}; env TENCIL_T3_URL)
   --model <model>         T3 Code: instance:model, e.g. claudeAgent:claude-fable-5-1
                           Claude Code: a model, e.g. claude-opus-5-5 (default: its default)
                           Codex: a model, e.g. gpt-6.1-sol (default: its default)

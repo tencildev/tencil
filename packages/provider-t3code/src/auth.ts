@@ -42,17 +42,23 @@ function isAlive(pid: unknown): boolean {
 
 /**
  * The T3 Code to talk to: the configured URL, else the server paired with
- * last, else the one running for this user, else localhost:3773.
+ * last, else the one running for this user, else localhost:3773. A running
+ * T3 Code beats a server paired on this machine: its port can change between
+ * starts (another user may hold 3773), so a paired local port goes stale.
  */
 export async function resolveT3Url(
     options: { baseUrl?: string; credentials?: CredentialStore; baseDir?: string } = {},
 ): Promise<string> {
-    return normalizeBaseUrl(
-        options.baseUrl ??
-            (await (options.credentials ?? new CredentialStore()).lastBaseUrl()) ??
-            (await runningT3Url(options.baseDir)) ??
-            DEFAULT_T3_URL,
-    );
+    if (options.baseUrl) return normalizeBaseUrl(options.baseUrl);
+    const paired = await (options.credentials ?? new CredentialStore()).lastBaseUrl();
+    if (paired && !isLoopback(paired)) return normalizeBaseUrl(paired);
+    return normalizeBaseUrl((await runningT3Url(options.baseDir)) ?? paired ?? DEFAULT_T3_URL);
+}
+
+/** `localhost`, `127.x` and `[::1]`: a server on this machine. */
+function isLoopback(baseUrl: string): boolean {
+    const { hostname } = new URL(normalizeBaseUrl(baseUrl));
+    return hostname === 'localhost' || hostname === '[::1]' || hostname.startsWith('127.');
 }
 
 /** Scopes Tencil needs: read thread state and launch/steer threads. */
@@ -265,13 +271,7 @@ export class CredentialStore {
 /** `localhost`, `127.0.0.1` and `[::1]` reach the same server; share one credential. */
 function credentialKey(baseUrl: string): string {
     const url = new URL(normalizeBaseUrl(baseUrl));
-    if (
-        url.hostname === 'localhost' ||
-        url.hostname === '[::1]' ||
-        url.hostname.startsWith('127.')
-    ) {
-        url.hostname = '127.0.0.1';
-    }
+    if (isLoopback(url.origin)) url.hostname = '127.0.0.1';
     return url.origin;
 }
 

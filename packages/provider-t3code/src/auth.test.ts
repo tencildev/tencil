@@ -43,17 +43,38 @@ describe('resolveT3Url', () => {
         new CredentialStore(join(mkdtempSync(join(tmpdir(), 'tencil-cred-')), 'credentials.json'));
     const running = t3HomeWith({ pid: process.pid, origin: 'http://127.0.0.1:42697' });
 
-    it('prefers a configured URL, then the paired server', async () => {
+    const paired = async (baseUrl: string) => {
         const store = credentials();
-        await store.set('http://127.0.0.1:5000', {
+        await store.set(baseUrl, {
             token: 't',
             scope: '',
             expiresAt: new Date(Date.now() + 60_000).toISOString(),
         });
+        return store;
+    };
+    const empty = mkdtempSync(join(tmpdir(), 'tencil-t3-'));
+
+    it('prefers a configured URL, then a server paired on another machine', async () => {
+        const remote = await paired('https://devbox.example:3773');
         expect(
-            await resolveT3Url({ baseUrl: 'localhost:6000', credentials: store, baseDir: running }),
+            await resolveT3Url({
+                baseUrl: 'localhost:6000',
+                credentials: remote,
+                baseDir: running,
+            }),
         ).toBe('http://localhost:6000');
-        expect(await resolveT3Url({ credentials: store, baseDir: running })).toBe(
+        expect(await resolveT3Url({ credentials: remote, baseDir: running })).toBe(
+            'https://devbox.example:3773',
+        );
+    });
+
+    it('prefers the running T3 Code over a stale local pairing', async () => {
+        const local = await paired('http://127.0.0.1:5000');
+        expect(await resolveT3Url({ credentials: local, baseDir: running })).toBe(
+            'http://127.0.0.1:42697',
+        );
+        // Not running right now: keep the paired server, it may start later.
+        expect(await resolveT3Url({ credentials: local, baseDir: empty })).toBe(
             'http://127.0.0.1:5000',
         );
     });
@@ -62,7 +83,6 @@ describe('resolveT3Url', () => {
         expect(await resolveT3Url({ credentials: credentials(), baseDir: running })).toBe(
             'http://127.0.0.1:42697',
         );
-        const empty = mkdtempSync(join(tmpdir(), 'tencil-t3-'));
         expect(await resolveT3Url({ credentials: credentials(), baseDir: empty })).toBe(
             'http://127.0.0.1:3773',
         );
