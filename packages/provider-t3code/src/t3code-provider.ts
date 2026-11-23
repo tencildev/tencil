@@ -19,6 +19,7 @@ import {
     exchangePairingCredential,
     normalizeBaseUrl,
     requestWebSocketTicket,
+    resolveT3Url,
     UnauthorizedError,
 } from './auth.ts';
 import {
@@ -43,7 +44,10 @@ import { RpcError, RpcSocket } from './rpc-socket.ts';
 export interface T3CodeProviderOptions {
     /** Directory the dev site lives in; mapped to a T3 Code project by workspace root. */
     projectRoot: string;
-    /** Defaults to the server `tencil connect` paired with last, then localhost:3773. */
+    /**
+     * Defaults to the T3 Code running for this user (its `server-runtime.json`) or
+     * the server paired with last, then localhost:3773. See `resolveT3Url`.
+     */
     baseUrl?: string;
     /** Explicit bearer token. Defaults to the one stored by `tencil connect`. */
     token?: string;
@@ -151,10 +155,7 @@ export class T3CodeProvider implements Provider {
      * and reconnect. Used automatically on first run and by the overlay's Pair button.
      */
     async pair(): Promise<void> {
-        if (!this.#options.baseUrl) {
-            const paired = await this.#credentials.lastBaseUrl();
-            if (paired) this.#baseUrl = normalizeBaseUrl(paired);
-        }
+        await this.#resolveBaseUrl();
         this.#setInfo({ state: 'connecting', detail: 'Pairing with T3 Code…' });
         const mint = this.#options.createPairingCode ?? createLocalPairingCode;
         const code = await mint(this.#baseUrl).catch(() => undefined);
@@ -430,11 +431,14 @@ export class T3CodeProvider implements Provider {
         this.#scheduleReconnect();
     }
 
+    /** Re-resolved on every attempt: T3 Code may start, or be paired, after Tencil. */
+    async #resolveBaseUrl(): Promise<void> {
+        if (this.#options.baseUrl) return;
+        this.#baseUrl = await resolveT3Url({ credentials: this.#credentials });
+    }
+
     async #establish(): Promise<Connection> {
-        if (!this.#options.baseUrl) {
-            const paired = await this.#credentials.lastBaseUrl();
-            if (paired) this.#baseUrl = normalizeBaseUrl(paired);
-        }
+        await this.#resolveBaseUrl();
         const environment = await this.#fetchJson<{
             environmentId: string;
             orchestrationProtocolVersion?: number;
