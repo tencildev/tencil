@@ -108,6 +108,8 @@ export const Thread = z.object({
         /** Started for these pins: archived once they're all resolved (`Provider.archive`). */
         archivable: z.boolean().optional(),
     }),
+    /** A model picked in Tencil for the rest of the thread (`ProviderModel.id`); sent with every follow-up. */
+    model: z.string().optional(),
     /** Tencil Cloud only: the run's commit, pull request and preview. */
     delivery: Delivery.optional(),
     /** What the provider did during the latest turn, when it reports steps. */

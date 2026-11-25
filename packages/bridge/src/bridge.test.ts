@@ -449,4 +449,154 @@ describe('Bridge', () => {
         expect(provider.sinks.size).toBe(0);
         await bridge.dispose();
     });
+
+    describe('switching a thread to another model', () => {
+        const setup = (options?: { fixedModels?: boolean }) => {
+            const provider = new FakeAgentProvider(options);
+            const store = new MemoryThreadStore();
+            const bridge = new Bridge({
+                providers: ProjectProviders.of(provider),
+                store,
+                project: { name: 'acme', root: '/projects/acme' },
+                version: '0',
+            });
+            const received: ServerMessage[] = [];
+            const client = { send: (message: ServerMessage) => received.push(message) };
+            const pin = (id: string, extra: { providerThreadId?: string; model?: string } = {}) =>
+                bridge.handle(client, {
+                    type: 'thread.create',
+                    id,
+                    pageUrl: 'http://localhost:3000/',
+                    prompt: 'Make it red',
+                    anchor: { selector: 'button', offsetX: 0.5, offsetY: 0.5 },
+                    context,
+                    ...extra,
+                });
+            return { provider, store, bridge, received, client, pin };
+        };
+
+        it("lists the models a pin's thread can switch to", async () => {
+            const { bridge, received, client, pin } = setup();
+            await pin('pin1');
+            await bridge.handle(client, { type: 'provider.models', threadId: 'pin1' });
+            expect(received.at(-1)).toEqual({
+                type: 'provider.models',
+                provider: 'fake',
+                providerThreadId: 'fake-1',
+                models: [
+                    { id: 'fake/fast', label: 'Fast', group: 'Fake' },
+                    { id: 'fake/smart', label: 'Smart', group: 'Fake' },
+                ],
+                defaultModel: 'fake/fast',
+            });
+            await bridge.handle(client, { type: 'provider.models', providerThreadId: 'theirs' });
+            expect(received.at(-1)).toMatchObject({ providerThreadId: 'theirs' });
+            await bridge.dispose();
+        });
+
+        it('offers no switch where the provider has none', async () => {
+            const { bridge, received, client, pin } = setup({ fixedModels: true });
+            await pin('pin1');
+            await bridge.handle(client, { type: 'provider.models', threadId: 'pin1' });
+            expect(received.at(-1)).toEqual({
+                type: 'provider.models',
+                provider: 'fake',
+                providerThreadId: 'fake-1',
+                models: [],
+            });
+            await bridge.handle(client, { type: 'thread.model', threadId: 'pin1', model: 'x' });
+            expect(received.at(-1)).toEqual({
+                type: 'error',
+                message: "Fake can't change the model of a thread",
+                threadId: 'pin1',
+            });
+            await bridge.dispose();
+        });
+
+        it('runs the rest of the thread on the picked model, on every pin, and says so', async () => {
+            const { provider, store, bridge, received, client, pin } = setup();
+            await pin('pin1');
+            await bridge.handle(client, {
+                type: 'thread.open',
+                id: 'pin2',
+                providerThreadId: 'fake-1',
+            });
+
+            await bridge.handle(client, {
+                type: 'thread.model',
+                threadId: 'pin1',
+                model: 'fake/nope',
+            });
+            expect(received.at(-1)).toMatchObject({
+                type: 'error',
+                message: "This thread can't switch to fake/nope",
+            });
+
+            // A switch comes after the comment, never in the same millisecond.
+            await new Promise(resolve => setTimeout(resolve, 5));
+            await bridge.handle(client, {
+                type: 'thread.model',
+                threadId: 'pin1',
+                model: 'fake/smart',
+            });
+            for (const id of ['pin1', 'pin2']) {
+                expect(store.get(id)?.model).toBe('fake/smart');
+                expect(store.get(id)?.messages.at(-1)).toMatchObject({
+                    role: 'system',
+                    text: 'Switched to Smart',
+                });
+            }
+            // Picking it again changes nothing.
+            await bridge.handle(client, {
+                type: 'thread.model',
+                threadId: 'pin2',
+                model: 'fake/smart',
+            });
+            expect(store.get('pin1')?.messages.filter(m => m.role === 'system')).toHaveLength(1);
+
+            // The provider's own messages don't replace the note.
+            provider.sinks.get('fake-1')!.message({
+                id: 'a1',
+                role: 'assistant',
+                text: 'Done',
+                streaming: false,
+                createdAt: new Date(Date.now() + 1000).toISOString(),
+            });
+            expect(store.get('pin1')?.messages.map(m => m.role)).toEqual([
+                'user',
+                'system',
+                'assistant',
+            ]);
+
+            await bridge.handle(client, { type: 'thread.reply', threadId: 'pin1', text: 'Again' });
+            await bridge.handle(client, { type: 'thread.reply', threadId: 'pin2', text: 'More' });
+            expect(provider.sent.map(input => input.model)).toEqual(['fake/smart', 'fake/smart']);
+            await bridge.dispose();
+        });
+
+        it('switches a continued thread with the comment that continues it', async () => {
+            const { provider, store, bridge, pin } = setup();
+            await pin('pin1');
+            await pin('pin2', { providerThreadId: 'fake-1' });
+            expect(provider.sent.at(-1)?.model).toBeUndefined();
+            expect(store.get('pin2')?.model).toBeUndefined();
+
+            await pin('pin3', { providerThreadId: 'fake-1', model: 'fake/smart' });
+            expect(provider.sent.at(-1)?.model).toBe('fake/smart');
+            for (const id of ['pin1', 'pin2', 'pin3']) {
+                expect(store.get(id)?.model).toBe('fake/smart');
+            }
+            expect(store.get('pin3')?.messages.map(m => [m.role, m.text])).toEqual([
+                ['user', 'Make it red'],
+                ['system', 'Switched to Smart'],
+                ['user', 'Make it red'],
+            ]);
+
+            // Later comments stay on it.
+            await pin('pin4', { providerThreadId: 'fake-1' });
+            expect(provider.sent.at(-1)?.model).toBe('fake/smart');
+            expect(store.get('pin4')?.model).toBe('fake/smart');
+            await bridge.dispose();
+        });
+    });
 });

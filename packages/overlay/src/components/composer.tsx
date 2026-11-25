@@ -2,11 +2,9 @@ import { signal } from '@preact/signals';
 import type {
     ElementContext,
     ImageAttachment,
-    ProviderModel,
     ProviderThreadSummary,
     Thread,
 } from '@tencildev/protocol';
-import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
     provider,
@@ -14,8 +12,12 @@ import {
     providerThreads,
     refreshProviderModels,
     refreshProviderThreads,
+    refreshThreadModels,
     send,
     settings,
+    threadModels,
+    threadModelsKey,
+    threads,
     upsertLocal,
 } from '../lib/connection.ts';
 import { buildSelector } from '../lib/element-context.ts';
@@ -39,6 +41,7 @@ import {
 import { AgentIcon } from './agent-icons.tsx';
 import { CameraIcon, ChevronIcon, CloseIcon, CodeIcon, LayersIcon } from './icons.tsx';
 import { timeAgo } from './inbox.tsx';
+import { type ModelChoices, ModelMenu, ModelToggle } from './model-menu.tsx';
 import { PromptInput } from './prompt-input.tsx';
 
 const WIDTH = 340;
@@ -57,6 +60,8 @@ export function Composer() {
     const [withScreenshot, setWithScreenshot] = useState(false);
     const [busy, setBusy] = useState(false);
     const [menu, setMenu] = useState<'target' | 'model' | null>(null);
+    /** A model picked for the continued thread, sent with this comment. */
+    const [threadModel, setThreadModel] = useState<string | null>(null);
 
     const providerReady = provider.value?.state === 'ready';
     const providerId = provider.value?.id;
@@ -69,6 +74,15 @@ export function Composer() {
     useEffect(() => {
         composerTarget.value = null;
     }, [providerId]);
+    // A batch always starts its own thread.
+    const existing = batchMode.value ? null : composerTarget.value;
+    // Another thread, or the next comment, starts from what that thread runs on.
+    useEffect(() => {
+        setThreadModel(null);
+        if (existing && pending && providerReady) {
+            refreshThreadModels({ providerThreadId: existing.id });
+        }
+    }, [existing?.id, pending, providerReady]);
 
     useLayoutEffect(() => {
         if (ref.current) setHeight(ref.current.offsetHeight);
@@ -81,10 +95,16 @@ export function Composer() {
     const target = provider.value;
     const ready = target?.state === 'ready';
     const batching = batchMode.value;
-    // A batch always starts its own thread.
-    const existing = batching ? null : composerTarget.value;
-    // A continued thread keeps its own model; only new threads can pick one.
-    const models = existing ? undefined : modelChoices(target?.id);
+    const models = existing
+        ? continuedModelChoices(target?.id, existing.id, threadModel)
+        : modelChoices(target?.id);
+    // Only a change goes with the comment; the thread otherwise keeps its model.
+    const switchTo =
+        existing &&
+        threadModel &&
+        threadModel !== continuedModelChoices(target?.id, existing.id, null)?.current?.id
+            ? threadModel
+            : null;
 
     const submit = async (prompt: string) => {
         setBusy(true);
@@ -106,6 +126,7 @@ export function Composer() {
                 context,
                 attachments,
                 ...(existing ? { providerThreadId: existing.id } : {}),
+                ...(existing && switchTo ? { model: switchTo } : {}),
                 ...(batching ? { draft: true } : {}),
             });
             if (!ok) return;
@@ -191,8 +212,10 @@ export function Composer() {
             {menu === 'model' && models && (
                 <ModelMenu
                     choices={models}
+                    withDefault={!existing}
                     onPick={model => {
-                        send({ type: 'model.select', model });
+                        if (existing) setThreadModel(model);
+                        else send({ type: 'model.select', model });
                         setMenu(null);
                     }}
                 />
@@ -245,18 +268,16 @@ export function Composer() {
                     </button>
                 )}
                 {models && (
-                    <button
-                        type="button"
-                        class={`toggle model-toggle${menu === 'model' ? ' open' : ''}`}
-                        onClick={() => setMenu(menu === 'model' ? null : 'model')}
-                        title="Agent and model for the new thread"
-                    >
-                        <AgentIcon agent={models.current?.agent} size={12} />
-                        <span class="model-toggle-label">
-                            {models.current?.label ?? 'Default model'}
-                        </span>
-                        <ChevronIcon />
-                    </button>
+                    <ModelToggle
+                        choices={models}
+                        open={menu === 'model'}
+                        onToggle={() => setMenu(menu === 'model' ? null : 'model')}
+                        title={
+                            existing
+                                ? 'Model for the rest of this thread'
+                                : 'Agent and model for the new thread'
+                        }
+                    />
                 )}
             </PromptInput>
             {!ready && target?.detail && <p class="hint">{target.detail}</p>}
@@ -325,14 +346,6 @@ function withSpacing(context: ElementContext, pending: Draft): ElementContext {
     return spacing ? { ...context, spacing } : context;
 }
 
-interface ModelChoices {
-    models: ProviderModel[];
-    /** The model new threads run on: the picked one, else the provider's default. */
-    current?: ProviderModel;
-    picked: string | null;
-    fallback?: ProviderModel;
-}
-
 function modelChoices(providerId: string | undefined): ModelChoices | undefined {
     const list = providerModels.value;
     if (!list || list.provider !== providerId || list.models.length === 0) return undefined;
@@ -348,53 +361,25 @@ function modelChoices(providerId: string | undefined): ModelChoices | undefined 
     };
 }
 
-function ModelMenu({
-    choices,
-    onPick,
-}: {
-    choices: ModelChoices;
-    onPick: (model: string | null) => void;
-}) {
-    const groups = new Map<string, ProviderModel[]>();
-    for (const model of choices.models) {
-        groups.set(model.group, [...(groups.get(model.group) ?? []), model]);
-    }
-    return (
-        <div class="target-menu" role="listbox">
-            <button
-                type="button"
-                role="option"
-                aria-selected={choices.picked === null}
-                class={`target-option${choices.picked === null ? ' selected' : ''}`}
-                onClick={() => onPick(null)}
-            >
-                <span class="target-option-title">Default</span>
-                {choices.fallback && (
-                    <span class="target-option-meta">{choices.fallback.label}</span>
-                )}
-            </button>
-            {[...groups].map(([group, models]) => (
-                <Fragment key={group}>
-                    <p class="menu-group">
-                        <AgentIcon agent={models[0]?.agent} size={11} />
-                        {group}
-                    </p>
-                    {models.map(model => (
-                        <button
-                            key={model.id}
-                            type="button"
-                            role="option"
-                            aria-selected={choices.picked === model.id}
-                            class={`target-option${choices.picked === model.id ? ' selected' : ''}`}
-                            onClick={() => onPick(model.id)}
-                        >
-                            <span class="target-option-title">{model.label}</span>
-                        </button>
-                    ))}
-                </Fragment>
-            ))}
-        </div>
-    );
+/** What a continued thread can switch to; it runs on what a pin last picked, else its own. */
+function continuedModelChoices(
+    providerId: string | undefined,
+    providerThreadId: string,
+    picked: string | null,
+): ModelChoices | undefined {
+    if (!providerId) return undefined;
+    const list = threadModels.value.get(threadModelsKey(providerId, providerThreadId));
+    // One model is nothing to switch to.
+    if (!list || list.models.length < 2) return undefined;
+    const pinned = [...threads.value.values()].find(
+        thread =>
+            thread.provider.id === providerId &&
+            thread.provider.threadId === providerThreadId &&
+            thread.model,
+    )?.model;
+    const find = (id: string | null | undefined) => list.models.find(model => model.id === id);
+    const current = find(picked) ?? find(pinned) ?? find(list.current);
+    return { models: list.models, current, picked: current?.id ?? null };
 }
 
 function TargetMenu({ onPick }: { onPick: (summary: ProviderThreadSummary | null) => void }) {

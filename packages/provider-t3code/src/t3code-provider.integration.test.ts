@@ -251,6 +251,45 @@ describe.each([1, 2] as const)('T3 Code provider, protocol v%i', protocol => {
         });
     });
 
+    it('switches a thread to another model from its next message on', async () => {
+        const { provider, server } = await setup(protocol);
+        server.providers = [CODEX_PROVIDER, CLAUDE_PROVIDER];
+        await provider.start();
+        await ready(provider);
+        const { providerThreadId } = await provider.createThread({
+            title: 't',
+            text: 'hi',
+            attachments: [],
+            model: 'claudeAgent/claude-test',
+        });
+        const { models, defaultModel } = await provider.threadModels(providerThreadId);
+        expect(defaultModel).toBe('claudeAgent/claude-test');
+        // A V1 session stays on the agent it started on; V2 can move to another.
+        expect(models.map(model => model.id)).toEqual([
+            ...(protocol === 2 ? ['codex/gpt-test'] : []),
+            'claudeAgent/claude-test',
+            'claudeAgent/claude-test-mini',
+        ]);
+
+        await provider.sendMessage({
+            providerThreadId,
+            text: 'again',
+            attachments: [],
+            model: 'claudeAgent/claude-test-mini',
+        });
+        expect(server.threads.get(providerThreadId)?.modelSelection).toEqual({
+            instanceId: 'claudeAgent',
+            model: 'claude-test-mini',
+        });
+        expect((await provider.threadModels(providerThreadId)).defaultModel).toBe(
+            'claudeAgent/claude-test-mini',
+        );
+
+        // Without a model, the thread keeps the one it has.
+        await provider.sendMessage({ providerThreadId, text: 'more', attachments: [] });
+        expect(server.threads.get(providerThreadId)?.modelSelection.model).toBe('claude-test-mini');
+    });
+
     it('resubscribes watched threads after T3 Code drops the connection', async () => {
         const { provider, server } = await setup(protocol);
         await provider.start();

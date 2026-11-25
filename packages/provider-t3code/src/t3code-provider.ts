@@ -260,12 +260,7 @@ export class T3CodeProvider implements Provider {
         const recent = shell.threads
             .filter(thread => thread.projectId === id && !this.#watchers.has(thread.id))
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-            .flatMap(({ modelSelection: selection }) => {
-                const instanceId = selection?.instanceId ?? selection?.provider;
-                if (!instanceId || !selection?.model) return [];
-                const { model, options } = selection;
-                return [{ instanceId, model, ...(options ? { options } : {}) }];
-            });
+            .flatMap(thread => selectionOf(thread) ?? []);
         return {
             providers: config.providers,
             settings: config.settings,
@@ -320,6 +315,27 @@ export class T3CodeProvider implements Provider {
         };
     }
 
+    async threadModels(providerThreadId: string): Promise<ProviderModels> {
+        const connection = this.#requireConnection();
+        const [config, shell] = await Promise.all([
+            connection.socket.request<{ providers: WireServerProvider[] }>('server.getConfig', {}),
+            this.#fetchJson<{ threads: WireShellThread[] }>(
+                '/api/orchestration/shell',
+                connection.token,
+            ),
+        ]);
+        const thread = shell.threads.find(candidate => candidate.id === providerThreadId);
+        const current = thread && selectionOf(thread);
+        const models = modelOptions(config.providers);
+        return {
+            models: connection.protocol.switchesAgents
+                ? models
+                : // An agent we can't tell leaves nothing safe to offer.
+                  models.filter(model => current && model.id.startsWith(`${current.instanceId}/`)),
+            ...(current ? { defaultModel: modelId(current) } : {}),
+        };
+    }
+
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {
         const connection = this.#requireConnection();
         const sources = await this.#modelSources(connection);
@@ -350,10 +366,23 @@ export class T3CodeProvider implements Provider {
     async sendMessage(input: SendMessageInput): Promise<void> {
         const connection = this.#requireConnection();
         const tracker = this.#watchers.get(input.providerThreadId)?.tracker;
+        // A model whose agent went away leaves the thread on the one it has.
+        const modelSelection = input.model
+            ? pickedSelection(
+                  (
+                      await connection.socket.request<{ providers: WireServerProvider[] }>(
+                          'server.getConfig',
+                          {},
+                      )
+                  ).providers,
+                  input.model,
+              )
+            : undefined;
         await connection.protocol.sendMessage(connection.socket, {
             threadId: input.providerThreadId,
             text: input.text,
             attachments: input.attachments,
+            ...(modelSelection ? { modelSelection } : {}),
             busy: tracker?.status().status === 'working',
             runtimeMode: this.#runtimeMode(),
             interactionMode: this.#options.interactionMode ?? 'default',
@@ -622,6 +651,15 @@ export class T3CodeProvider implements Provider {
     #log(message: string): void {
         this.#options.log?.(message);
     }
+}
+
+/** The model a shell thread runs on; older servers name the agent `provider`. */
+function selectionOf(thread: WireShellThread): ModelSelection | undefined {
+    const selection = thread.modelSelection;
+    const instanceId = selection?.instanceId ?? selection?.provider;
+    if (!instanceId || !selection?.model) return undefined;
+    const { model, options } = selection;
+    return { instanceId, model, ...(options ? { options } : {}) };
 }
 
 function summaryStatus(thread: WireShellThread): ProviderThreadSummary['status'] {

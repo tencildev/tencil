@@ -562,6 +562,47 @@ describe('Codex provider', () => {
         });
     });
 
+    describe('switching models', () => {
+        it("offers a thread Codex's models, naming the one it runs on", async () => {
+            const { provider, codex } = setup();
+            const { providerThreadId } = await provider.createThread(
+                newThread('Picked', { model: 'gpt-test-mini' }),
+            );
+            const { models, defaultModel } = await provider.threadModels(providerThreadId);
+            expect(models.map(model => model.id)).toEqual(['gpt-test', 'gpt-test-mini']);
+            expect(defaultModel).toBe('gpt-test-mini');
+
+            // A thread that never named one runs on Codex's default; an unlisted one is still offered.
+            const theirs = codex.addThread({ cwd: '/elsewhere', model: 'gpt-old' });
+            const old = await provider.threadModels(theirs.id);
+            expect(old.defaultModel).toBe('gpt-old');
+            expect(old.models[0]).toMatchObject({ id: 'gpt-old', label: 'gpt-old' });
+            const none = codex.addThread({ cwd: '/elsewhere' });
+            expect((await provider.threadModels(none.id)).defaultModel).toBe('gpt-test');
+        });
+
+        it('starts the next turn on the picked model, which Codex keeps', async () => {
+            const { provider, codex } = setup();
+            const { providerThreadId } = await provider.createThread(newThread());
+            const { sink, reply } = recordingSink();
+            provider.watch(providerThreadId, sink);
+            await reply();
+            await provider.sendMessage({
+                providerThreadId,
+                text: 'Again',
+                attachments: [],
+                model: 'gpt-test-mini',
+            });
+            expect(codex.requestsOf('turn/start').map(params => params.model)).toEqual([
+                undefined,
+                'gpt-test-mini',
+            ]);
+            expect((await provider.threadModels(providerThreadId)).defaultModel).toBe(
+                'gpt-test-mini',
+            );
+        });
+    });
+
     describe('one-shot helpers', () => {
         const spawnOf = (codex: FakeCodexAppServer) => () =>
             codex.spawn() as unknown as AppServerProcess;

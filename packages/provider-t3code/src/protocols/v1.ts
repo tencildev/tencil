@@ -14,6 +14,8 @@ import {
  */
 export const v1: ProtocolAdapter = {
     version: 1,
+    // A V1 session is bound to the agent it started on.
+    switchesAgents: false,
 
     async createProject(socket, input) {
         await socket.request('orchestration.dispatchCommand', {
@@ -70,6 +72,7 @@ export const v1: ProtocolAdapter = {
                 text: input.text,
                 attachments: uploads(input.attachments),
             },
+            ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
             runtimeMode: input.runtimeMode,
             interactionMode: input.interactionMode,
             createdAt: now(),

@@ -1,8 +1,16 @@
 import type { Delivery, Thread, ThreadMessage, ThreadStep } from '@tencildev/protocol';
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
-import { providerLabel, send, threads } from '../lib/connection.ts';
+import {
+    bridgeState,
+    providerLabel,
+    refreshThreadModels,
+    send,
+    threadModels,
+    threadModelsKey,
+    threads,
+} from '../lib/connection.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
 import {
@@ -16,6 +24,7 @@ import {
     UndoIcon,
 } from './icons.tsx';
 import { Markdown } from './markdown.tsx';
+import { type ModelChoices, ModelMenu, ModelToggle } from './model-menu.tsx';
 import { pinNumbers, sendQueued } from './pins.tsx';
 import { PromptInput } from './prompt-input.tsx';
 
@@ -65,26 +74,76 @@ export function ThreadPanel() {
             {thread.status === 'draft' ? (
                 <QueuedComment thread={thread} />
             ) : (
-                <>
-                    <Messages key={thread.id} thread={thread} />
-                    <RunStatus key={thread.id} thread={thread} />
-                    <PromptInput
-                        placeholder={
-                            pinBlocked.value ??
-                            (thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…')
-                        }
-                        disabled={!thread.provider.threadId || pinBlocked.value !== null}
-                        onSubmit={text => {
-                            send({ type: 'thread.reply', threadId: thread.id, text });
-                        }}
-                        onCancel={() => {
-                            openThreadId.value = null;
-                        }}
-                    />
-                </>
+                <Conversation key={thread.id} thread={thread} />
             )}
         </div>
     );
+}
+
+/** The messages, what the agent is doing, and the reply box with its model. */
+function Conversation({ thread }: { thread: Thread }) {
+    const [menu, setMenu] = useState(false);
+    const providerThreadId = thread.provider.threadId;
+    const connected = bridgeState.value === 'open';
+    useEffect(() => {
+        if (providerThreadId && connected) refreshThreadModels({ threadId: thread.id });
+    }, [providerThreadId, connected]);
+    const models = providerThreadId
+        ? modelChoices(thread, thread.provider.id, providerThreadId)
+        : undefined;
+    return (
+        <>
+            <Messages thread={thread} />
+            <RunStatus thread={thread} />
+            {menu && models && (
+                <ModelMenu
+                    choices={models}
+                    onPick={model => {
+                        if (model && model !== models.current?.id) {
+                            send({ type: 'thread.model', threadId: thread.id, model });
+                        }
+                        setMenu(false);
+                    }}
+                />
+            )}
+            <PromptInput
+                placeholder={
+                    pinBlocked.value ??
+                    (thread.provider.threadId ? 'Reply…' : 'Waiting for the agent…')
+                }
+                disabled={!thread.provider.threadId || pinBlocked.value !== null}
+                onSubmit={text => {
+                    send({ type: 'thread.reply', threadId: thread.id, text });
+                }}
+                onCancel={() => {
+                    openThreadId.value = null;
+                }}
+            >
+                {models && (
+                    <ModelToggle
+                        choices={models}
+                        open={menu}
+                        onToggle={() => setMenu(!menu)}
+                        title="Model for the rest of this thread"
+                    />
+                )}
+            </PromptInput>
+        </>
+    );
+}
+
+/** What the thread can switch to; it runs on what was picked here, else what the agent says. */
+function modelChoices(
+    thread: Thread,
+    providerId: string,
+    providerThreadId: string,
+): ModelChoices | undefined {
+    const list = threadModels.value.get(threadModelsKey(providerId, providerThreadId));
+    // One model is nothing to switch to.
+    if (!list || list.models.length < 2) return undefined;
+    const find = (id: string | undefined) => list.models.find(model => model.id === id);
+    const current = find(thread.model) ?? find(list.current);
+    return { models: list.models, current, picked: current?.id ?? null };
 }
 
 /** A comment waiting for its batch: rewrite it here, or send the batch. */
@@ -247,6 +306,10 @@ function Messages({ thread }: { thread: Thread }) {
                 {thread.messages.map(message =>
                     message.role === 'user' ? (
                         <div key={message.id} class="message message-user">
+                            {message.text}
+                        </div>
+                    ) : message.role === 'system' ? (
+                        <div key={message.id} class="message message-system">
                             {message.text}
                         </div>
                     ) : (

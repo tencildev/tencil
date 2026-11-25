@@ -301,6 +301,8 @@ class Connection {
 
     #startTurn(params: FakeCodexParams): unknown {
         const thread = this.#loadedThread(params.threadId);
+        // Codex keeps a turn's model for the turns after it.
+        if (params.model) thread.model = params.model;
         const running = this.#turns.get(thread.id);
         const text = (params.input ?? [])
             .flatMap(part => (part.text ? [part.text] : []))
@@ -424,6 +426,7 @@ function summary(thread: FakeCodexThread) {
         cwd: thread.cwd,
         updatedAt: thread.updatedAt,
         gitInfo: thread.branch ? { branch: thread.branch } : null,
+        model: thread.model,
         status: { type: 'notLoaded' },
         turns: [],
     };

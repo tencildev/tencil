@@ -39,6 +39,8 @@ export interface SendInput {
     threadId: string;
     text: string;
     attachments: ImageAttachment[];
+    /** Switch the thread to this model from this turn on. */
+    modelSelection?: ModelSelection;
     busy: boolean;
     runtimeMode: RuntimeMode;
     interactionMode: 'default' | 'plan';
@@ -52,6 +54,8 @@ export interface SendInput {
  */
 export interface ProtocolAdapter {
     readonly version: 1 | 2;
+    /** A thread can move to another agent (Codex → Claude), not just another model of its own. */
+    readonly switchesAgents: boolean;
     createProject(
         socket: RpcSocket,
         input: { projectId: string; title: string; workspaceRoot: string },

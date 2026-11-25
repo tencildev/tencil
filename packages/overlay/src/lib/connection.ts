@@ -48,6 +48,10 @@ export const providerModels = signal<{
     models: ProviderModel[];
     defaultModel?: string;
 } | null>(null);
+/** Models each thread can switch to, by `threadModelsKey`; `current` is what it runs on now. */
+export const threadModels = signal<
+    ReadonlyMap<string, { models: ProviderModel[]; current?: string }>
+>(new Map());
 /** Set when the daemon can't tell which project this page belongs to. */
 export const projectChoices = signal<Array<{ root: string; title: string }> | null>(null);
 /** Set when the daemon refused this site; the developer can allow it at `approveUrl`. */
@@ -251,13 +255,23 @@ function handle(message: ServerMessage): void {
             threads.value = next;
             return;
         }
-        case 'provider.models':
+        case 'provider.models': {
+            if (message.providerThreadId) {
+                const next = new Map(threadModels.value);
+                next.set(threadModelsKey(message.provider, message.providerThreadId), {
+                    models: message.models,
+                    current: message.defaultModel,
+                });
+                threadModels.value = next;
+                return;
+            }
             providerModels.value = {
                 provider: message.provider,
                 models: message.models,
                 defaultModel: message.defaultModel,
             };
             return;
+        }
         case 'provider.threads':
             batch(() => {
                 providerThreads.value = message.threads;
@@ -288,6 +302,19 @@ export function refreshProviderThreads(): void {
 export function refreshProviderModels(): void {
     if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'provider.models' }));
+    }
+}
+
+export function threadModelsKey(provider: string, providerThreadId: string): string {
+    return `${provider}:${providerThreadId}`;
+}
+
+/** Ask which models a pin's thread, or a thread of the default provider, can switch to. */
+export function refreshThreadModels(
+    thread: { threadId: string } | { providerThreadId: string },
+): void {
+    if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'provider.models', ...thread }));
     }
 }
 

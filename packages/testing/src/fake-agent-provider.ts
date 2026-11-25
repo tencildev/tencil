@@ -20,6 +20,8 @@ export interface FakeAgentProviderOptions {
     threadUrl?: (providerThreadId: string) => string | undefined;
     /** Mark every thread it starts `archivable`, as a provider that starts one per pin. */
     archivable?: boolean;
+    /** Leave out `threadModels`, as a provider that can't change a thread's model. */
+    fixedModels?: boolean;
 }
 
 /**
@@ -48,6 +50,15 @@ export class FakeAgentProvider implements Provider {
         this.#options = options;
         this.id = options.id ?? 'fake';
         this.label = options.label ?? 'Fake';
+        if (!options.fixedModels) {
+            this.threadModels = async () => ({
+                models: [
+                    { id: `${this.id}/fast`, label: 'Fast', group: this.label },
+                    { id: `${this.id}/smart`, label: 'Smart', group: this.label },
+                ],
+                defaultModel: `${this.id}/fast`,
+            });
+        }
     }
 
     async start(): Promise<void> {
@@ -78,6 +89,9 @@ export class FakeAgentProvider implements Provider {
             defaultModel: `${this.id}/fast`,
         };
     }
+
+    /** Threads run on `<id>/fast` and can switch to `<id>/smart`. */
+    readonly threadModels?: (providerThreadId: string) => Promise<ProviderModels>;
 
     threadUrl(providerThreadId: string): string | undefined {
         return this.#options.threadUrl?.(providerThreadId);

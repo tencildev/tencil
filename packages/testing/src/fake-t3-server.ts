@@ -371,10 +371,12 @@ export class FakeT3Server {
                     attachments: UploadAttachment[];
                 };
                 const attachments = message.attachments.map(verifyUpload);
+                this.#switchModel(threadId, command.modelSelection);
                 this.#startTurn(threadId, message.text, attachments);
                 break;
             }
             case 'message.dispatch':
+                this.#switchModel(String(command.threadId), command.modelSelection);
                 this.#startTurn(String(command.threadId), String(command.text), []);
                 break;
             case 'thread.turn.interrupt':
@@ -411,6 +413,20 @@ export class FakeT3Server {
             title: String(input.title),
             modelSelection: input.modelSelection as FakeThread['modelSelection'],
         });
+    }
+
+    /** A follow-up's model applies from its turn on; a V1 session can't leave its agent. */
+    #switchModel(threadId: string, selection: unknown): void {
+        const thread = this.threads.get(threadId);
+        if (!thread || !selection) return;
+        const next = selection as FakeThread['modelSelection'];
+        if (this.#options.protocol === 1 && next.instanceId !== thread.modelSelection.instanceId) {
+            throw Object.assign(
+                new Error(`Thread is bound to ${thread.modelSelection.instanceId}`),
+                { tag: 'OrchestrationDispatchCommandError' },
+            );
+        }
+        thread.modelSelection = next;
     }
 
     #startTurn(threadId: string, text: string, attachments: unknown[]): void {

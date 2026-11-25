@@ -15,6 +15,7 @@ import {
  */
 export const v2: ProtocolAdapter = {
     version: 2,
+    switchesAgents: true,
 
     async createProject(socket, input) {
         await socket.request('projects.mutate', {
@@ -57,6 +58,7 @@ export const v2: ProtocolAdapter = {
             messageId,
             text: input.text,
             attachments,
+            ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
             dispatchMode: { type: input.busy ? 'queue_after_active' : 'start_immediately' },
         });
     },

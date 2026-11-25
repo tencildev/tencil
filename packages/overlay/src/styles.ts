@@ -452,6 +452,11 @@ kbd {
   @starting-style { opacity: 0; transform: translateY(8px); filter: blur(4px); }
 }
 .message-assistant { color: var(--n-950); }
+/* Tencil's own notes in the thread, e.g. a model switch: a quiet line between the turns. */
+.message-system {
+  align-self: center; max-width: 85%; text-align: center;
+  font-size: 12px; line-height: 1rem; color: var(--n-500);
+}
 
 /* Markdown, after the Eyes assistant: quiet weight, generous leading. */
 .md { font-size: 13px; }
