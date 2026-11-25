@@ -125,12 +125,24 @@ export function installPicker(host: HTMLElement): () => void {
         if (!capturing() || isOurs(event)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
+        // Browsers send no click to a disabled control: pick it on the pointer's release.
+        if (
+            event.type === 'pointerup' &&
+            (event as PointerEvent).button === 0 &&
+            onDisabled(event)
+        ) {
+            pick(event as PointerEvent);
+        }
     };
 
     const onClick = (event: MouseEvent) => {
         if (!capturing() || isOurs(event)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
+        pick(event);
+    };
+
+    const pick = (event: MouseEvent) => {
         const element = elementAt(event.clientX, event.clientY);
         if (!element) return;
         const offsets = offsetsIn(element, { x: event.clientX, y: event.clientY });
@@ -265,6 +277,18 @@ export function installPicker(host: HTMLElement): () => void {
         clearInterval(navigation);
         cancelAnimationFrame(frame);
     };
+}
+
+/** Whether the event landed on (or inside) a disabled form control, which never gets a click. */
+function onDisabled(event: Event): boolean {
+    return event
+        .composedPath()
+        .some(
+            node =>
+                node instanceof Element &&
+                node.matches('button, input, select, textarea') &&
+                node.matches(':disabled'),
+        );
 }
 
 function onToolbar(event: KeyboardEvent): boolean {
