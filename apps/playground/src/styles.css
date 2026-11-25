@@ -58,6 +58,11 @@ a {
     color: white;
     cursor: pointer;
 }
+.button:disabled {
+    background: #e5e5e5;
+    color: #777;
+    cursor: default;
+}
 .button-small {
     padding: 8px 14px;
 }

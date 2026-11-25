@@ -239,6 +239,18 @@ test('cancels comment mode with Escape without touching the page', async ({ page
     await expect(overlay(page).locator('.tool-active')).toHaveCount(0);
 });
 
+test('comments on a disabled button, which gets no click', async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    const button = page.getByRole('button', { name: 'Current plan' });
+    await expect(button).toBeDisabled();
+    await button.hover();
+    await expect(overlay(page).locator('.highlight-label')).toContainText('PricingCard');
+    await button.click({ force: true });
+    await expect(overlay(page).locator('.composer textarea')).toBeFocused();
+    await expect(overlay(page).locator('.composer .chip')).toContainText('PricingCard');
+});
+
 test('closes the thread once it is resolved', async ({ page }) => {
     await openPlayground(page);
     await overlay(page).locator('.pin .pin-body').first().click();
