@@ -31,7 +31,7 @@ packages/
 ├── testing/            # Fake provider, fake T3 Code, Ensemble and Codex servers, fake Agent SDK, helpers
 └── tsconfig/           # Shared tsconfig: base, node, browser
 apps/
-├── extension/          # Chrome extension that loads the daemon's overlay into any tab
+├── extension/          # Browser extension (Chrome, Firefox) that loads the daemon's overlay into any tab
 └── playground/         # Vite + React app; the browser-test (Playwright) target
 ```
 

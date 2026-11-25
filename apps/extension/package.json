@@ -7,7 +7,8 @@
         "build": "tsdown && node scripts/manifest.mjs",
         "dev": "tsdown --watch",
         "typecheck": "tsc -p .",
-        "zip": "rm -f tencil-extension.zip && cd dist && zip -qr ../tencil-extension.zip ."
+        "zip": "rm -f tencil-extension.zip && cd dist && zip -qr ../tencil-extension.zip .",
+        "zip:firefox": "rm -f tencil-extension-firefox.zip && cd dist-firefox && zip -qr ../tencil-extension-firefox.zip ."
     },
     "devDependencies": {
         "@tencildev/overlay": "workspace:*",
