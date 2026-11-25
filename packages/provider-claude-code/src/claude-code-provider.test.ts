@@ -247,4 +247,130 @@ describe('Claude Code provider', () => {
         expect(threads.map(t => t.id)).toEqual([newer.providerThreadId, older.providerThreadId]);
         expect(threads[0]).toMatchObject({ title: 'Newer', branch: 'main', agent: 'claudeAgent' });
     });
+
+    describe('models', () => {
+        it("lists Claude Code's models, asking a process that gets no prompt, once", async () => {
+            const { provider, sdk } = setup();
+            const { models, defaultModel } = await provider.listModels();
+            expect(models).toEqual([
+                { id: 'opus', label: 'Opus', group: 'Claude', agent: 'claudeAgent' },
+                { id: 'sonnet', label: 'Sonnet', group: 'Claude', agent: 'claudeAgent' },
+            ]);
+            // The default row stands for Opus.
+            expect(defaultModel).toBe('opus');
+            expect(sdk.queries).toHaveLength(1);
+            expect(sdk.queries[0]?.closed).toBe(true);
+            // Nothing was said, so no session was saved.
+            expect(await provider.listThreads()).toMatchObject({ threads: [] });
+
+            await provider.listModels();
+            expect(sdk.modelLists).toBe(1);
+        });
+
+        it('defaults to --model, matched to the alias the list offers', async () => {
+            const { provider } = setup({ model: 'claude-sonnet-test' });
+            expect((await provider.listModels()).defaultModel).toBe('sonnet');
+        });
+
+        it('starts a session on the picked model', async () => {
+            const { provider, sdk } = setup({ model: 'opus' });
+            await provider.createThread({
+                title: 't',
+                text: 'a',
+                attachments: [],
+                model: 'sonnet',
+            });
+            await provider.createThread({ title: 't', text: 'b', attachments: [] });
+            expect(sdk.queries.map(query => query.options.model)).toEqual(['sonnet', 'opus']);
+        });
+
+        it('switches a running session with setModel, and says what it runs on', async () => {
+            const { provider, sdk } = setup();
+            const { providerThreadId } = await provider.createThread({
+                title: 't',
+                text: 'first',
+                attachments: [],
+            });
+            const { sink, messages, reply } = recordingSink();
+            provider.watch(providerThreadId, sink);
+            await reply();
+            expect((await provider.threadModels(providerThreadId)).defaultModel).toBe('opus');
+
+            await provider.sendMessage({
+                providerThreadId,
+                text: 'second',
+                attachments: [],
+                model: 'sonnet',
+            });
+            await waitFor(() => [...messages.values()].some(m => m.text === 'Done: second'), {
+                message: 'second reply',
+            });
+            expect(sdk.queries[0]?.models).toEqual(['sonnet']);
+            // The running session answered the model list; no extra process.
+            expect(sdk.queries).toHaveLength(1);
+            expect((await provider.threadModels(providerThreadId)).defaultModel).toBe('sonnet');
+
+            // Sending it again with every follow-up switches nothing.
+            await provider.sendMessage({
+                providerThreadId,
+                text: 'third',
+                attachments: [],
+                model: 'sonnet',
+            });
+            expect(sdk.queries[0]?.models).toEqual(['sonnet']);
+        });
+
+        it('resumes an idle session on the model it was switched to', async () => {
+            const { provider, sdk } = setup({ idleCloseMs: 10 });
+            const { providerThreadId } = await provider.createThread({
+                title: 't',
+                text: 'first',
+                attachments: [],
+            });
+            const { sink, reply } = recordingSink();
+            provider.watch(providerThreadId, sink);
+            await reply();
+            await waitFor(() => sdk.queries[0]?.closed, { message: 'idle process closed' });
+
+            await provider.sendMessage({
+                providerThreadId,
+                text: 'second',
+                attachments: [],
+                model: 'sonnet',
+            });
+            expect(sdk.queries[1]?.options).toMatchObject({
+                resume: providerThreadId,
+                model: 'sonnet',
+            });
+        });
+
+        it('reads what an earlier session ran on from its transcript', async () => {
+            const sdk = new FakeAgentSdk();
+            const first = setup({ model: 'sonnet' }, sdk);
+            const { providerThreadId } = await first.provider.createThread({
+                title: 't',
+                text: 'first',
+                attachments: [],
+            });
+            await waitFor(() => sdk.sessions.get(providerThreadId)?.entries.length === 2, {
+                message: 'turn done',
+            });
+            // Another daemon, which never asked for a model itself.
+            const later = first.create();
+            cleanup.push(() => later.dispose());
+            expect((await later.threadModels(providerThreadId)).defaultModel).toBe('sonnet');
+
+            // A model Claude Code no longer lists is still shown as the current one.
+            sdk.sessions.get(providerThreadId)!.entries.push({
+                type: 'assistant',
+                message: { model: 'claude-old-test', content: [] },
+            });
+            const old = await later.threadModels(providerThreadId);
+            expect(old.defaultModel).toBe('claude-old-test');
+            expect(old.models[0]).toMatchObject({
+                id: 'claude-old-test',
+                label: 'claude-old-test',
+            });
+        });
+    });
 });

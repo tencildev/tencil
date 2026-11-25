@@ -1,5 +1,10 @@
 export { FakeAgentProvider, type FakeAgentProviderOptions } from './fake-agent-provider.ts';
-export { FakeAgentSdk, type FakeQueryRecord, type FakeSession } from './fake-agent-sdk.ts';
+export {
+    FakeAgentSdk,
+    type FakeModelInfo,
+    type FakeQueryRecord,
+    type FakeSession,
+} from './fake-agent-sdk.ts';
 export {
     FakeCodexAppServer,
     type FakeCodexItem,

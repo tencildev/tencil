@@ -18,6 +18,16 @@ export interface FakeQueryRecord {
     options: Record<string, unknown>;
     closed: boolean;
     interrupts: number;
+    /** Every `setModel` call, in order. */
+    models: Array<string | undefined>;
+}
+
+/** A model as `supportedModels()` lists it. */
+export interface FakeModelInfo {
+    value: string;
+    resolvedModel?: string;
+    displayName: string;
+    description: string;
 }
 
 /**
@@ -29,6 +39,24 @@ export class FakeAgentSdk {
     readonly sessions = new Map<string, FakeSession>();
     readonly queries: FakeQueryRecord[] = [];
     reply: (text: string) => string = text => `Done: ${text}`;
+    /** What `supportedModels()` answers; `default` stands for whatever the default is. */
+    models: FakeModelInfo[] = [
+        {
+            value: 'default',
+            resolvedModel: 'claude-opus-test',
+            displayName: 'Default (recommended)',
+            description: '',
+        },
+        { value: 'opus', resolvedModel: 'claude-opus-test', displayName: 'Opus', description: '' },
+        {
+            value: 'sonnet',
+            resolvedModel: 'claude-sonnet-test',
+            displayName: 'Sonnet',
+            description: '',
+        },
+    ];
+    /** How many times `supportedModels()` was asked. */
+    modelLists = 0;
     /** Pause every turn after its first chunk until `release()` (or an interrupt). */
     holdTurns = false;
     /** Make the next turn's process die mid-turn. */
@@ -47,12 +75,13 @@ export class FakeAgentSdk {
         prompt: AsyncIterable<InputMessage>;
         options: Record<string, unknown>;
     }) => {
-        const record: FakeQueryRecord = { options, closed: false, interrupts: 0 };
+        const record: FakeQueryRecord = { options, closed: false, interrupts: 0, models: [] };
         this.queries.push(record);
-        const id = (options.sessionId ?? options.resume) as string;
+        const id = (options.sessionId ?? options.resume ?? randomUUID()) as string;
         if (options.resume && !this.sessions.has(id)) {
             throw new Error(`No conversation found with session ID: ${id}`);
         }
+        // Saved with its first message, like Claude Code's transcript.
         const session = this.sessions.get(id) ?? {
             id,
             dir: options.cwd as string,
@@ -60,7 +89,6 @@ export class FakeAgentSdk {
             entries: [],
             updatedAt: Date.now(),
         };
-        this.sessions.set(id, session);
         let interrupt: (() => void) | undefined;
         const generator = this.#run(session, prompt, record, open => {
             interrupt = open;
@@ -73,6 +101,13 @@ export class FakeAgentSdk {
             close: () => {
                 record.closed = true;
                 void generator.return(undefined);
+            },
+            supportedModels: async () => {
+                this.modelLists++;
+                return this.models;
+            },
+            setModel: async (model?: string) => {
+                record.models.push(model);
             },
         });
     };
@@ -101,6 +136,11 @@ export class FakeAgentSdk {
         };
     }
 
+    #resolve(model: string | undefined): string {
+        const row = this.models.find(candidate => candidate.value === (model ?? 'default'));
+        return row?.resolvedModel ?? model ?? 'claude-opus-test';
+    }
+
     async *#run(
         session: FakeSession,
         prompt: AsyncIterable<InputMessage>,
@@ -111,6 +151,7 @@ export class FakeAgentSdk {
         for await (const input of prompt) {
             if (record.closed) return;
             const text = textOf(input.message.content);
+            this.sessions.set(session.id, session);
             session.entries.push({
                 type: 'user',
                 uuid: input.uuid ?? randomUUID(),
@@ -185,6 +226,10 @@ export class FakeAgentSdk {
                 message: {
                     id: messageId,
                     role: 'assistant',
+                    // The id the alias or default resolves to, as Claude Code saves it.
+                    model: this.#resolve(
+                        (record.models.at(-1) ?? record.options.model) as string | undefined,
+                    ),
                     content: [{ type: 'text', text: sent }],
                 },
                 ...(interrupted ? { aborted: true } : {}),
