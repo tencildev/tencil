@@ -3,6 +3,7 @@ import { h, render } from 'preact';
 import { App } from './components/app.tsx';
 import { connect } from './lib/connection.ts';
 import { installPicker } from './lib/element-picker.ts';
+import { keepHostPlaced } from './lib/host-placement.ts';
 import { isolateEvents } from './lib/isolate-events.ts';
 import { watchNextIndicator } from './lib/next-devtools.ts';
 import { setHost } from './lib/overlay-host.ts';
@@ -81,13 +82,7 @@ function mount(bridgeUrl: string, build: BuildInfo | undefined, root: string | u
     shadow.append(container);
 
     setHost(host);
-    document.body.append(host);
-
-    // Frameworks occasionally wipe <body> children during hydration; put us back.
-    const keepAlive = new MutationObserver(() => {
-        if (!host.isConnected) document.body.append(host);
-    });
-    keepAlive.observe(document.body, { childList: true });
+    const unplace = keepHostPlaced(host);
 
     const uninstall = installPicker(host);
     const unisolate = isolateEvents(host);
@@ -101,7 +96,7 @@ function mount(bridgeUrl: string, build: BuildInfo | undefined, root: string | u
         version: 1,
         bridgeUrl,
         destroy() {
-            keepAlive.disconnect();
+            unplace();
             uninstall();
             unisolate();
             unwatchNext();

@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 /**
  * Drives the real overlay in a real browser: playground (Vite + tencil
@@ -134,6 +134,69 @@ test('keeps a pin dragged past the window edge at that edge', async ({ page }) =
     await expect(overlay(page).locator('.pin')).toHaveCount(1, { timeout: 15_000 });
     const to = (await overlay(page).locator('.pin .pin-body').first().boundingBox())!;
     expect(to.x).toBeLessThan(4);
+});
+
+/** A popover's box once its open animation (a scale) has finished. */
+async function settledBox(locator: Locator, width: number) {
+    await expect.poll(async () => (await locator.boundingBox())?.width).toBeCloseTo(width, 0);
+    return (await locator.boundingBox())!;
+}
+
+async function dragBy(page: Page, x: number, y: number, dx: number, dy: number) {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 12 });
+    await page.mouse.up();
+}
+
+test('drags the composer out of the way until it closes', async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Choose Pro' }).click();
+    const composer = overlay(page).locator('.composer');
+    const handle = composer.locator('.composer-target');
+    await expect(composer.locator('textarea')).toBeFocused();
+    const from = await settledBox(composer, 340);
+
+    // The chip is no button, so grabbing it moves the composer.
+    const chip = (await handle.locator('.chip').boundingBox())!;
+    await dragBy(page, chip.x + 8, chip.y + chip.height / 2, -200, -120);
+    const moved = (await composer.boundingBox())!;
+    expect(Math.abs(moved.x - (from.x - 200))).toBeLessThan(2);
+    expect(Math.abs(moved.y - (from.y - 120))).toBeLessThan(2);
+
+    // A double click on the header puts it back beside the pin.
+    await handle.locator('.chip').dblclick();
+    await expect.poll(async () => (await composer.boundingBox())?.x).toBeCloseTo(from.x, 0);
+
+    // Moved again, then closed: the next composer starts beside its pin.
+    await dragBy(page, chip.x + 8, chip.y + chip.height / 2, -200, -120);
+    await composer.locator('textarea').press('Escape');
+    await expect(composer).toHaveCount(0);
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Choose Pro' }).click();
+    expect(Math.abs((await settledBox(composer, 340)).y - from.y)).toBeLessThan(2);
+    await composer.locator('textarea').press('Escape');
+});
+
+test('drags the thread panel by its header and puts it back on reopen', async ({ page }) => {
+    await openPlayground(page);
+    await overlay(page).locator('.pin .pin-body').first().click();
+    const thread = overlay(page).locator('.thread');
+    const header = thread.locator('.thread-header');
+    const from = await settledBox(thread, 380);
+
+    const number = (await header.locator('.thread-number').boundingBox())!;
+    await dragBy(page, number.x + 4, number.y + number.height / 2, 300, -150);
+    const moved = (await thread.boundingBox())!;
+    expect(Math.abs(moved.x - (from.x + 300))).toBeLessThan(2);
+    expect(Math.abs(moved.y - (from.y - 150))).toBeLessThan(2);
+
+    // Buttons in the header still click instead of dragging.
+    await header.getByTitle('Close (Esc)').click();
+    await expect(thread).toHaveCount(0);
+    await overlay(page).locator('.pin .pin-body').first().click();
+    expect(Math.abs((await settledBox(thread, 380)).y - from.y)).toBeLessThan(2);
 });
 
 test("lists the agent's threads and opens one in the dock", async ({ page }) => {
@@ -733,4 +796,51 @@ test('comments inside a modal sheet without closing it', async ({ page }) => {
     await composer.press('Escape');
     await expect(overlay(page).locator('.composer')).toHaveCount(0);
     await expect(sheet).toBeVisible();
+});
+
+test('comments inside a native modal dialog', async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Place order' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Confirm order' });
+    await expect(dialog).toBeVisible();
+
+    // Everything outside a modal dialog is inert, so the overlay moves into it.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(dialog).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this green');
+    await expect(composer).toHaveValue('Make this green');
+
+    // Escape cancels the comment and leaves the dialog open.
+    await composer.press('Escape');
+    await expect(overlay(page).locator('.composer')).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+
+    // Once the dialog closes, the overlay is back on <body>.
+    await dialog.evaluate(element => (element as HTMLDialogElement).close());
+    await expect(page.locator('body > tencil-overlay')).toHaveCount(1);
+    await expect(overlay(page).locator('.status-dot.status-ok')).toBeVisible();
+});
+
+test('keeps focus in the composer next to a modal that traps focus on the document', async ({
+    page,
+}) => {
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Finish round' }).click();
+    const modal = page.getByRole('dialog', { name: 'Did they finish?' });
+    await expect(modal.getByRole('button', { name: 'Yes' })).toBeFocused();
+
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    // The picker takes the press, so the modal stays open.
+    await modal.getByRole('button', { name: 'Yes' }).click();
+    await expect(modal).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this green');
+    await expect(composer).toHaveValue('Make this green');
+    await expect(composer).toBeFocused();
 });

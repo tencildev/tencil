@@ -1,4 +1,6 @@
 import { DetailsSheet } from './details-sheet.tsx';
+import { OrderDialog } from './order-dialog.tsx';
+import { TrapModal } from './trap-modal.tsx';
 
 export function Hero() {
     return (
@@ -13,6 +15,8 @@ export function Hero() {
                     Book a demo
                 </button>
                 <DetailsSheet />
+                <OrderDialog />
+                <TrapModal />
             </div>
         </section>
     );

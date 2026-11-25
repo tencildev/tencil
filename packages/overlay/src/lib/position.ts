@@ -42,22 +42,34 @@ function findElement(selector: string): Element | null {
     }
 }
 
+const MARGIN = 12;
+
 /** Place a popover beside a point, flipping and clamping to stay on screen. */
 export function popoverPosition(
     point: Point,
     size: { width: number; height: number },
     gap = 16,
 ): { left: number; top: number; origin: string } {
-    const margin = 12;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     let left = point.x + gap;
-    if (left + size.width > viewportWidth - margin) left = point.x - gap - size.width;
-    left = clamp(left, margin, viewportWidth - size.width - margin);
-    const top = clamp(point.y - 24, margin, viewportHeight - size.height - margin);
+    if (left + size.width > viewportWidth - MARGIN) left = point.x - gap - size.width;
+    left = clamp(left, MARGIN, viewportWidth - size.width - MARGIN);
+    const top = clamp(point.y - 24, MARGIN, viewportHeight - size.height - MARGIN);
     // Grow out of the pin rather than the popover's center.
     const origin = `${clamp(point.x - left, 0, size.width)}px ${clamp(point.y - top, 0, size.height)}px`;
     return { left, top, origin };
+}
+
+/** Clamp a popover's top-left corner so all of it stays on screen. */
+export function keepOnScreen(
+    position: { left: number; top: number },
+    size: { width: number; height: number },
+): { left: number; top: number } {
+    return {
+        left: clamp(position.left, MARGIN, window.innerWidth - size.width - MARGIN),
+        top: clamp(position.top, MARGIN, window.innerHeight - size.height - MARGIN),
+    };
 }
 
 function clamp(value: number, min: number, max: number): number {
