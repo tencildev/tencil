@@ -1,5 +1,15 @@
 # tencil
 
+## 0.15.0
+
+### Minor Changes
+
+- [#53](https://github.com/tencildev/tencil/pull/53) [`7aba640`](https://github.com/tencildev/tencil/commit/7aba64024b3beff767097e2ec9a4c241f2456672) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Drag the composer or a thread by its header to move it off the part of the page you're commenting on. It stays there until it closes; double-click the header to put it back beside its pin.
+
+### Patch Changes
+
+- [#52](https://github.com/tencildev/tencil/pull/52) [`0c08d4e`](https://github.com/tencildev/tencil/commit/0c08d4e76dc714ed92ee24d1aa3ba0f0026f141d) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - You can type in the composer while a native modal `<dialog>` or a React Native Web `Modal` is open on the page. A modal dialog made everything outside it unusable, Tencil included, so Tencil now moves into the open dialog and back out when it closes. React Native Web's `Modal` pulled focus out of the composer as soon as it got it.
+
 ## 0.14.2
 
 ### Patch Changes
