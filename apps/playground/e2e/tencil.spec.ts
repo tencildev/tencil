@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 /**
  * Drives the real overlay in a real browser: playground (Vite + tencil
@@ -136,6 +136,69 @@ test('keeps a pin dragged past the window edge at that edge', async ({ page }) =
     expect(to.x).toBeLessThan(4);
 });
 
+/** A popover's box once its open animation (a scale) has finished. */
+async function settledBox(locator: Locator, width: number) {
+    await expect.poll(async () => (await locator.boundingBox())?.width).toBeCloseTo(width, 0);
+    return (await locator.boundingBox())!;
+}
+
+async function dragBy(page: Page, x: number, y: number, dx: number, dy: number) {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 12 });
+    await page.mouse.up();
+}
+
+test('drags the composer out of the way until it closes', async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Choose Pro' }).click();
+    const composer = overlay(page).locator('.composer');
+    const handle = composer.locator('.composer-target');
+    await expect(composer.locator('textarea')).toBeFocused();
+    const from = await settledBox(composer, 340);
+
+    // The chip is no button, so grabbing it moves the composer.
+    const chip = (await handle.locator('.chip').boundingBox())!;
+    await dragBy(page, chip.x + 8, chip.y + chip.height / 2, -200, -120);
+    const moved = (await composer.boundingBox())!;
+    expect(Math.abs(moved.x - (from.x - 200))).toBeLessThan(2);
+    expect(Math.abs(moved.y - (from.y - 120))).toBeLessThan(2);
+
+    // A double click on the header puts it back beside the pin.
+    await handle.locator('.chip').dblclick();
+    await expect.poll(async () => (await composer.boundingBox())?.x).toBeCloseTo(from.x, 0);
+
+    // Moved again, then closed: the next composer starts beside its pin.
+    await dragBy(page, chip.x + 8, chip.y + chip.height / 2, -200, -120);
+    await composer.locator('textarea').press('Escape');
+    await expect(composer).toHaveCount(0);
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Choose Pro' }).click();
+    expect(Math.abs((await settledBox(composer, 340)).y - from.y)).toBeLessThan(2);
+    await composer.locator('textarea').press('Escape');
+});
+
+test('drags the thread panel by its header and puts it back on reopen', async ({ page }) => {
+    await openPlayground(page);
+    await overlay(page).locator('.pin .pin-body').first().click();
+    const thread = overlay(page).locator('.thread');
+    const header = thread.locator('.thread-header');
+    const from = await settledBox(thread, 380);
+
+    const number = (await header.locator('.thread-number').boundingBox())!;
+    await dragBy(page, number.x + 4, number.y + number.height / 2, 300, -150);
+    const moved = (await thread.boundingBox())!;
+    expect(Math.abs(moved.x - (from.x + 300))).toBeLessThan(2);
+    expect(Math.abs(moved.y - (from.y - 150))).toBeLessThan(2);
+
+    // Buttons in the header still click instead of dragging.
+    await header.getByTitle('Close (Esc)').click();
+    await expect(thread).toHaveCount(0);
+    await overlay(page).locator('.pin .pin-body').first().click();
+    expect(Math.abs((await settledBox(thread, 380)).y - from.y)).toBeLessThan(2);
+});
+
 test("lists the agent's threads and opens one in the dock", async ({ page }) => {
     await openPlayground(page);
     await overlay(page).locator('.tool[title="Pins"]').click();
@@ -174,6 +237,18 @@ test('cancels comment mode with Escape without touching the page', async ({ page
     await expect(overlay(page).locator('.tool-active')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(overlay(page).locator('.tool-active')).toHaveCount(0);
+});
+
+test('comments on a disabled button, which gets no click', async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    const button = page.getByRole('button', { name: 'Current plan' });
+    await expect(button).toBeDisabled();
+    await button.hover();
+    await expect(overlay(page).locator('.highlight-label')).toContainText('PricingCard');
+    await button.click({ force: true });
+    await expect(overlay(page).locator('.composer textarea')).toBeFocused();
+    await expect(overlay(page).locator('.composer .chip')).toContainText('PricingCard');
 });
 
 test('closes the thread once it is resolved', async ({ page }) => {
@@ -721,7 +796,7 @@ test('drags a box over parts of two sections and comments on the area', async ({
         }),
     );
     await openPlayground(page);
-    const text = (await page.locator('.hero p').boundingBox())!;
+    const text = (await page.locator('.hero > p').boundingBox())!;
     const cards = (await page.locator('.pricing').boundingBox())!;
     const details = (await page.getByRole('button', { name: 'View details' }).boundingBox())!;
     const dragOver = async (x0: number, y0: number, x1: number, y1: number) => {
@@ -776,4 +851,87 @@ test('drags a box over parts of two sections and comments on the area', async ({
     // On by default for an area: it's often about how it looks.
     expect(message.attachments).toHaveLength(1);
     await expect(overlay(page).locator('.thread .chip')).toContainText('Area in App');
+});
+
+test('comments inside a native modal dialog', async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Place order' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Confirm order' });
+    await expect(dialog).toBeVisible();
+
+    // Everything outside a modal dialog is inert, so the overlay moves into it.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(dialog).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this green');
+    await expect(composer).toHaveValue('Make this green');
+
+    // Escape cancels the comment and leaves the dialog open.
+    await composer.press('Escape');
+    await expect(overlay(page).locator('.composer')).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+
+    // Once the dialog closes, the overlay is back on <body>.
+    await dialog.evaluate(element => (element as HTMLDialogElement).close());
+    await expect(page.locator('body > tencil-overlay')).toHaveCount(1);
+    await expect(overlay(page).locator('.status-dot.status-ok')).toBeVisible();
+});
+
+test('keeps focus in the composer next to a modal that traps focus on the document', async ({
+    page,
+}) => {
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Finish round' }).click();
+    const modal = page.getByRole('dialog', { name: 'Did they finish?' });
+    await expect(modal.getByRole('button', { name: 'Yes' })).toBeFocused();
+
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    // The picker takes the press, so the modal stays open.
+    await modal.getByRole('button', { name: 'Yes' }).click();
+    await expect(modal).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this green');
+    await expect(composer).toHaveValue('Make this green');
+    await expect(composer).toBeFocused();
+});
+
+test('comments inside an open select without closing it', async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole('combobox', { name: 'Timezone' }).click();
+    const list = page.getByRole('listbox');
+    await expect(list).toBeVisible();
+
+    // Base UI closes on presses outside it, caught on the document before the overlay.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await expect(list).toBeVisible();
+    const option = page.getByRole('option', { name: 'Asia/Tokyo' });
+    await option.hover();
+    await option.click();
+    await expect(list).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this bold');
+    await expect(composer).toHaveValue('Make this bold');
+    await composer.click();
+    await expect(list).toBeVisible();
+
+    // Escape cancels the comment and leaves the select open.
+    await composer.press('Escape');
+    await expect(overlay(page).locator('.composer')).toHaveCount(0);
+    await expect(list).toBeVisible();
+
+    // Sending a comment leaves it open too.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await option.hover();
+    await option.click();
+    await composer.fill('Make this bold');
+    await composer.press('Enter');
+    await expect(overlay(page).locator('.thread .message-user')).toHaveText('Make this bold');
+    await expect(list).toBeVisible();
 });

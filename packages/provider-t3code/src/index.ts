@@ -5,6 +5,8 @@ export {
     exchangePairingCredential,
     listT3Projects,
     parsePairingInput,
+    resolveT3Url,
+    runningT3Url,
     type StoredCredential,
     type T3ProjectSummary,
     withoutNpmEnv,

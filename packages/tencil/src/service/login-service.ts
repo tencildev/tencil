@@ -29,8 +29,8 @@ export function serviceNames(port = DEFAULT_PORT): ServiceNames {
  * What the daemon needs from the shell that installed it. launchd and systemd
  * start it with a bare PATH (`/usr/bin:/bin`), where nvm's npm and npx, which
  * it runs to pair and to install the Claude Agent SDK, can't be found; and a
- * custom XDG_CONFIG_HOME must reach it, or it reads another data folder than
- * the CLI. npx's and npm's own folders (anything in node_modules) are left out of PATH.
+ * custom XDG_CONFIG_HOME or T3CODE_HOME must reach it, or it reads another
+ * data folder than the CLI. npx's and npm's own folders (anything in node_modules) are left out of PATH.
  */
 export function serviceEnvironment(
     command: DaemonCommand,
@@ -42,6 +42,7 @@ export function serviceEnvironment(
     );
     const environment: Record<string, string> = { PATH: [...new Set(entries)].join(separator) };
     if (env.XDG_CONFIG_HOME) environment.XDG_CONFIG_HOME = env.XDG_CONFIG_HOME;
+    if (env.T3CODE_HOME) environment.T3CODE_HOME = env.T3CODE_HOME;
     return environment;
 }
 

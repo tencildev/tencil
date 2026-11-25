@@ -2,15 +2,15 @@ import { createInterface } from 'node:readline/promises';
 import {
     CredentialStore,
     createLocalPairingCode,
-    DEFAULT_T3_URL,
     exchangePairingCredential,
     parsePairingInput,
+    resolveT3Url,
 } from '@tencildev/provider-t3code';
 import pc from 'picocolors';
 
 export async function connect(input: string | undefined, t3Url: string | undefined): Promise<void> {
     const store = new CredentialStore();
-    const baseUrl = t3Url ?? (await store.lastBaseUrl()) ?? DEFAULT_T3_URL;
+    const baseUrl = await resolveT3Url({ baseUrl: t3Url, credentials: store });
     let pairing = input;
     if (!pairing) {
         console.log(`\n  ${pc.dim('Creating a pairing code on the local T3 Code…')}`);

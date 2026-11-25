@@ -307,6 +307,9 @@ kbd {
   @starting-style { opacity: 0; transform: scale(0.96); }
 }
 
+/* Dragged by the header; its buttons keep their own cursor. */
+.popover-handle { cursor: grab; touch-action: none; user-select: none; }
+.popover-dragging, .popover-dragging .popover-handle { cursor: grabbing; }
 .composer { padding: 10px; display: grid; gap: 8px; }
 .composer-target { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 2px; }
 .composer-measure {

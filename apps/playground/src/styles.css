@@ -58,6 +58,11 @@ a {
     color: white;
     cursor: pointer;
 }
+.button:disabled {
+    background: #e5e5e5;
+    color: #777;
+    cursor: default;
+}
 .button-small {
     padding: 8px 14px;
 }
@@ -125,4 +130,45 @@ a {
 }
 .sheet h2 {
     margin: 0;
+}
+.dialog {
+    width: 320px;
+    padding: 24px;
+    border: none;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+}
+.dialog h2 {
+    margin: 0 0 8px;
+}
+.dialog::backdrop {
+    background: rgb(0 0 0 / 0.3);
+}
+.trap-overlay {
+    display: grid;
+    place-items: center;
+}
+.listbox {
+    min-width: 220px;
+    padding: 4px;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+}
+.listbox input {
+    width: 100%;
+    margin-bottom: 4px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font: inherit;
+}
+.listbox-item {
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: default;
+}
+.listbox-item[data-highlighted] {
+    background: #f0f0f0;
 }
