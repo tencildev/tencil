@@ -131,12 +131,15 @@ export class ClaudeCodeProvider implements Provider {
     }
 
     async listModels(): Promise<ProviderModels> {
-        const rows = await this.#modelRows();
-        const fallback =
-            this.#options.model ?? rows.find(row => row.value === DEFAULT_ROW)?.resolvedModel;
+        const [rows, configured] = await Promise.all([this.#modelRows(), this.#configuredModel()]);
+        // The default row is Claude Code's own default, which a configured model overrides.
+        const fallback = configured ?? rows.find(row => row.value === DEFAULT_ROW)?.resolvedModel;
         const models = rows.filter(row => row.value !== DEFAULT_ROW).map(toModel);
         const current = fallback ? matchModel(rows, fallback) : undefined;
-        return { models, ...(current ? { defaultModel: current } : {}) };
+        if (fallback && !current)
+            models.unshift(toModel({ value: fallback, displayName: fallback }));
+        const defaultModel = current ?? fallback;
+        return { models, ...(defaultModel ? { defaultModel } : {}) };
     }
 
     async threadModels(providerThreadId: string): Promise<ProviderModels> {
@@ -407,6 +410,25 @@ export class ClaudeCodeProvider implements Provider {
         }
     }
 
+    /**
+     * What a session started without a model runs on, in Claude Code's order:
+     * `--model`, then `ANTHROPIC_MODEL`, then the `model` of its settings files.
+     */
+    async #configuredModel(): Promise<string | undefined> {
+        if (this.#options.model) return this.#options.model;
+        if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
+        try {
+            const [sdk, workspace] = await Promise.all([this.#load(), this.#workspaceRoot()]);
+            const { effective } = await sdk.resolveSettings({ cwd: workspace });
+            const model = effective.env?.ANTHROPIC_MODEL ?? effective.model;
+            return typeof model === 'string' && model ? model : undefined;
+        } catch (error) {
+            // Older Agent SDKs can't tell; the list's own default stands in.
+            this.#log(`Couldn't read Claude Code's settings: ${errorMessage(error)}`);
+            return undefined;
+        }
+    }
+
     /** The model that wrote the session's latest reply, as Claude Code saved it. */
     async #lastModel(session: Session): Promise<string | undefined> {
         const [sdk, workspace] = await Promise.all([this.#load(), this.#workspaceRoot()]);
@@ -471,10 +493,15 @@ function toModel(row: Pick<ModelInfo, 'value' | 'displayName'>): ProviderModel {
  */
 function matchModel(rows: ModelInfo[], id: string): string | undefined {
     const offered = rows.filter(row => row.value !== DEFAULT_ROW);
-    return (
-        offered.find(row => row.value === id)?.value ??
-        offered.find(row => row.resolvedModel === id)?.value
-    );
+    // `opus[1m]` is Opus with a bigger context window: the same row.
+    const base = id.replace(/\[[^\]]*\]$/, '');
+    for (const candidate of new Set([id, base])) {
+        const row =
+            offered.find(row => row.value === candidate) ??
+            offered.find(row => row.resolvedModel === candidate);
+        if (row) return row.value;
+    }
+    return undefined;
 }
 
 function imageBlock(attachment: ImageAttachment) {

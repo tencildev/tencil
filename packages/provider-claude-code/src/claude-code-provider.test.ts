@@ -272,6 +272,22 @@ describe('Claude Code provider', () => {
             expect((await provider.listModels()).defaultModel).toBe('sonnet');
         });
 
+        it("defaults to the model in Claude Code's settings over its own default", async () => {
+            const sdk = new FakeAgentSdk();
+            // A bigger context window of the same model is the same row.
+            sdk.settingsModel = 'sonnet[1m]';
+            expect((await setup({}, sdk).provider.listModels()).defaultModel).toBe('sonnet');
+            expect((await setup({ model: 'opus' }, sdk).provider.listModels()).defaultModel).toBe(
+                'opus',
+            );
+
+            // A model the list doesn't have is still offered as the default.
+            sdk.settingsModel = 'claude-custom-test';
+            const custom = await setup({}, sdk).provider.listModels();
+            expect(custom.defaultModel).toBe('claude-custom-test');
+            expect(custom.models[0]).toMatchObject({ id: 'claude-custom-test' });
+        });
+
         it('starts a session on the picked model', async () => {
             const { provider, sdk } = setup({ model: 'opus' });
             await provider.createThread({

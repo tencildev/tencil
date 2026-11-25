@@ -57,6 +57,8 @@ export class FakeAgentSdk {
     ];
     /** How many times `supportedModels()` was asked. */
     modelLists = 0;
+    /** The `model` of Claude Code's settings files, as `resolveSettings` reports it. */
+    settingsModel: string | undefined;
     /** Pause every turn after its first chunk until `release()` (or an interrupt). */
     holdTurns = false;
     /** Make the next turn's process die mid-turn. */
@@ -123,6 +125,12 @@ export class FakeAgentSdk {
     };
 
     getSessionMessages = async (id: string) => this.sessions.get(id)?.entries ?? [];
+
+    resolveSettings = async () => ({
+        effective: this.settingsModel ? { model: this.settingsModel } : {},
+        provenance: {},
+        sources: [],
+    });
 
     #info(session: FakeSession) {
         const first = session.entries[0] as { message?: { content?: unknown } } | undefined;
