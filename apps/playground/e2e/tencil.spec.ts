@@ -817,3 +817,39 @@ test('keeps focus in the composer next to a modal that traps focus on the docume
     await expect(composer).toHaveValue('Make this green');
     await expect(composer).toBeFocused();
 });
+
+test('comments inside an open select without closing it', async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole('combobox', { name: 'Timezone' }).click();
+    const list = page.getByRole('listbox');
+    await expect(list).toBeVisible();
+
+    // Base UI closes on presses outside it, caught on the document before the overlay.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await expect(list).toBeVisible();
+    const option = page.getByRole('option', { name: 'Asia/Tokyo' });
+    await option.hover();
+    await option.click();
+    await expect(list).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this bold');
+    await expect(composer).toHaveValue('Make this bold');
+    await composer.click();
+    await expect(list).toBeVisible();
+
+    // Escape cancels the comment and leaves the select open.
+    await composer.press('Escape');
+    await expect(overlay(page).locator('.composer')).toHaveCount(0);
+    await expect(list).toBeVisible();
+
+    // Sending a comment leaves it open too.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await option.hover();
+    await option.click();
+    await composer.fill('Make this bold');
+    await composer.press('Enter');
+    await expect(overlay(page).locator('.thread .message-user')).toHaveText('Make this bold');
+    await expect(list).toBeVisible();
+});
