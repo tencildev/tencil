@@ -695,3 +695,50 @@ test('comments inside a modal sheet without closing it', async ({ page }) => {
     await expect(overlay(page).locator('.composer')).toHaveCount(0);
     await expect(sheet).toBeVisible();
 });
+
+test('comments inside a native modal dialog', async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Place order' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Confirm order' });
+    await expect(dialog).toBeVisible();
+
+    // Everything outside a modal dialog is inert, so the overlay moves into it.
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(dialog).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this green');
+    await expect(composer).toHaveValue('Make this green');
+
+    // Escape cancels the comment and leaves the dialog open.
+    await composer.press('Escape');
+    await expect(overlay(page).locator('.composer')).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+
+    // Once the dialog closes, the overlay is back on <body>.
+    await dialog.evaluate(element => (element as HTMLDialogElement).close());
+    await expect(page.locator('body > tencil-overlay')).toHaveCount(1);
+    await expect(overlay(page).locator('.status-dot.status-ok')).toBeVisible();
+});
+
+test('keeps focus in the composer next to a modal that traps focus on the document', async ({
+    page,
+}) => {
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Finish round' }).click();
+    const modal = page.getByRole('dialog', { name: 'Did they finish?' });
+    await expect(modal.getByRole('button', { name: 'Yes' })).toBeFocused();
+
+    await overlay(page).locator('.tool', { hasText: 'Comment' }).click();
+    // The picker takes the press, so the modal stays open.
+    await modal.getByRole('button', { name: 'Yes' }).click();
+    await expect(modal).toBeVisible();
+
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially('Make this green');
+    await expect(composer).toHaveValue('Make this green');
+    await expect(composer).toBeFocused();
+});

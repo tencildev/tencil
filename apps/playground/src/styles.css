@@ -126,3 +126,21 @@ a {
 .sheet h2 {
     margin: 0;
 }
+.dialog {
+    width: 320px;
+    padding: 24px;
+    border: none;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+}
+.dialog h2 {
+    margin: 0 0 8px;
+}
+.dialog::backdrop {
+    background: rgb(0 0 0 / 0.3);
+}
+.trap-overlay {
+    display: grid;
+    place-items: center;
+}
