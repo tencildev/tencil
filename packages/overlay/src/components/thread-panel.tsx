@@ -3,6 +3,7 @@ import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { pinBlocked } from '../lib/cloud-auth.ts';
 import { providerLabel, send, threads } from '../lib/connection.ts';
+import { usePopoverDrag } from '../lib/popover-drag.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { inboxOpen, layoutTick, openThreadId, pinDrag, queuedThreads } from '../lib/state.ts';
 import {
@@ -21,12 +22,15 @@ import { PromptInput } from './prompt-input.tsx';
 
 const WIDTH = 380;
 
+type HeaderHandle = ReturnType<ReturnType<typeof usePopoverDrag>['headerProps']>;
+
 export function ThreadPanel() {
     layoutTick.value;
     const id = openThreadId.value;
     const thread = id ? threads.value.get(id) : undefined;
     const ref = useRef<HTMLDivElement>(null);
     const [height, setHeight] = useState(320);
+    const popoverDrag = usePopoverDrag(thread?.id ?? null);
 
     useLayoutEffect(() => {
         if (ref.current) setHeight(ref.current.offsetHeight);
@@ -41,19 +45,20 @@ export function ThreadPanel() {
             : thread.anchor
               ? resolveAnchor(thread.anchor)
               : null;
+    const size = { width: WIDTH, height };
     const placement = point
-        ? popoverPosition(point, { width: WIDTH, height })
+        ? popoverPosition(point, size)
         : {
               left: window.innerWidth - WIDTH - (inboxOpen.value ? 372 : 16),
               top: 16,
               origin: 'top right',
           };
-    const { left, top, origin } = placement;
+    const { left, top, origin } = popoverDrag.place(placement, size);
 
     return (
         <div
             ref={ref}
-            class={`popover thread${point ? '' : ' thread-docked'}`}
+            class={`popover thread${point ? '' : ' thread-docked'}${popoverDrag.dragging ? ' popover-dragging' : ''}`}
             style={{
                 left: `${left}px`,
                 top: `${top}px`,
@@ -61,7 +66,7 @@ export function ThreadPanel() {
                 transformOrigin: origin,
             }}
         >
-            <Header thread={thread} />
+            <Header thread={thread} handle={popoverDrag.headerProps({ left, top }, size)} />
             {thread.status === 'draft' ? (
                 <QueuedComment thread={thread} />
             ) : (
@@ -120,12 +125,12 @@ function QueuedComment({ thread }: { thread: Thread }) {
     );
 }
 
-function Header({ thread }: { thread: Thread }) {
+function Header({ thread, handle }: { thread: Thread; handle: HeaderHandle }) {
     const context = thread.context;
     const component = context?.components[0];
     const source = component?.source;
     return (
-        <div class="thread-header">
+        <div class="thread-header popover-handle" {...handle}>
             <div class="thread-heading">
                 {context ? (
                     <>

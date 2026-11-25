@@ -22,6 +22,7 @@ import { buildSelector } from '../lib/element-context.ts';
 import { newId } from '../lib/id.ts';
 import { boxOf, measureBetween, toSpacing } from '../lib/measure.ts';
 import { getHost } from '../lib/overlay-host.ts';
+import { usePopoverDrag } from '../lib/popover-drag.ts';
 import { popoverPosition, resolveAnchor } from '../lib/position.ts';
 import { captureElement } from '../lib/screenshot.ts';
 import {
@@ -57,6 +58,8 @@ export function Composer() {
     const [withScreenshot, setWithScreenshot] = useState(false);
     const [busy, setBusy] = useState(false);
     const [menu, setMenu] = useState<'target' | 'model' | null>(null);
+    // A new pick is a new composer: it starts beside its pin again.
+    const drag = usePopoverDrag(pending?.anchor ?? null);
 
     const providerReady = provider.value?.state === 'ready';
     const providerId = provider.value?.id;
@@ -77,7 +80,8 @@ export function Composer() {
     if (!pending) return null;
     const point = resolveAnchor(pending.anchor, pending.element);
     if (!point) return null;
-    const { left, top, origin } = popoverPosition(point, { width: WIDTH, height });
+    const size = { width: WIDTH, height };
+    const { left, top, origin } = drag.place(popoverPosition(point, size), size);
     const target = provider.value;
     const ready = target?.state === 'ready';
     const batching = batchMode.value;
@@ -147,7 +151,7 @@ export function Composer() {
     return (
         <div
             ref={ref}
-            class="popover composer"
+            class={`popover composer${drag.dragging ? ' popover-dragging' : ''}`}
             style={{
                 left: `${left}px`,
                 top: `${top}px`,
@@ -155,7 +159,7 @@ export function Composer() {
                 transformOrigin: origin,
             }}
         >
-            <div class="composer-target">
+            <div class="composer-target popover-handle" {...drag.headerProps({ left, top }, size)}>
                 <span class="chip">
                     <CodeIcon />
                     {pending.label}
