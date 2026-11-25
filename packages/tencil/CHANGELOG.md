@@ -1,5 +1,11 @@
 # tencil
 
+## 0.15.1
+
+### Patch Changes
+
+- [#57](https://github.com/tencildev/tencil/pull/57) [`1e760c3`](https://github.com/tencildev/tencil/commit/1e760c3ebb19f73892f4a3a824ff2bed3946ebcd) Thanks [@Willem-Jaap](https://github.com/Willem-Jaap)! - Comment on disabled buttons and form fields: browsers send them no click, so comment mode now picks them when the pointer is released.
+
 ## 0.15.0
 
 ### Minor Changes
