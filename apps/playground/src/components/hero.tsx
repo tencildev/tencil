@@ -1,3 +1,8 @@
+import { DetailsSheet } from './details-sheet.tsx';
+import { OrderDialog } from './order-dialog.tsx';
+import { TimezoneSelect } from './timezone-select.tsx';
+import { TrapModal } from './trap-modal.tsx';
+
 export function Hero() {
     return (
         <section className="hero">
@@ -10,6 +15,10 @@ export function Hero() {
                 <button type="button" className="button button-ghost">
                     Book a demo
                 </button>
+                <DetailsSheet />
+                <OrderDialog />
+                <TrapModal />
+                <TimezoneSelect />
             </div>
         </section>
     );

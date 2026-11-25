@@ -65,6 +65,7 @@ export const lastError = signal<{ message: string; threadId?: string; at: number
 
 let socket: WebSocket | undefined;
 let retry = 500;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let bridgeUrl = '';
 /** Set on Tencil Cloud builds, sent with every `hello`. */
 let pageBuild: BuildInfo | undefined;
@@ -75,10 +76,14 @@ export function connect(url: string, build?: BuildInfo, root?: string): void {
     bridgeUrl = url;
     pageBuild = build;
     pageRoot = root;
-    // Allowing happens in another tab; try again as soon as the developer is back.
-    window.addEventListener('focus', () => {
-        if (originBlocked.value) reconnect();
-    });
+    // Starting the daemon or allowing the site happens in a terminal or another tab:
+    // try again as soon as the developer is back, rather than on the next retry.
+    const comeBack = () => {
+        if (document.visibilityState === 'hidden') return;
+        if (originBlocked.value || bridgeState.value === 'closed') reconnect();
+    };
+    window.addEventListener('focus', comeBack);
+    document.addEventListener('visibilitychange', comeBack);
     open();
 }
 
@@ -96,8 +101,15 @@ export function reconnect(): void {
     const previous = socket;
     socket = undefined;
     previous?.close();
+    clearTimeout(retryTimer);
     retry = 500;
     open();
+}
+
+/** Try the daemon again now, from the offline hint, showing that it's trying. */
+export function retryNow(): void {
+    bridgeState.value = 'connecting';
+    reconnect();
 }
 
 /** The token sent with the last `hello`, to forget it when Tencil Cloud rejects it. */
@@ -131,7 +143,11 @@ export function upsertLocal(thread: Thread): void {
 function open(): void {
     const wsUrl = new URL('/ws', bridgeUrl);
     wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-    bridgeState.value = 'connecting';
+    // A retry stays offline until it connects, so the offline hint doesn't blink on every
+    // attempt. A daemon restarting on a new version is expected back: show it as connecting.
+    if (bridgeState.value !== 'closed' || update.value?.state === 'restarting') {
+        bridgeState.value = 'connecting';
+    }
     const ws = new WebSocket(wsUrl);
     socket = ws;
 
@@ -163,8 +179,9 @@ function open(): void {
         if (originBlocked.value) return;
         // A daemon restarting on a new version is back in seconds: keep trying quickly.
         const restarting = update.value?.state === 'restarting';
-        setTimeout(open, restarting ? 500 : retry);
-        if (!restarting) retry = Math.min(retry * 2, 10_000);
+        retryTimer = setTimeout(open, restarting ? 500 : retry);
+        // The daemon on this machine is cheap to ask and often started by hand: keep it snappy.
+        if (!restarting) retry = Math.min(retry * 2, isCloud() ? 10_000 : 2_000);
     });
 }
 

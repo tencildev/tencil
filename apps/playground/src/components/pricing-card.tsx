@@ -3,9 +3,10 @@ interface PricingCardProps {
     price: number;
     features: string[];
     featured?: boolean;
+    current?: boolean;
 }
 
-export function PricingCard({ name, price, features, featured }: PricingCardProps) {
+export function PricingCard({ name, price, features, featured, current }: PricingCardProps) {
     return (
         <article className={featured ? 'card card-featured' : 'card'}>
             <h2>{name}</h2>
@@ -18,8 +19,8 @@ export function PricingCard({ name, price, features, featured }: PricingCardProp
                     <li key={feature}>{feature}</li>
                 ))}
             </ul>
-            <button type="button" className="button">
-                Choose {name}
+            <button type="button" className="button" disabled={current}>
+                {current ? 'Current plan' : `Choose ${name}`}
             </button>
         </article>
     );

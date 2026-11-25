@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProviderMessage, ThreadSink, ThreadStatus } from '@tencildev/protocol';
 import { CODEX_PROVIDER, FakeT3Server, waitFor } from '@tencildev/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CredentialStore } from './auth.ts';
 import { T3CodeProvider, type T3CodeProviderOptions } from './t3code-provider.ts';
 
@@ -295,6 +295,34 @@ describe('pairing and recovery', () => {
         server = started;
         await provider.start();
         await ready(provider);
+        expect((await credentials.get(started.url))?.token).toBe(started.token);
+    });
+
+    it('finds and pairs with the T3 Code running for this user when no URL is set', async () => {
+        let server: FakeT3Server | undefined;
+        const home = projectDir();
+        const {
+            provider,
+            credentials,
+            server: started,
+        } = await setup(1, {
+            paired: false,
+            baseUrl: undefined,
+            createPairingCode: async () => server?.issuePairingCode(),
+        });
+        server = started;
+        mkdirSync(join(home, 'userdata'));
+        writeFileSync(
+            join(home, 'userdata', 'server-runtime.json'),
+            JSON.stringify({ version: 1, pid: process.pid, origin: started.url }),
+        );
+        vi.stubEnv('T3CODE_HOME', home);
+        try {
+            await provider.start();
+            await ready(provider);
+        } finally {
+            vi.unstubAllEnvs();
+        }
         expect((await credentials.get(started.url))?.token).toBe(started.token);
     });
 

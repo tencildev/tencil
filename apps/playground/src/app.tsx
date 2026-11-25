@@ -3,7 +3,7 @@ import { Navbar } from './components/navbar.tsx';
 import { PricingCard } from './components/pricing-card.tsx';
 
 const plans = [
-    { name: 'Hobby', price: 0, features: ['1 project', 'Community support'] },
+    { name: 'Hobby', price: 0, features: ['1 project', 'Community support'], current: true },
     {
         name: 'Pro',
         price: 20,
