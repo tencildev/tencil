@@ -137,6 +137,7 @@ function Header({ thread, handle }: { thread: Thread; handle: HeaderHandle }) {
                         <span class="thread-number">#{pinNumbers.value.get(thread.id)}</span>
                         <span class="chip" title={context.selector}>
                             <CodeIcon />
+                            {context.area ? 'Area in ' : ''}
                             {component?.name ?? `<${context.tagName}>`}
                         </span>
                         {source && (

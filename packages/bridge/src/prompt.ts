@@ -1,4 +1,4 @@
-import type { BoxModel, ElementContext, Sides, Spacing } from '@tencildev/protocol';
+import type { Area, AreaNode, BoxModel, ElementContext, Sides, Spacing } from '@tencildev/protocol';
 
 const CONTEXT_OPEN = '<tencil-context>';
 const CONTEXT_CLOSE = '</tencil-context>';
@@ -24,12 +24,14 @@ export function renderPrompt(input: {
     instructions?: PinInstructions;
 }): string {
     const lines = [
-        'The user pinned this comment on an element of their running app (via Tencil). Use the context below to locate the code, then make the change in this workspace.',
+        `The user pinned this comment on ${input.context.area ? 'an area' : 'an element'} of their running app (via Tencil). Use the context below to locate the code, then make the change in this workspace.`,
         ...deployedNote([input.pageUrl]),
         '',
         ...contextLines(input.pageUrl, input.context),
     ];
-    if (input.hasScreenshot) lines.push('- A screenshot of the element is attached.');
+    if (input.hasScreenshot) {
+        lines.push(`- A screenshot of the ${input.context.area ? 'area' : 'element'} is attached.`);
+    }
     lines.push(...instructionLines(input.instructions));
     return `${input.prompt.trim()}\n\n${CONTEXT_OPEN}\n${lines.join('\n')}\n${CONTEXT_CLOSE}`;
 }
@@ -87,7 +89,119 @@ function contextLines(pageUrl: string, context: ElementContext): string[] {
     const box = context.box && boxLine(context.box);
     if (box) lines.push(`- Box: ${box}`);
     if (context.spacing) lines.push(spacingLine(context.spacing));
+    if (context.area) lines.push(...areaLines(context.area));
     return lines;
+}
+
+const MAX_GAP_LINES = 12;
+
+/**
+ * A dragged box: what it touches as an indented tree, numbered so the space
+ * between neighbours can point at the elements that make it.
+ */
+function areaLines(area: Area): string[] {
+    const { rect } = area;
+    const lines = [
+        `- Area: the user dragged a box over the page, ${Math.round(rect.width)}×${Math.round(rect.height)} at (${Math.round(rect.x)}, ${Math.round(rect.y)}), and the comment is about what's in it. The element above is the smallest one holding all of it. What the box touches, outermost first (indented by nesting; "inside" is how much of each element is within the box):`,
+    ];
+    area.nodes.forEach((node, index) => {
+        lines.push(`${'  '.repeat(node.depth + 1)}[${index + 1}] ${areaNodeLine(node)}`);
+    });
+    if (area.omitted) {
+        lines.push(
+            `  …and ${area.omitted} more element${area.omitted === 1 ? '' : 's'} too small or too deep to list`,
+        );
+    }
+    const gaps = areaGaps(area.nodes).slice(0, MAX_GAP_LINES);
+    if (gaps.length > 0) {
+        lines.push('- Space between neighbours in the area:', ...gaps.map(gap => `  - ${gap}`));
+    }
+    return lines;
+}
+
+function areaNodeLine(node: AreaNode): string {
+    const parts = [`\`${page(truncate(oneLine(node.html), 300))}\``];
+    if (node.component) parts.push(page(formatFrame(node.component)));
+    parts.push(
+        `${Math.round(node.rect.width)}×${Math.round(node.rect.height)}, ${Math.round(node.inside * 100)}% inside`,
+    );
+    if (node.layout) parts.push(page(node.layout));
+    const box = node.box && boxLine(node.box);
+    if (box) parts.push(box);
+    if (node.text) parts.push(`"${page(truncate(oneLine(node.text), 120))}"`);
+    return parts.join(' · ');
+}
+
+/**
+ * The space between each pair of neighbouring siblings, and what makes it when
+ * the parent's gap and their margins add up to it. A wrong cause misleads more
+ * than none, so a gap they don't explain only says what it includes.
+ */
+export function areaGaps(nodes: AreaNode[]): string[] {
+    const lines: string[] = [];
+    const parentOf = nodes.map((node, index) => {
+        for (let before = index - 1; before >= 0; before--) {
+            if (nodes[before]!.depth < node.depth) return before;
+        }
+        return -1;
+    });
+    for (let index = 0; index < nodes.length; index++) {
+        const node = nodes[index]!;
+        const parent = parentOf[index]!;
+        let previous = -1;
+        for (let before = index - 1; before > parent; before--) {
+            if (nodes[before]!.depth === node.depth) {
+                previous = before;
+                break;
+            }
+        }
+        // Something unlisted between them makes part of the space: don't guess.
+        if (previous === -1 || parent === -1 || !node.adjacent) continue;
+        const line = gapLine(nodes[parent]!, parent, nodes[previous]!, previous, node, index);
+        if (line) lines.push(line);
+    }
+    return lines;
+}
+
+function gapLine(
+    parent: AreaNode,
+    parentIndex: number,
+    a: AreaNode,
+    aIndex: number,
+    b: AreaNode,
+    bIndex: number,
+): string | undefined {
+    const aBottom = a.rect.y + a.rect.height;
+    const aRight = a.rect.x + a.rect.width;
+    const vertical = b.rect.y >= aBottom - 0.5;
+    if (!vertical && b.rect.x < aRight - 0.5) return undefined;
+    const value = Math.round((vertical ? b.rect.y - aBottom : b.rect.x - aRight) * 10) / 10;
+    if (value < 1) return undefined;
+    const label = (index: number) => `[${index + 1}]`;
+    const gap = parent.box?.gap?.[vertical ? 'row' : 'column'] ?? 0;
+    const marginA = a.box?.margin[vertical ? 2 : 1] ?? 0;
+    const marginB = b.box?.margin[vertical ? 0 : 3] ?? 0;
+    // Block layout collapses vertical margins into the larger one.
+    const collapses =
+        vertical && !/flex|grid/.test(parent.layout ?? '') && marginA >= 0 && marginB >= 0;
+    const parts: Array<[number, string]> = [[gap, `gap ${gap} on ${label(parentIndex)}`]];
+    const sideA = `margin-${vertical ? 'bottom' : 'right'} ${marginA} on ${label(aIndex)}`;
+    const sideB = `margin-${vertical ? 'top' : 'left'} ${marginB} on ${label(bIndex)}`;
+    if (!collapses) parts.push([marginA, sideA], [marginB, sideB]);
+    else if (marginA >= marginB) parts.push([marginA, sideA]);
+    else parts.push([marginB, sideB]);
+    const counted = parts.filter(([amount]) => amount !== 0);
+    const total = counted.reduce((sum, [amount]) => sum + amount, 0);
+    const head = `${label(aIndex)} to ${label(bIndex)}: ${value}px ${vertical ? 'vertical' : 'horizontal'}`;
+    if (counted.length > 0 && Math.abs(total - value) <= 1) {
+        return `${head} = ${counted.map(([, text]) => text).join(' + ')}`;
+    }
+    const known = counted.filter(([amount]) => amount > 0);
+    const explained = known.reduce((sum, [amount]) => sum + amount, 0);
+    if (known.length > 0 && explained < value) {
+        return `${head}, includes ${known.map(([, text]) => text).join(' + ')}; the other ${Math.round((value - explained) * 10) / 10}px comes from elsewhere (padding, sizes or alignment)`;
+    }
+    return `${head}, not from a gap or margins (padding, sizes or alignment)`;
 }
 
 /**

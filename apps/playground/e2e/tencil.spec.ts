@@ -771,6 +771,88 @@ test('comments inside a modal sheet without closing it', async ({ page }) => {
     await expect(sheet).toBeVisible();
 });
 
+test('keeps a box that reaches below a page shorter than the window', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await openPlayground(page);
+    const pageBottom = await page.evaluate(() => document.body.getBoundingClientRect().bottom);
+    expect(pageBottom).toBeLessThan(1000);
+    await page.keyboard.press('c');
+    await page.mouse.move(200, pageBottom - 100);
+    await page.mouse.down();
+    await page.mouse.move(900, pageBottom + 300, { steps: 3 });
+    await page.mouse.up();
+    await expect(overlay(page).locator('.composer .chip')).toHaveText(/^Area/);
+    const box = (await overlay(page).locator('.area-box').boundingBox())!;
+    expect(box.y).toBeCloseTo(pageBottom - 100, 0);
+    expect(box.height).toBeCloseTo(400, 0);
+    await page.keyboard.press('Escape');
+});
+
+test('drags a box over parts of two sections and comments on the area', async ({ page }) => {
+    const sent: string[] = [];
+    page.on('websocket', socket =>
+        socket.on('framesent', frame => {
+            if (typeof frame.payload === 'string') sent.push(frame.payload);
+        }),
+    );
+    await openPlayground(page);
+    const text = (await page.locator('.hero > p').boundingBox())!;
+    const cards = (await page.locator('.pricing').boundingBox())!;
+    const details = (await page.getByRole('button', { name: 'View details' }).boundingBox())!;
+    const dragOver = async (x0: number, y0: number, x1: number, y1: number) => {
+        await page.mouse.move(x0, y0);
+        await page.mouse.down();
+        await page.mouse.move(x1, y1, { steps: 3 });
+    };
+
+    // A box dragged within a button doesn't press it.
+    await page.keyboard.press('c');
+    await dragOver(details.x + 4, details.y + 4, details.x + details.width - 4, details.y + 30);
+    await page.mouse.up();
+    await expect(overlay(page).locator('.composer .chip')).toHaveText('Area');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // Escape drops the box, and letting go then picks nothing.
+    await page.keyboard.press('c');
+    await dragOver(details.x + 4, details.y + 4, details.x + details.width - 4, details.y + 30);
+    await page.keyboard.press('Escape');
+    await expect(overlay(page).locator('.area-box')).toHaveCount(0);
+    await page.mouse.up();
+    await expect(overlay(page).locator('.composer')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // From the hero's text down into the top of the pricing cards: neither is fully inside.
+    await page.keyboard.press('c');
+    await page.mouse.move(text.x - 20, text.y + 4);
+    await page.mouse.down();
+    await page.mouse.move(text.x + 100, text.y + 100, { steps: 3 });
+    await expect(overlay(page).locator('.area-box')).toHaveCount(1);
+    await page.mouse.move(text.x + text.width * 0.6, cards.y + 80, { steps: 3 });
+    await page.mouse.up();
+
+    await expect(overlay(page).locator('.composer .chip')).toHaveText('Area · 2 elements');
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.fill('Make this take less space vertically');
+    await composer.press('Enter');
+
+    const created = () =>
+        sent.map(frame => JSON.parse(frame)).find(message => message.type === 'thread.create');
+    await expect.poll(created).toBeTruthy();
+    const message = created();
+    expect(message.context.tagName).toBe('main');
+    const nodes = message.context.area.nodes as Array<{ depth: number; html: string }>;
+    expect(nodes.filter(node => node.depth === 1).map(node => node.html)).toEqual([
+        '<section class="hero">',
+        '<section id="pricing" class="pricing">',
+    ]);
+    // On by default for an area: it's often about how it looks.
+    expect(message.attachments).toHaveLength(1);
+    await expect(overlay(page).locator('.thread .chip')).toContainText('Area in App');
+});
+
 test('comments inside a native modal dialog', async ({ page }) => {
     await openPlayground(page);
     await page.getByRole('button', { name: 'Place order' }).click();

@@ -1,9 +1,9 @@
-import type { ServerMessage, Thread } from '@tencildev/protocol';
+import type { AreaNode, ServerMessage, Thread } from '@tencildev/protocol';
 import { FakeAgentProvider, waitFor } from '@tencildev/testing';
 import { describe, expect, it } from 'vitest';
 import { Bridge, mergeMessage } from './bridge.ts';
 import { ProjectProviders } from './project-providers.ts';
-import { isDeployed, renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';
+import { areaGaps, isDeployed, renderBatchPrompt, renderPrompt, stripContext } from './prompt.ts';
 import { MemoryThreadStore } from './thread-store.ts';
 
 const context = {
@@ -79,6 +79,140 @@ describe('prompt', () => {
         expect(text).toContain(
             '- Measured spacing to its parent `PricingCard · article` (`article`): 24px above, 16.5px left',
         );
+    });
+
+    describe('a dragged area', () => {
+        const zero: [number, number, number, number] = [0, 0, 0, 0];
+        const areaNode = (
+            depth: number,
+            html: string,
+            rect: { x: number; y: number; width: number; height: number },
+            extra: Partial<AreaNode> = {},
+        ): AreaNode => ({
+            depth,
+            tagName: html.slice(1).split(/[ >]/)[0]!,
+            html,
+            rect,
+            inside: 1,
+            box: { margin: zero, padding: zero, border: zero },
+            adjacent: true,
+            ...extra,
+        });
+
+        it('lists what the box touches as a numbered tree and explains the space between', () => {
+            const text = renderPrompt({
+                prompt: 'Make this take less space vertically',
+                pageUrl: 'http://localhost:3000/',
+                context: {
+                    ...context,
+                    area: {
+                        rect: { x: 30, y: 40, width: 950, height: 250 },
+                        nodes: [
+                            areaNode(
+                                0,
+                                '<main class="page">',
+                                { x: 0, y: 0, width: 1000, height: 900 },
+                                {
+                                    inside: 0.26,
+                                    layout: 'flex column',
+                                    component: {
+                                        name: 'Dashboard',
+                                        source: { file: 'src/page.tsx', line: 30 },
+                                    },
+                                    box: {
+                                        margin: zero,
+                                        padding: zero,
+                                        border: zero,
+                                        gap: { row: 64, column: 64 },
+                                    },
+                                },
+                            ),
+                            areaNode(
+                                1,
+                                '<section class="welcome">',
+                                { x: 40, y: 40, width: 900, height: 140 },
+                                {
+                                    inside: 0.8,
+                                    box: { margin: [0, 0, 8, 0], padding: zero, border: zero },
+                                },
+                            ),
+                            areaNode(
+                                1,
+                                '<div class="overview">',
+                                { x: 40, y: 252, width: 900, height: 50 },
+                                {
+                                    text: 'Overview Last 30 days',
+                                },
+                            ),
+                        ],
+                        omitted: 3,
+                    },
+                },
+                hasScreenshot: true,
+            });
+            expect(text).toContain('pinned this comment on an area of their running app');
+            expect(text).toContain(
+                '  [1] `<main class="page">` · Dashboard (src/page.tsx:30) · 1000×900, 26% inside · flex column · gap 64 (px)',
+            );
+            expect(text).toContain(
+                '    [2] `<section class="welcome">` · 900×140, 80% inside · margin 0 0 8 (px)',
+            );
+            expect(text).toContain(
+                '    [3] `<div class="overview">` · 900×50, 100% inside · "Overview Last 30 days"',
+            );
+            expect(text).toContain('…and 3 more elements too small or too deep to list');
+            expect(text).toContain(
+                '  - [2] to [3]: 72px vertical = gap 64 on [1] + margin-bottom 8 on [2]',
+            );
+            expect(text).toContain('- A screenshot of the area is attached.');
+        });
+
+        it('only names a cause for the space when it adds up', () => {
+            const parent = areaNode(
+                0,
+                '<div>',
+                { x: 0, y: 0, width: 500, height: 500 },
+                {
+                    layout: 'block',
+                },
+            );
+            const above = areaNode(
+                1,
+                '<p>',
+                { x: 0, y: 0, width: 500, height: 100 },
+                {
+                    box: { margin: [0, 0, 24, 0], padding: zero, border: zero },
+                },
+            );
+            const below = (y: number) =>
+                areaNode(
+                    1,
+                    '<p>',
+                    { x: 0, y, width: 500, height: 100 },
+                    {
+                        box: { margin: [16, 0, 0, 0], padding: zero, border: zero },
+                    },
+                );
+            // Block margins collapse: 24 and 16 make 24, not 40.
+            expect(areaGaps([parent, above, below(124)])).toEqual([
+                '[2] to [3]: 24px vertical = margin-bottom 24 on [2]',
+            ]);
+            expect(areaGaps([parent, above, below(160)])).toEqual([
+                '[2] to [3]: 60px vertical, includes margin-bottom 24 on [2]; the other 36px comes from elsewhere (padding, sizes or alignment)',
+            ]);
+            const plain = areaNode(1, '<p>', { x: 0, y: 130, width: 500, height: 100 });
+            expect(
+                areaGaps([
+                    parent,
+                    areaNode(1, '<p>', { x: 0, y: 0, width: 500, height: 100 }),
+                    plain,
+                ]),
+            ).toEqual([
+                '[2] to [3]: 30px vertical, not from a gap or margins (padding, sizes or alignment)',
+            ]);
+            // Something unlisted sits between them: no guess at all.
+            expect(areaGaps([parent, above, { ...below(160), adjacent: false }])).toEqual([]);
+        });
     });
 });
 
