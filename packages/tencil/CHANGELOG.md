@@ -1,5 +1,11 @@
 # tencil
 
+## 0.15.2
+
+### Patch Changes
+
+- [#59](https://github.com/tencildev/tencil/pull/59) [`5da1513`](https://github.com/tencildev/tencil/commit/5da1513e11e40aef7f95ba88d3cd03d163876754) Thanks [@frans-slabbekoorn](https://github.com/frans-slabbekoorn)! - Using Tencil no longer closes an open combobox on the page, like a Base UI or shadcn searchable select. You can click the toolbar, comment on an option and type while it stays open.
+
 ## 0.15.1
 
 ### Patch Changes
