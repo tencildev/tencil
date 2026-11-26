@@ -20,7 +20,10 @@ interface Props {
 
 type Dictation = 'idle' | 'starting' | 'recording' | 'transcribing';
 
-/** Enter sends, Shift+Enter adds a line, Escape cancels (or stops a recording first). */
+/**
+ * Enter sends, Shift+Enter adds a line, Escape cancels. While dictating, Enter
+ * stops and transcribes, and Escape throws the recording away.
+ */
 export function PromptInput({
     placeholder,
     initialText = '',
@@ -95,6 +98,8 @@ export function PromptInput({
             if (!mounted.current) return started.cancel();
             recording.current = started;
             setDictation('recording');
+            // Back in the box, so Escape and Enter reach it while the mic listens.
+            ref.current?.focus({ preventScroll: true });
         } catch (error) {
             setDictation('idle');
             fail(error);
@@ -114,6 +119,10 @@ export function PromptInput({
     const showMic =
         voiceStatus?.enabled && (voiceStatus.available || voiceStatus.hint) && canRecord();
 
+    const listening = dictation === 'recording' || dictation === 'transcribing';
+    // An empty box has nothing to show while listening: the status row takes its place.
+    const replaced = listening && text.length === 0;
+
     const canSend = text.trim().length > 0 && !disabled && !busy && dictation === 'idle';
     const submit = async () => {
         if (!canSend) return;
@@ -130,12 +139,20 @@ export function PromptInput({
                 value={text}
                 placeholder={placeholder}
                 disabled={disabled}
+                // The mic has the box until the text is in; what's there stays readable.
+                readOnly={listening}
+                aria-busy={listening}
+                class={
+                    replaced ? 'prompt-text-replaced' : listening ? 'prompt-text-locked' : undefined
+                }
                 onInput={event => setText((event.target as HTMLTextAreaElement).value)}
                 onKeyDown={event => {
                     event.stopPropagation();
                     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
                         event.preventDefault();
-                        void submit();
+                        // Enter while recording stops it, like clicking the mic.
+                        if (dictation === 'recording') void stopDictation();
+                        else void submit();
                     } else if (event.key === 'Escape') {
                         event.preventDefault();
                         if (dictation === 'recording') cancelDictation();
@@ -143,9 +160,7 @@ export function PromptInput({
                     }
                 }}
             />
-            {(dictation === 'recording' || dictation === 'transcribing') && (
-                <DictationStatus state={dictation} recording={recording} />
-            )}
+            {listening && <DictationStatus state={dictation} recording={recording} />}
             <div class="prompt-actions">
                 <div class="prompt-extras">{children}</div>
                 {showMic && (
@@ -159,6 +174,12 @@ export function PromptInput({
                             dictation === 'transcribing'
                         }
                         onClick={toggleDictation}
+                        onKeyDown={event => {
+                            if (event.key !== 'Escape' || dictation !== 'recording') return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            cancelDictation();
+                        }}
                         aria-pressed={dictation === 'recording'}
                         aria-label={dictation === 'recording' ? 'Stop and transcribe' : 'Dictate'}
                         title={

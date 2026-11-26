@@ -384,7 +384,7 @@ kbd {
 }
 
 .prompt-input {
-  display: grid; gap: 6px;
+  position: relative; display: grid; gap: 6px;
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--n-200);
   border-radius: 12px;
@@ -415,8 +415,13 @@ kbd {
 .prompt-input-recording:focus-within {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 55%, transparent), 0 0 0 4px color-mix(in srgb, var(--error) 12%, transparent);
 }
+.prompt-input textarea.prompt-text-locked { color: var(--n-500); cursor: default; }
+/* Out of sight but still focused, so Enter and Escape reach it. */
+.prompt-input textarea.prompt-text-replaced {
+  position: absolute; width: 1px; height: 1px; min-height: 0; opacity: 0; pointer-events: none;
+}
 .dictation {
-  display: flex; align-items: center; gap: 8px; height: 20px;
+  display: flex; align-items: center; gap: 8px; min-height: 1.5rem;
   color: var(--n-600); font-size: 12px;
   animation: dictation-in 160ms var(--ease-out);
 }
@@ -425,13 +430,17 @@ kbd {
   width: 7px; height: 7px; border-radius: 999px; flex: none;
   background: var(--error); animation: live 1.2s ease-in-out infinite;
 }
-.dictation-level { display: inline-flex; align-items: center; gap: 2px; height: 14px; }
+.dictation-level {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 1px; height: 18px; overflow: hidden;
+}
 .dictation-level > span {
-  width: 3px; height: 14px; border-radius: 2px; background: var(--error);
-  transform: scaleY(0.2); transform-origin: center; will-change: transform;
+  flex: 0 1 2px; min-width: 1px; height: 18px; border-radius: 1px; background: var(--error);
+  transform: scaleY(0.12); transform-origin: center;
+  transition: transform 60ms linear;
 }
 .dictation-time { color: var(--n-900); font-variant-numeric: tabular-nums; }
-.dictation-hint { margin-left: auto; color: var(--n-500); }
+.dictation-hint { color: var(--n-500); white-space: nowrap; }
 @keyframes mic-pulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--error) 45%, transparent); }
   50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--error) 0%, transparent); }

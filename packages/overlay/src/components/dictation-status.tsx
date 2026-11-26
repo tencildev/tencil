@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Recording } from '../lib/voice.ts';
 import { Shimmer } from './shimmer.tsx';
 
-const BARS = 5;
+/** Enough bars to fill the box; the newest level comes in on the right. */
+const BARS = 48;
+/** How often the meter takes a new level, so it scrolls at a steady pace. */
+const SAMPLE_MS = 50;
 
 /**
- * What dictation is doing, inside the prompt box: a live level meter and the
- * time while recording, then a shimmer while Whisper writes it down.
+ * What dictation is doing, inside the prompt box: a live level meter across
+ * the box and the time while recording, then a shimmer while Whisper writes it down.
  */
 export function DictationStatus({
     state,
@@ -31,23 +34,30 @@ export function DictationStatus({
     );
 }
 
-/** Bars that follow the microphone, set straight on the DOM every frame. */
+/** The last few seconds of the microphone's level, set straight on the DOM. */
 function LevelMeter({ recording }: { recording: { current: Recording | null } }) {
     const bars = useRef<HTMLSpanElement>(null);
     useEffect(() => {
+        const history = new Array<number>(BARS).fill(0);
         let frame = 0;
-        // Each bar reacts a little differently, so it reads as a voice, not a block.
-        const weights = [0.55, 0.85, 1, 0.75, 0.5];
-        const heights = new Array<number>(BARS).fill(0);
-        const tick = () => {
-            const level = recording.current?.level() ?? 0;
-            const children = bars.current?.children ?? [];
-            for (let i = 0; i < BARS; i++) {
-                const target = level * (weights[i] ?? 1);
-                // Rise fast, fall slowly.
-                heights[i] = Math.max(target, (heights[i] ?? 0) * 0.82);
-                const bar = children[i] as HTMLElement | undefined;
-                bar?.style.setProperty('transform', `scaleY(${0.2 + (heights[i] ?? 0) * 0.8})`);
+        let last = 0;
+        let peak = 0;
+        const tick = (time: number) => {
+            // The loudest moment since the last sample, so short syllables still show.
+            peak = Math.max(peak, recording.current?.level() ?? 0);
+            if (time - last >= SAMPLE_MS) {
+                last = time;
+                history.shift();
+                history.push(peak);
+                peak = 0;
+                const children = bars.current?.children ?? [];
+                for (let i = 0; i < BARS; i++) {
+                    const bar = children[i] as HTMLElement | undefined;
+                    bar?.style.setProperty(
+                        'transform',
+                        `scaleY(${0.12 + (history[i] ?? 0) * 0.88})`,
+                    );
+                }
             }
             frame = requestAnimationFrame(tick);
         };
@@ -62,7 +72,6 @@ function LevelMeter({ recording }: { recording: { current: Recording | null } })
         </span>
     );
 }
-
 function Elapsed() {
     const [start] = useState(() => Date.now());
     const [now, setNow] = useState(start);

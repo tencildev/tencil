@@ -254,11 +254,18 @@ test('dictates a comment through Whisper on the machine', async ({ page }) => {
     await expect(mic).toHaveAttribute('aria-pressed', 'true');
     await expect(status).toContainText('Esc to discard');
     await expect(status).toContainText('0:00');
+    // The mic has the box: what's typed stays, and can't be typed over.
+    await expect(composer).toHaveAttribute('readonly', '');
+    await expect(composer).toBeFocused();
+    await page.keyboard.type('x');
+    await expect(composer).toHaveValue('Hi.');
     await page.waitForTimeout(800);
-    await mic.click();
+    // Enter stops it, like the mic.
+    await page.keyboard.press('Enter');
     await expect(status).toContainText('Transcribing…');
     await expect(composer).toHaveValue('Hi. Make the title purple.', { timeout: 10_000 });
     await expect(status).toHaveCount(0);
+    await expect(composer).not.toHaveAttribute('readonly');
     await expect(mic).toHaveAttribute('aria-pressed', 'false');
 
     // Escape throws a recording away and keeps the composer open.
