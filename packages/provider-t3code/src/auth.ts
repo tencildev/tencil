@@ -225,6 +225,8 @@ interface CredentialFile {
     /** Server most recently paired with; used when no URL is configured. */
     lastBaseUrl?: string;
     servers: Record<string, StoredCredential>;
+    /** Tokens for each server's `/mcp`, which reaches the machines it links to. */
+    mcp?: Record<string, StoredCredential>;
 }
 
 /** Credentials live outside the project so they never end up in git. */
@@ -253,6 +255,25 @@ export class CredentialStore {
         const file = await this.#read();
         file.servers[credentialKey(baseUrl)] = credential;
         file.lastBaseUrl = normalizeBaseUrl(baseUrl);
+        await this.#write(file);
+    }
+
+    /** The token for a server's `/mcp`, while it's valid. */
+    async getMcp(baseUrl: string): Promise<StoredCredential | undefined> {
+        const credential = (await this.#read()).mcp?.[credentialKey(baseUrl)];
+        if (!credential || Date.parse(credential.expiresAt) <= Date.now()) return undefined;
+        return credential;
+    }
+
+    /** Saves (or with undefined, forgets) a server's `/mcp` token; `lastBaseUrl` stays. */
+    async setMcp(baseUrl: string, credential: StoredCredential | undefined): Promise<void> {
+        const file = await this.#read();
+        const { [credentialKey(baseUrl)]: _previous, ...rest } = file.mcp ?? {};
+        file.mcp = credential ? { ...rest, [credentialKey(baseUrl)]: credential } : rest;
+        await this.#write(file);
+    }
+
+    async #write(file: CredentialFile): Promise<void> {
         await mkdir(dirname(this.path), { recursive: true });
         await writeFile(this.path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
         await chmod(this.path, 0o600);
@@ -261,7 +282,11 @@ export class CredentialStore {
     async #read(): Promise<CredentialFile> {
         try {
             const parsed = JSON.parse(await readFile(this.path, 'utf8')) as Partial<CredentialFile>;
-            return { lastBaseUrl: parsed.lastBaseUrl, servers: parsed.servers ?? {} };
+            return {
+                lastBaseUrl: parsed.lastBaseUrl,
+                servers: parsed.servers ?? {},
+                ...(parsed.mcp ? { mcp: parsed.mcp } : {}),
+            };
         } catch {
             return { servers: {} };
         }

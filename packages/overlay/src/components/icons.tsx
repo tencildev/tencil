@@ -98,6 +98,13 @@ export const CameraIcon = () => (
     </Icon>
 );
 
+export const MachineIcon = () => (
+    <Icon size={12}>
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <path d="M8 21h8M12 17v4" />
+    </Icon>
+);
+
 export const CodeIcon = () => (
     <Icon size={12}>
         <path d="m16 18 6-6-6-6M8 6l-6 6 6 6" />

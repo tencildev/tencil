@@ -3,6 +3,7 @@ import type { ProviderInfo } from './messages.ts';
 import type {
     Delivery,
     MessageRole,
+    ProviderMachine,
     ProviderModel,
     ProviderProject,
     ProviderThreadSummary,
@@ -33,6 +34,8 @@ export interface Provider {
     listThreads(): Promise<{ project: ProviderProject; threads: ProviderThreadSummary[] }>;
     /** Models new threads can run on, and the one they use by default. Optional. */
     listModels?(): Promise<ProviderModels>;
+    /** Machines new threads can run on, and the one they use by default. Optional. */
+    listMachines?(): Promise<ProviderMachines>;
     /** Deep link into the provider UI for a thread, when it has one. */
     threadUrl(providerThreadId: string): string | undefined;
     createThread(input: CreateThreadInput): Promise<CreatedThread>;
@@ -59,12 +62,23 @@ export interface CreateThreadInput {
     attachments: ImageAttachment[];
     /** A `ProviderModel.id` the user picked; the provider's default when absent or unknown. */
     model?: string;
+    /**
+     * A `ProviderMachine.id` the user picked; the provider's default when absent. One that
+     * can't be reached fails, so a thread never runs on a machine the user didn't pick.
+     */
+    machine?: string;
 }
 
 export interface ProviderModels {
     models: ProviderModel[];
     /** `ProviderModel.id` new threads use when none is picked. */
     defaultModel?: string;
+}
+
+export interface ProviderMachines {
+    machines: ProviderMachine[];
+    /** `ProviderMachine.id` new threads use when none is picked. */
+    defaultMachine?: string;
 }
 
 export interface CreatedThread {

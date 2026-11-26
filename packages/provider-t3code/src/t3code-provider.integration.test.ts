@@ -7,7 +7,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CredentialStore } from './auth.ts';
 import { T3CodeProvider, type T3CodeProviderOptions } from './t3code-provider.ts';
 
-const FAST = { httpMs: 300, rpcMs: 1_000, retryMinMs: 20, retryMaxMs: 100 };
+const FAST = {
+    httpMs: 300,
+    rpcMs: 1_000,
+    retryMinMs: 20,
+    retryMaxMs: 100,
+    remoteBusyMs: 50,
+    remoteIdleMs: 200,
+};
 const PNG =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
@@ -395,5 +402,225 @@ describe('project lifecycle', () => {
         await waitFor(() => provider.info().state === 'unavailable', { message: 'no project' });
         expect(provider.info().detail).toMatch(/No T3 Code project/);
         expect(server.projects).toHaveLength(0);
+    });
+});
+
+describe('T3 Code provider, linked machines', () => {
+    const REPO = 'github.com/acme/site';
+
+    async function linked(options: { status?: 'reachable' | 'expired' } = {}) {
+        let server: FakeT3Server | undefined;
+        const context = await setup(2, {
+            createPairingCode: async () => server?.issuePairingCode(),
+        });
+        server = context.server;
+        server.projects[0]!.repositoryIdentity = { canonicalKey: REPO };
+        server.linkedMachines.push({
+            environmentId: 'env/mac',
+            label: 'MacBook',
+            ...(options.status ? { status: options.status } : {}),
+            projects: [
+                { id: 'other', title: 'other', workspaceRoot: '/Users/me/other' },
+                {
+                    id: 'mac-site',
+                    title: 'site',
+                    workspaceRoot: '/Users/me/site',
+                    repositoryIdentity: { canonicalKey: REPO },
+                },
+            ],
+        });
+        await context.provider.start();
+        await ready(context.provider);
+        return context;
+    }
+
+    it('lists this machine first, then the linked ones, signing in to MCP on its own', async () => {
+        const { provider, credentials, server } = await linked();
+        await expect(provider.listMachines()).resolves.toEqual({
+            machines: [
+                { id: 'env-test', label: 'This machine', reachable: true },
+                { id: 'env/mac', label: 'MacBook', reachable: true },
+            ],
+            defaultMachine: 'env-test',
+        });
+        // The MCP token is kept apart; the WebSocket's pairing stays the last one.
+        await expect(credentials.getMcp(server.url)).resolves.toMatchObject({
+            token: server.mcpToken,
+        });
+        await expect(credentials.get(server.url)).resolves.toMatchObject({ token: server.token });
+    });
+
+    it('starts, follows, answers and stops a thread on a linked machine', async () => {
+        const { provider, server } = await linked();
+        const created = await provider.createThread({
+            title: 'Make it blue',
+            text: 'Make the button blue',
+            attachments: [{ name: 'shot.png', mimeType: 'image/png', dataUrl: PNG }],
+            machine: 'env/mac',
+        });
+        const [remote] = server.remoteThreads.values();
+        expect(remote).toMatchObject({ environmentId: 'env/mac', projectId: 'mac-site' });
+        expect(created.providerThreadId).toBe(`env%2Fmac/${remote!.id}`);
+        expect(created.url).toBe(`${server.url}/env%2Fmac/${remote!.id}`);
+        expect(provider.threadUrl(created.providerThreadId)).toBe(created.url);
+        expect(server.callsOf('mcp:t3_thread_launch')[0]).toMatchObject({
+            environmentId: 'env/mac',
+            projectId: 'mac-site',
+            message: expect.stringContaining("Screenshots can't be sent"),
+        });
+        // Nothing went to this machine's T3 Code.
+        expect(server.threads.size).toBe(0);
+
+        const { sink, messages, statuses } = recordingSink();
+        provider.watch(created.providerThreadId, sink);
+        await waitFor(() => statuses.at(-1) === 'idle' && messages.size === 2, {
+            message: 'remote reply',
+        });
+        expect([...messages.values()].map(m => [m.role, m.text, m.streaming])).toEqual([
+            ['user', expect.stringContaining('Make the button blue'), false],
+            ['assistant', 'Done: Make the button blue', false],
+        ]);
+
+        await provider.sendMessage({
+            providerThreadId: created.providerThreadId,
+            text: 'Darker please',
+            attachments: [],
+        });
+        await waitFor(() => messages.size === 4 && statuses.at(-1) === 'idle', {
+            message: 'second reply',
+        });
+        expect(server.callsOf('mcp:t3_thread_send')[0]).toMatchObject({
+            environmentId: 'env/mac',
+            threadId: remote!.id,
+            message: 'Darker please',
+        });
+
+        await provider.interrupt(created.providerThreadId);
+        expect(server.callsOf('mcp:t3_thread_interrupt')[0]).toMatchObject({
+            environmentId: 'env/mac',
+            threadId: remote!.id,
+        });
+    });
+
+    it('re-opens a lost MCP session and signs in again when the token is refused', async () => {
+        const { provider, server, credentials } = await linked();
+        await provider.listMachines();
+        server.dropMcpSessions();
+        await expect(provider.listMachines()).resolves.toMatchObject({
+            machines: [expect.anything(), expect.objectContaining({ id: 'env/mac' })],
+        });
+        await credentials.setMcp(server.url, {
+            token: 'stale',
+            scope: '',
+            expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        });
+        const fresh = new T3CodeProvider({
+            projectRoot: server.projects[0]!.workspaceRoot,
+            baseUrl: server.url,
+            credentials,
+            timeouts: FAST,
+            createPairingCode: async () => server.issuePairingCode(),
+        });
+        cleanup.push(() => fresh.dispose());
+        await fresh.start();
+        await ready(fresh);
+        await expect(fresh.listMachines()).resolves.toMatchObject({
+            machines: [expect.anything(), expect.objectContaining({ id: 'env/mac' })],
+        });
+        await expect(credentials.getMcp(server.url)).resolves.toMatchObject({
+            token: server.mcpToken,
+        });
+    });
+
+    it('offers only this machine when it cannot sign in to MCP', async () => {
+        const { provider } = await setup(2, { createPairingCode: async () => undefined });
+        await provider.start();
+        await ready(provider);
+        await expect(provider.listMachines()).resolves.toEqual({
+            machines: [{ id: 'env-test', label: 'This machine', reachable: true }],
+            defaultMachine: 'env-test',
+        });
+    });
+
+    it("says so when the machine isn't reachable or lacks the repository", async () => {
+        const { provider, server } = await linked({ status: 'expired' });
+        const machines = await provider.listMachines();
+        expect(machines.machines[1]).toMatchObject({
+            reachable: false,
+            detail: expect.stringMatching(/expired/),
+        });
+        const input = { title: 't', text: 'x', attachments: [], machine: 'env/mac' };
+        await expect(provider.createThread(input)).rejects.toThrow(/can't be reached/);
+
+        server.linkedMachines[0]!.status = 'reachable';
+        server.linkedMachines[0]!.projects.pop();
+        await expect(provider.createThread(input)).rejects.toThrow(/no T3 Code project/);
+    });
+
+    it('never falls back to this machine when the picked one is gone', async () => {
+        const { provider, server } = await linked();
+        const input = { title: 't', text: 'x', attachments: [], machine: 'env-gone' };
+        await expect(provider.createThread(input)).rejects.toThrow(/no longer linked/);
+        expect(server.threads.size).toBe(0);
+        expect(server.remoteThreads.size).toBe(0);
+    });
+
+    it('fails a saved pick when T3 Code cannot be signed in to', async () => {
+        const { provider, server } = await setup(2, { createPairingCode: async () => undefined });
+        await provider.start();
+        await ready(provider);
+        const input = { title: 't', text: 'x', attachments: [], machine: 'env/mac' };
+        await expect(provider.createThread(input)).rejects.toThrow(/Couldn't reach the machine/);
+        expect(server.threads.size).toBe(0);
+    });
+
+    it('keeps following a long thread and stops when it is deleted there', async () => {
+        const { provider, server } = await linked();
+        const created = await provider.createThread({
+            title: 't',
+            text: 'one',
+            attachments: [],
+            machine: 'env/mac',
+        });
+        const { sink, messages, isGone } = recordingSink();
+        provider.watch(created.providerThreadId, sink);
+        const replied = (text: string) =>
+            waitFor(() => [...messages.values()].some(m => m.text === `Done: ${text}`), {
+                message: `reply to ${text}`,
+            });
+        await replied('one');
+        for (const [text, previous] of [
+            ['two', 'one'],
+            ['three', 'two'],
+        ] as const) {
+            await replied(previous);
+            await provider.sendMessage({
+                providerThreadId: created.providerThreadId,
+                text,
+                attachments: [],
+            });
+        }
+        // Six items read in pages of two; the newest still arrives.
+        await waitFor(() => [...messages.values()].some(m => m.text === 'Done: three'), {
+            message: 'third reply',
+        });
+        expect([...messages.values()].map(m => m.text)).toEqual([
+            expect.stringContaining('one'),
+            'Done: one',
+            'two',
+            'Done: two',
+            'three',
+            'Done: three',
+        ]);
+        const [remote] = server.remoteThreads.keys();
+        server.remoteThreads.delete(remote!);
+        await provider
+            .sendMessage({
+                providerThreadId: created.providerThreadId,
+                text: 'four',
+                attachments: [],
+            })
+            .catch(() => undefined);
+        await waitFor(isGone, { message: 'gone' });
     });
 });

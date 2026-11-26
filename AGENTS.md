@@ -54,6 +54,11 @@ apps/
   inside the daemon through the Agent SDK. The SDK carries a ~250 MB binary, so it's
   an optional peer, never bundled: loaded from next to Tencil or installed into
   `~/.config/tencil/claude-code` on first use.
+- **T3 Code reaches other machines through its MCP.** Machines T3 Code links to (Labs →
+  Linked environments) are only reachable through `/mcp`, so Tencil signs in there too, with a
+  pairing code from the local `t3` CLI (`provider-t3code/src/mcp-client.ts`). A thread on another
+  machine has the id `<environmentId>/<threadId>`, starts in the project with the same repository,
+  and is polled rather than streamed. Screenshots can't go along yet.
 - **Codex runs under the user's own install and login.** The daemon starts `codex app-server`
   (the CLI on the PATH, or the copy in the desktop app) when a project needs it and closes it
   when idle. Threads are Codex's own, so `codex resume <id>` and the app see them. At ~400 MB

@@ -138,6 +138,34 @@ describe('project settings', () => {
         expect(fakes.get('t3code')?.created.at(-1)?.model).toBeUndefined();
     });
 
+    it("starts new threads on the machine picked for the project's provider", async () => {
+        const { bridge, client, received, fakes } = setup();
+        await bridge.handle(client, { type: 'provider.machines' });
+        // Providers without machines answer with none, so the overlay shows no picker.
+        expect(received.at(-1)).toEqual({
+            type: 'provider.machines',
+            provider: 't3code',
+            machines: [],
+        });
+
+        await bridge.handle(client, { type: 'machine.select', machine: 'env-mac' });
+        expect(received.at(-1)).toEqual({
+            type: 'settings',
+            settings: expect.objectContaining({ provider: 't3code', machine: 'env-mac' }),
+        });
+        await bridge.handle(client, pin('a'));
+        expect(fakes.get('t3code')?.created.at(-1)?.machine).toBe('env-mac');
+
+        await bridge.handle(client, { type: 'settings.update', provider: 'claude-code' });
+        await bridge.handle(client, pin('b'));
+        expect(fakes.get('claude-code')?.created.at(-1)?.machine).toBeUndefined();
+
+        await bridge.handle(client, { type: 'settings.update', provider: 't3code' });
+        await bridge.handle(client, { type: 'machine.select', machine: null });
+        await bridge.handle(client, pin('c'));
+        expect(fakes.get('t3code')?.created.at(-1)?.machine).toBeUndefined();
+    });
+
     it('turns batching on and off for the project', async () => {
         const { bridge, client, received } = setup();
         await bridge.handle(client, { type: 'hello', protocol: 1, pageUrl: 'http://x/' });

@@ -188,6 +188,20 @@ export class Bridge {
                     await providers.setModel(providers.defaultId, message.model);
                     return;
                 }
+                case 'provider.machines': {
+                    const provider = this.#provider();
+                    client.send({
+                        type: 'provider.machines',
+                        provider: provider.id,
+                        ...((await provider.listMachines?.()) ?? { machines: [] }),
+                    });
+                    return;
+                }
+                case 'machine.select': {
+                    const { providers } = this.#options;
+                    await providers.setMachine(providers.defaultId, message.machine);
+                    return;
+                }
                 case 'thread.reply':
                     await this.#reply(message);
                     return;
@@ -287,6 +301,7 @@ export class Bridge {
                 }),
                 attachments: message.attachments,
                 model: this.#options.providers.modelFor(provider.id),
+                machine: this.#options.providers.machineFor(provider.id),
             });
             this.#update(thread.id, current => ({
                 ...current,
@@ -387,6 +402,7 @@ export class Bridge {
                 text,
                 attachments,
                 model: this.#options.providers.modelFor(provider.id),
+                machine: this.#options.providers.machineFor(provider.id),
             });
             for (const { thread } of drafts) {
                 this.#draftAttachments.delete(thread.id);
@@ -649,10 +665,12 @@ export class Bridge {
     #settings(): ProjectSettings {
         const { providers } = this.#options;
         const model = providers.modelFor(providers.defaultId);
+        const machine = providers.machineFor(providers.defaultId);
         return {
             provider: providers.defaultId,
             providers: providers.choices,
             ...(model ? { model } : {}),
+            ...(machine ? { machine } : {}),
             batch: providers.batch,
             ruler: providers.ruler,
             context: providers.context,

@@ -330,6 +330,40 @@ test('picks the agent and model new threads run on', async ({ page }) => {
     await expect(toggle).toHaveText('GPT Test');
 });
 
+test('runs a new thread on a machine T3 Code links to', async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    await page.getByRole('heading', { level: 1 }).click();
+    const composer = overlay(page).locator('.composer');
+    const machine = composer.locator('.machine-toggle');
+    await expect(machine).toHaveText('Studio');
+    await machine.click();
+    // An expired link is shown but can't be picked.
+    await expect(composer.getByRole('option', { name: /VPS/ })).toBeDisabled();
+    await composer.getByRole('option', { name: 'MacBook Pro' }).click();
+    await expect(machine).toHaveText('MacBook Pro');
+    // That machine runs its own default model, so the model picker steps aside.
+    await expect(composer.locator('.model-toggle')).toHaveCount(0);
+    await expect(composer.locator('.hint')).toContainText('on MacBook Pro');
+
+    const input = composer.locator('textarea');
+    await input.fill('Make the heading bolder');
+    await input.press('Enter');
+    const thread = overlay(page).locator('.thread');
+    await expect(thread.locator('.message-assistant')).toContainText('Updated it.', {
+        timeout: 15_000,
+    });
+
+    // Back to this machine for the tests after this one.
+    await thread.getByTitle('Close (Esc)').click();
+    await page.keyboard.press('c');
+    await page.getByRole('heading', { level: 1 }).click();
+    await machine.click();
+    await composer.getByRole('option', { name: /^Studio/ }).click();
+    await expect(machine).toHaveText('Studio');
+    await expect(composer.locator('.model-toggle')).toBeVisible();
+});
+
 test('queues several comments and sends them as one thread', async ({ page }) => {
     await openPlayground(page);
     const composer = overlay(page).locator('.composer');
