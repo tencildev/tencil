@@ -231,6 +231,13 @@ export class Bridge {
                     throw new Error("Preferences aren't saved here");
                 case 'project.choices':
                     throw new Error("Projects can't be switched here");
+                case 'voice.transcribe':
+                    client.send({
+                        type: 'voice.failed',
+                        id: message.id,
+                        message: "Voice input isn't available here",
+                    });
+                    return;
             }
         } catch (error) {
             const threadId = 'threadId' in message ? message.threadId : undefined;

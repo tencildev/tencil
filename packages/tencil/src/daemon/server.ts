@@ -10,6 +10,7 @@ import {
     type ProjectSource,
     type Provider,
     type ServerMessage,
+    VoiceTranscribe,
 } from '@tencildev/protocol';
 import {
     ClaudeCodeProvider,
@@ -38,7 +39,7 @@ import {
 } from '@tencildev/provider-t3code';
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
-import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
+import { machineProvider, PROVIDER_OPTIONS, type ProviderName, readSettings } from './agents.ts';
 import { AllowedOrigins, approvableOrigin } from './allowed-origins.ts';
 import { APPROVAL_HEADERS, allowedPage, confirmPage, errorPage } from './approval-page.ts';
 import { FileGlobalContext } from './global-context.ts';
@@ -48,10 +49,18 @@ import { FileProjectSettings, projectSettingsPath } from './project-settings.ts'
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
 import { defaultDataDir, FileThreadStore } from './thread-store.ts';
 import { type UpdateOptions, Updater } from './updates.ts';
+import { findWhisper, type Transcribe, whisperTranscriber } from './whisper.ts';
 
 export const DEFAULT_PORT = 4747;
 /** Screenshots ride along as data URLs. */
 const MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
+
+/** What voice input runs on: Whisper on this machine, if it's set up. */
+export interface Voice {
+    transcribe?: Transcribe;
+    /** Why there's no voice input although part of Whisper is here. */
+    hint?: string;
+}
 
 export interface DaemonOptions {
     port?: number;
@@ -93,6 +102,8 @@ export interface DaemonOptions {
     cli?: string;
     /** Update checks and the overlay's Update button (fakes in tests). */
     updates?: UpdateOptions;
+    /** Voice input; found on the machine by default (fakes in tests). */
+    voice?: () => Promise<Voice>;
 }
 
 export interface ProjectStatus {
@@ -169,6 +180,17 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const preferences = new FilePreferences(preferencesPath(dataDir));
     const globalContext = new FileGlobalContext(dataDir);
     const globalContextLoaded = globalContext.load();
+    // Looked up per page, so installing Whisper or a model needs no restart.
+    const findVoice =
+        options.voice ??
+        (async (): Promise<Voice> => {
+            const { whisperModel } = await readSettings(dataDir);
+            const found = findWhisper({ dataDir, model: whisperModel });
+            return {
+                transcribe: found.whisper && whisperTranscriber(found.whisper),
+                hint: found.hint,
+            };
+        });
 
     const claudeCodeDir = join(dataDir, 'claude-code');
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
@@ -404,6 +426,35 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         void preferences
             .load()
             .then(saved => client.send({ type: 'preferences', preferences: saved }));
+        const pageVoice = findVoice().catch((): Voice => ({}));
+        void pageVoice.then(found =>
+            client.send({
+                type: 'voice',
+                available: found.transcribe !== undefined,
+                ...(found.hint && { hint: found.hint }),
+            }),
+        );
+
+        // One clip at a time per page; Whisper keeps every core busy.
+        let transcribing = false;
+        const transcribe = async (id: string, audio: string) => {
+            if (transcribing) {
+                return client.send({ type: 'voice.failed', id, message: 'Still transcribing' });
+            }
+            transcribing = true;
+            try {
+                const { transcribe: run } = await pageVoice;
+                if (!run) throw new Error('Voice input needs Whisper on this machine');
+                const text = await run(Buffer.from(audio, 'base64'));
+                client.send({ type: 'voice.transcript', id, text });
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : String(error);
+                log(`Voice input failed: ${reason}`);
+                client.send({ type: 'voice.failed', id, message: reason });
+            } finally {
+                transcribing = false;
+            }
+        };
 
         const attach = async (root: string, hello: unknown) => {
             detach?.();
@@ -449,6 +500,12 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 for (const other of wss.clients) {
                     if (other.readyState === WebSocket.OPEN) other.send(update);
                 }
+                return;
+            }
+            if (message.type === 'voice.transcribe') {
+                const { id, audio } = VoiceTranscribe.parse(raw);
+                // Not queued: a long clip mustn't hold up the page's other messages.
+                void transcribe(id, audio);
                 return;
             }
             if (message.type === 'project.select' && message.root) {

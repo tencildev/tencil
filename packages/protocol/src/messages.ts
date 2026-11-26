@@ -90,6 +90,18 @@ export type Preferences = z.infer<typeof Preferences>;
 
 /* ----------------------------- overlay → bridge ----------------------------- */
 
+/** About two minutes of 16 kHz mono WAV, base64-encoded. */
+export const VOICE_AUDIO_MAX = 8 * 1024 * 1024;
+
+/** A recorded clip for the local daemon to turn into text (`voice.transcript`). */
+export const VoiceTranscribe = z.object({
+    type: z.literal('voice.transcribe'),
+    /** Client-generated, to match the answer. */
+    id: z.string().min(1).max(64),
+    /** 16 kHz mono 16-bit WAV, base64-encoded. */
+    audio: z.string().min(1).max(VOICE_AUDIO_MAX),
+});
+
 /** The longest instructions a user can save to go with every pin. */
 export const CONTEXT_MAX = 10_000;
 
@@ -176,6 +188,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     z.object({ type: z.literal('update.start') }),
     /** Save some preferences on this machine (local daemon only); unnamed ones stay. */
     z.object({ type: z.literal('preferences.update'), preferences: Preferences }),
+    /** Local daemon only. */
+    VoiceTranscribe,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 export type ClientMessageInput = z.input<typeof ClientMessage>;
@@ -259,6 +273,14 @@ export type ServerMessage =
     | { type: 'project.source'; source: ProjectSource }
     /** Local daemon only: the saved preferences, on connect and whenever they change. */
     | { type: 'preferences'; preferences: Preferences }
+    /**
+     * Local daemon only, on connect: whether it can turn speech into text (Whisper
+     * is set up), and what's missing when Whisper is only partly there.
+     */
+    | { type: 'voice'; available: boolean; hint?: string }
+    /** The answer to `voice.transcribe`. */
+    | { type: 'voice.transcript'; id: string; text: string }
+    | { type: 'voice.failed'; id: string; message: string }
     /** Tencil Cloud: sign in first (no token, or one it no longer accepts). */
     | { type: 'auth.required'; signIn: CloudSignIn; reason?: string }
     | { type: 'provider.status'; provider: ProviderInfo }

@@ -26,6 +26,8 @@ const SettingsFile = z.object({
     provider: z.enum(PROVIDERS).optional(),
     /** Instructions that go with every pin of every project. */
     context: z.string().optional(),
+    /** The Whisper model voice input uses: a ggml file, or an openai-whisper model name. */
+    whisperModel: z.string().optional(),
 });
 type MachineSettings = Omit<z.infer<typeof SettingsFile>, 'version'>;
 

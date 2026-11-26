@@ -173,6 +173,7 @@ is running when the daemon stops is lost; the pin turns red and you can follow u
 | --- | --- |
 | Comment mode | <kbd>C</kbd> or the toolbar button |
 | Pin a prompt | Click an element, type, <kbd>Enter</kbd> |
+| Dictate | The mic in the composer or a reply, when [Whisper](#voice-input) is set up |
 | Cancel | <kbd>Esc</kbd> |
 | Follow up | Open a pin and reply; the same agent thread continues |
 | Continue an existing thread | In the composer, switch **→ New thread** to any thread in the project; the element becomes its next message |
@@ -185,6 +186,21 @@ is running when the daemon stops is lost; the pin turns red and you can follow u
 
 Pins show their state: spinning while the agent works, blue when done, amber when
 the agent waits for approval, red on errors, grey once resolved.
+
+### Voice input
+
+With Whisper on your machine, the composer gets a mic. Click it, talk, click
+again: the browser records, and the daemon transcribes with your Whisper, so the
+audio never leaves the machine. <kbd>Esc</kbd> throws a recording away. Tencil
+never installs Whisper; without it there's no mic.
+
+- **whisper.cpp** (`brew install whisper-cpp`): `whisper-cli` and a ggml model.
+  Put a model such as `ggml-large-v3-turbo.bin` in `~/.config/tencil/whisper`, or
+  set `"whisperModel": "/path/to/ggml-….bin"` in `~/.config/tencil/settings.json`.
+- **openai-whisper** (`pip install openai-whisper`): the `whisper` command, with
+  its own default model, or the one named in `whisperModel` (e.g. `"turbo"`).
+
+The language is detected from what you say.
 
 ## CLI
 

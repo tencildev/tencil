@@ -85,6 +85,8 @@ async function setup(
         resolveProject: async pageUrl => byPort[new URL(pageUrl).port],
         // No registry requests unless a test brings its own.
         updates: { check: false },
+        // Nor this machine's Whisper.
+        voice: async () => ({}),
         ...options,
     });
     cleanup.push(async () => {
@@ -588,5 +590,53 @@ describe('Ensemble', () => {
         expect(ensemble.callsOf('POST', `threads/${thread.id}/chats`)).toEqual([
             expect.objectContaining({ prompt: expect.stringContaining('Tighten the hero') }),
         ]);
+    });
+});
+
+describe('voice input', () => {
+    it('says Whisper is missing, and refuses clips then', async () => {
+        const { daemon } = await setup({
+            voice: async () => ({ hint: 'Voice input needs a whisper.cpp model.' }),
+        });
+        const page = await connectPage(daemon, 'http://localhost:3001/');
+        await waitFor(() => page.received.some(m => m.type === 'voice'));
+        expect(page.received.find(m => m.type === 'voice')).toEqual({
+            type: 'voice',
+            available: false,
+            hint: 'Voice input needs a whisper.cpp model.',
+        });
+        page.send({ type: 'voice.transcribe', id: 'clip-1', audio: 'UklGRg==' });
+        await waitFor(() => page.received.some(m => m.type === 'voice.failed'));
+        expect(page.received.find(m => m.type === 'voice.failed')).toMatchObject({ id: 'clip-1' });
+    });
+
+    it('turns a clip into text on the machine', async () => {
+        const clips: string[] = [];
+        const { daemon } = await setup({
+            voice: async () => ({
+                transcribe: async wav => {
+                    clips.push(wav.toString());
+                    return 'Make the button blue';
+                },
+            }),
+        });
+        const page = await connectPage(daemon, 'http://localhost:3001/');
+        await waitFor(() => page.received.some(m => m.type === 'voice'));
+        expect(page.received.find(m => m.type === 'voice')).toEqual({
+            type: 'voice',
+            available: true,
+        });
+        page.send({
+            type: 'voice.transcribe',
+            id: 'clip-1',
+            audio: Buffer.from('RIFF clip').toString('base64'),
+        });
+        await waitFor(() => page.received.some(m => m.type === 'voice.transcript'));
+        expect(page.received.find(m => m.type === 'voice.transcript')).toEqual({
+            type: 'voice.transcript',
+            id: 'clip-1',
+            text: 'Make the button blue',
+        });
+        expect(clips).toEqual(['RIFF clip']);
     });
 });

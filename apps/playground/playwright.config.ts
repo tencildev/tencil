@@ -1,6 +1,6 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const FAKE_T3_PORT = 47390;
@@ -9,6 +9,10 @@ const APP_PORT = 5190;
 const FAKE_REGISTRY_PORT = 47392;
 // Fresh credentials and pin store per run, so local state never leaks in.
 const configHome = mkdtempSync(join(tmpdir(), 'tencil-e2e-'));
+// Voice input: a stand-in whisper-cli on the PATH and a model file for it to "load".
+mkdirSync(join(configHome, 'tencil', 'whisper'), { recursive: true });
+writeFileSync(join(configHome, 'tencil', 'whisper', 'ggml-base.bin'), '');
+const fakeWhisperBin = resolve(import.meta.dirname, 'e2e', 'bin');
 
 export default defineConfig({
     testDir: 'e2e',
@@ -20,6 +24,11 @@ export default defineConfig({
         baseURL: `http://localhost:${APP_PORT}`,
         trace: 'retain-on-failure',
         ...devices['Desktop Chrome'],
+        // A fake microphone (a beep), allowed without asking.
+        permissions: ['microphone'],
+        launchOptions: {
+            args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+        },
     },
     webServer: [
         {
@@ -43,6 +52,7 @@ export default defineConfig({
                 TENCIL_T3_URL: `http://127.0.0.1:${FAKE_T3_PORT}`,
                 TENCIL_T3_TOKEN: 'test-token',
                 XDG_CONFIG_HOME: configHome,
+                PATH: `${fakeWhisperBin}${delimiter}${process.env.PATH ?? ''}`,
                 // Update checks go to the fake registry, on CI too.
                 TENCIL_REGISTRY_URL: `http://127.0.0.1:${FAKE_REGISTRY_PORT}`,
                 CI: '',

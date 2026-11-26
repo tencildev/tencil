@@ -239,6 +239,31 @@ test('cancels comment mode with Escape without touching the page', async ({ page
     await expect(overlay(page).locator('.tool-active')).toHaveCount(0);
 });
 
+test('dictates a comment through Whisper on the machine', async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Choose Pro' }).click();
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.fill('Hi.');
+
+    // Chromium's fake microphone beeps; the stand-in whisper-cli checks it got a WAV.
+    const mic = overlay(page).locator('.composer .mic');
+    await mic.click();
+    await expect(mic).toHaveAttribute('aria-pressed', 'true');
+    await page.waitForTimeout(800);
+    await mic.click();
+    await expect(composer).toHaveValue('Hi. Make the title purple.', { timeout: 10_000 });
+    await expect(mic).toHaveAttribute('aria-pressed', 'false');
+
+    // Escape throws a recording away and keeps the composer open.
+    await mic.click();
+    await expect(mic).toHaveAttribute('aria-pressed', 'true');
+    await composer.press('Escape');
+    await expect(mic).toHaveAttribute('aria-pressed', 'false');
+    await expect(composer).toHaveValue('Hi. Make the title purple.');
+});
+
 test('comments on a disabled button, which gets no click', async ({ page }) => {
     await openPlayground(page);
     await page.keyboard.press('c');

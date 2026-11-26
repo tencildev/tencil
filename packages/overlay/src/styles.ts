@@ -401,7 +401,20 @@ kbd {
 .prompt-input textarea::placeholder { color: var(--n-500); }
 .prompt-input textarea:disabled { opacity: 0.6; }
 .prompt-actions { display: flex; align-items: center; justify-content: space-between; }
-.prompt-extras { display: flex; gap: 4px; }
+.prompt-extras { display: flex; gap: 4px; margin-right: auto; }
+.mic {
+  width: 26px; height: 26px; border-radius: 999px; margin-right: 4px;
+  display: grid; place-items: center;
+  color: var(--n-500);
+  transition: color 150ms ease, background-color 150ms ease, transform 160ms var(--ease-out);
+}
+.mic:disabled { opacity: 0.4; cursor: default; }
+.mic:not(:disabled):active { transform: var(--press); }
+.mic-recording { color: white; background: var(--error); animation: mic-pulse 1.6s ease-in-out infinite; }
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--error) 45%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--error) 0%, transparent); }
+}
 .send {
   width: 26px; height: 26px; border-radius: 999px;
   display: grid; place-items: center;
@@ -979,7 +992,7 @@ kbd {
   .tool:not(.tool-active):hover { background: rgba(255, 255, 255, 0.08); color: white; }
   .icon-button:hover { background: var(--n-100); color: var(--n-950); }
   .divider:hover::before { background: rgba(255, 255, 255, 0.35); }
-  .toggle:hover, .stop:hover { background: var(--n-100); }
+  .toggle:hover, .stop:hover, .mic:not(:disabled):not(.mic-recording):hover { background: var(--n-100); }
   .inbox-item:hover { background: var(--n-100); }
   .project-picker-option:hover { background: rgba(255, 255, 255, 0.08); }
   .composer-provider:hover, .target-option:hover { background: var(--n-100); color: var(--n-950); }
@@ -994,7 +1007,7 @@ kbd {
 /* Reduced motion keeps fades (they aid comprehension) but drops movement. */
 @media (prefers-reduced-motion: reduce) {
   .popover, .inbox, .toast, .toolbar-hint, .settings-panel, .message-user, .pin-body,
-  .tool, .icon-button, .toggle, .stop, .send, .segmented button, .inbox-item {
+  .tool, .icon-button, .toggle, .stop, .send, .mic, .segmented button, .inbox-item {
     transition-property: opacity, background-color, color;
   }
   .w { animation: none; }
@@ -1002,6 +1015,6 @@ kbd {
   .pin-draft::before, .pin-resolving::before, .pin-draft .pin-body::before, .pin-shine { display: none; }
   @keyframes pin-bloom { from { opacity: 0; } }
   @keyframes pin-dissolve { to { opacity: 0; } }
-  .shimmer > span[aria-hidden], .status-ping, .live-dot { animation: none; }
+  .shimmer > span[aria-hidden], .status-ping, .live-dot, .mic-recording { animation: none; }
 }
 `;
