@@ -12,6 +12,7 @@ import type {
     ServerMessage,
     Thread,
     UpdateStatus,
+    VoiceStatus,
 } from '@tencildev/protocol';
 import { forgetToken, signInRequired, storedToken, viewer } from './cloud-auth.ts';
 import { newId } from './id.ts';
@@ -37,10 +38,11 @@ export const update = signal<UpdateStatus | null>(null);
  */
 export const preferences = signal<Preferences | null>(null);
 /**
- * Whether the daemon can turn speech into text: Whisper is set up on the machine.
- * Null until it says, and on Tencil Cloud, which has no voice input.
+ * Voice input on this machine: whether Whisper is set up and switched on, and
+ * its model and language. Null until the daemon says, and on Tencil Cloud,
+ * which has no voice input.
  */
-export const voice = signal<{ available: boolean; hint?: string } | null>(null);
+export const voice = signal<VoiceStatus | null>(null);
 /** The version the daemon ran before an update from this page restarted it. */
 export const updatedFrom = signal<string | null>(null);
 export const threads = signal<ReadonlyMap<string, Thread>>(new Map());
@@ -267,7 +269,7 @@ function handle(message: ServerMessage): void {
             update.value = message.update;
             return;
         case 'voice':
-            voice.value = { available: message.available, hint: message.hint };
+            voice.value = message.voice;
             return;
         case 'voice.transcript':
             settleTranscription(message.id, { text: message.text });

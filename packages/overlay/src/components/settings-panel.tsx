@@ -28,6 +28,7 @@ import { AgentIcon } from './agent-icons.tsx';
 import { CloseIcon, LayersIcon, RulerIcon, TencilLogo } from './icons.tsx';
 import { ProjectOverview } from './project-overview.tsx';
 import { ShortcutsPage } from './shortcuts-page.tsx';
+import { VoicePage } from './voice-page.tsx';
 
 interface Page {
     id: SettingsSection;
@@ -55,6 +56,8 @@ export function SettingsPanel() {
         { id: 'appearance', label: 'Appearance' },
         { id: 'shortcuts', label: 'Shortcuts' },
         { id: 'dock', label: 'Dock' },
+        // Whisper runs on the daemon's machine; Tencil Cloud has none.
+        ...(isCloud() ? [] : [{ id: 'voice', label: 'Voice' } as const]),
         ...(viewer.value ? [{ id: 'account', label: 'Account' } as const] : []),
     ];
     const tencilPages: Page[] = isCloud() ? [] : [{ id: 'about', label: 'About' }];
@@ -209,6 +212,8 @@ function scope(id: SettingsSection): string {
                 : 'Saved on this computer, for all your projects';
         case 'dock':
             return 'Saved in this browser, for this site';
+        case 'voice':
+            return 'Saved on this computer, for all your projects';
         case 'account':
             return 'Saved in this browser';
         default:
@@ -232,6 +237,8 @@ function PageContent({ id }: { id: SettingsSection }) {
             return <ShortcutsPage />;
         case 'dock':
             return <DockPage />;
+        case 'voice':
+            return <VoicePage />;
         case 'account':
             return <AccountPage />;
         default:
@@ -501,7 +508,7 @@ function AccountPage() {
     );
 }
 
-function SwitchRow({
+export function SwitchRow({
     label,
     help,
     checked,
@@ -545,7 +552,7 @@ function useDialogFocus(panel: { current: HTMLElement | null }): void {
 function trapTab(event: KeyboardEvent, panel: HTMLElement): void {
     const focusable = [
         ...panel.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
         ),
     ].filter(element => element.tabIndex >= 0);
     const first = focusable[0];

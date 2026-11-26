@@ -88,6 +88,39 @@ export const Preferences = z.object({
 });
 export type Preferences = z.infer<typeof Preferences>;
 
+/* ---------------------------------- voice ---------------------------------- */
+
+/** `auto`, or the code of the language people speak, e.g. `nl`. */
+export const VoiceLanguage = z.string().regex(/^(auto|[a-z]{2,3})$/);
+
+/** Voice input on this machine, as the settings page shows it (local daemon only). */
+export interface VoiceStatus {
+    /** The mic works: Whisper is set up and voice input is on. */
+    available: boolean;
+    /** Switched on in settings (the default). */
+    enabled: boolean;
+    /** The Whisper that runs, when one is set up. */
+    engine?: 'whisper.cpp' | 'openai-whisper';
+    /** The model in use, one of `models`; unset is the engine's own default. */
+    model?: string;
+    /** Models to pick from: ggml files found, or openai-whisper's model names. */
+    models: Array<{ id: string; label: string }>;
+    /** `TENCIL_WHISPER_MODEL` picked the model, so it can't be changed here. */
+    modelLocked?: boolean;
+    language: string;
+    /** What's missing, when Whisper is only partly set up. */
+    hint?: string;
+}
+
+/** Change voice input on this machine (local daemon only); a null model goes back to the default. */
+export const VoiceUpdate = z.object({
+    type: z.literal('voice.update'),
+    enabled: z.boolean().optional(),
+    /** One of the status's `models`. */
+    model: z.string().min(1).max(4096).nullable().optional(),
+    language: VoiceLanguage.optional(),
+});
+
 /* ----------------------------- overlay → bridge ----------------------------- */
 
 /** About two minutes of 16 kHz mono WAV, base64-encoded. */
@@ -190,6 +223,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
     z.object({ type: z.literal('preferences.update'), preferences: Preferences }),
     /** Local daemon only. */
     VoiceTranscribe,
+    VoiceUpdate,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 export type ClientMessageInput = z.input<typeof ClientMessage>;
@@ -273,11 +307,8 @@ export type ServerMessage =
     | { type: 'project.source'; source: ProjectSource }
     /** Local daemon only: the saved preferences, on connect and whenever they change. */
     | { type: 'preferences'; preferences: Preferences }
-    /**
-     * Local daemon only, on connect: whether it can turn speech into text (Whisper
-     * is set up), and what's missing when Whisper is only partly there.
-     */
-    | { type: 'voice'; available: boolean; hint?: string }
+    /** Local daemon only: voice input on this machine, on connect and whenever it changes. */
+    | { type: 'voice'; voice: VoiceStatus }
     /** The answer to `voice.transcribe`. */
     | { type: 'voice.transcript'; id: string; text: string }
     | { type: 'voice.failed'; id: string; message: string }

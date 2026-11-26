@@ -41,6 +41,7 @@ export type SettingsSection =
     | 'appearance'
     | 'shortcuts'
     | 'dock'
+    | 'voice'
     | 'account'
     | 'about';
 /** The settings page last looked at; settings reopen on it. */

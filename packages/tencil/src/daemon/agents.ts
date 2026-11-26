@@ -28,6 +28,10 @@ const SettingsFile = z.object({
     context: z.string().optional(),
     /** The Whisper model voice input uses: a ggml file, or an openai-whisper model name. */
     whisperModel: z.string().optional(),
+    /** The language people dictate in, or `auto`. */
+    whisperLanguage: z.string().optional(),
+    /** Voice input switched off in the overlay's settings. */
+    voice: z.boolean().optional(),
 });
 type MachineSettings = Omit<z.infer<typeof SettingsFile>, 'version'>;
 

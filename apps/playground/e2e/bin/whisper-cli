@@ -9,4 +9,6 @@ if [ "$(head -c 4 "$file")" != "RIFF" ] || [ "$(wc -c < "$file")" -le 1000 ]; th
     echo "not a recording: $file" >&2
     exit 1
 fi
+# Long enough for the test to see "Transcribing…".
+sleep 1
 printf '\n Make the title purple.\n'

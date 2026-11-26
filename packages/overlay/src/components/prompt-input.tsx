@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { lastError, transcribe, voice } from '../lib/connection.ts';
 import { canRecord, insertText, type Recording, startRecording } from '../lib/voice.ts';
+import { DictationStatus } from './dictation-status.tsx';
 import { ArrowUpIcon, MicIcon, StopIcon } from './icons.tsx';
 
 interface Props {
@@ -109,8 +110,9 @@ export function PromptInput({
         setDictation('idle');
     };
     const voiceStatus = voice.value;
+    // Switched off in settings: no mic. Whisper only partly set up: a disabled one that says why.
     const showMic =
-        voiceStatus !== null && (voiceStatus.available || voiceStatus.hint) && canRecord();
+        voiceStatus?.enabled && (voiceStatus.available || voiceStatus.hint) && canRecord();
 
     const canSend = text.trim().length > 0 && !disabled && !busy && dictation === 'idle';
     const submit = async () => {
@@ -121,7 +123,7 @@ export function PromptInput({
     };
 
     return (
-        <div class="prompt-input">
+        <div class={`prompt-input${dictation === 'recording' ? ' prompt-input-recording' : ''}`}>
             <textarea
                 ref={ref}
                 rows={1}
@@ -141,6 +143,9 @@ export function PromptInput({
                     }
                 }}
             />
+            {(dictation === 'recording' || dictation === 'transcribing') && (
+                <DictationStatus state={dictation} recording={recording} />
+            )}
             <div class="prompt-actions">
                 <div class="prompt-extras">{children}</div>
                 {showMic && (

@@ -191,16 +191,20 @@ the agent waits for approval, red on errors, grey once resolved.
 
 With Whisper on your machine, the composer gets a mic. Click it, talk, click
 again: the browser records, and the daemon transcribes with your Whisper, so the
-audio never leaves the machine. <kbd>Esc</kbd> throws a recording away. Tencil
-never installs Whisper; without it there's no mic.
+audio never leaves the machine. While you talk the box shows a level meter and
+the time; <kbd>Esc</kbd> throws a recording away. Tencil never installs Whisper;
+without it there's no mic.
 
-- **whisper.cpp** (`brew install whisper-cpp`): `whisper-cli` and a ggml model.
-  Put a model such as `ggml-large-v3-turbo.bin` in `~/.config/tencil/whisper`, or
-  set `"whisperModel": "/path/to/ggml-….bin"` in `~/.config/tencil/settings.json`.
-- **openai-whisper** (`pip install openai-whisper`): the `whisper` command, with
-  its own default model, or the one named in `whisperModel` (e.g. `"turbo"`).
+- **whisper.cpp** (`brew install whisper-cpp`): `whisper-cli` and a ggml model,
+  such as `ggml-large-v3-turbo.bin`, in `~/.config/tencil/whisper` or the usual
+  whisper.cpp model folders.
+- **openai-whisper** (`pip install openai-whisper`): the `whisper` command.
 
-The language is detected from what you say.
+**Settings → Voice** shows which Whisper runs, switches voice input off, and
+picks the model and the language (automatic by default). Those choices are saved
+in `~/.config/tencil/settings.json` (`voice`, `whisperModel`, `whisperLanguage`)
+and apply right away. `TENCIL_WHISPER_MODEL` overrides the model for a daemon
+started with it.
 
 ## CLI
 

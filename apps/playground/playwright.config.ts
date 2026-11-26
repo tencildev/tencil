@@ -11,7 +11,9 @@ const FAKE_REGISTRY_PORT = 47392;
 const configHome = mkdtempSync(join(tmpdir(), 'tencil-e2e-'));
 // Voice input: a stand-in whisper-cli on the PATH and a model file for it to "load".
 mkdirSync(join(configHome, 'tencil', 'whisper'), { recursive: true });
-writeFileSync(join(configHome, 'tencil', 'whisper', 'ggml-base.bin'), '');
+for (const model of ['ggml-base.bin', 'ggml-small.bin']) {
+    writeFileSync(join(configHome, 'tencil', 'whisper', model), '');
+}
 const fakeWhisperBin = resolve(import.meta.dirname, 'e2e', 'bin');
 
 export default defineConfig({

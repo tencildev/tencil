@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +19,9 @@ import { cliIn } from '../service/autostart.ts';
 import type { Installer, UpdatePlan } from '../service/self-update.ts';
 import { VERSION } from '../version.ts';
 import { type Daemon, type DaemonOptions, startDaemon } from './server.ts';
+import { type Transcribe, type VoiceSettings, voiceFrom } from './whisper.ts';
+
+const noTranscriber = (): Transcribe => () => Promise.reject(new Error('No Whisper'));
 
 const FAST = { httpMs: 300, rpcMs: 2_000, retryMinMs: 20, retryMaxMs: 100 };
 const CONTEXT = {
@@ -86,7 +89,7 @@ async function setup(
         // No registry requests unless a test brings its own.
         updates: { check: false },
         // Nor this machine's Whisper.
-        voice: async () => ({}),
+        voice: async settings => voiceFrom({}, settings, noTranscriber),
         ...options,
     });
     cleanup.push(async () => {
@@ -594,15 +597,45 @@ describe('Ensemble', () => {
 });
 
 describe('voice input', () => {
+    const MODELS = ['/models/ggml-base.bin', '/models/ggml-small.bin'];
+    /** As if whisper.cpp with two models were installed; records what it heard. */
+    const whisperCpp =
+        (heard: string[] = []) =>
+        async (settings: VoiceSettings) =>
+            voiceFrom(
+                {
+                    whisper: {
+                        kind: 'whisper.cpp',
+                        command: 'whisper-cli',
+                        model: settings.model ?? MODELS[0]!,
+                        models: MODELS,
+                    },
+                },
+                settings,
+                whisper => async wav => {
+                    heard.push(`${whisper.model} ${settings.language} ${wav}`);
+                    return 'Make the button blue';
+                },
+            );
+    const voiceOf = (received: ServerMessage[]) =>
+        received.filter(m => m.type === 'voice').at(-1)?.voice;
+
     it('says Whisper is missing, and refuses clips then', async () => {
         const { daemon } = await setup({
-            voice: async () => ({ hint: 'Voice input needs a whisper.cpp model.' }),
+            voice: async settings =>
+                voiceFrom(
+                    { hint: 'Voice input needs a whisper.cpp model.' },
+                    settings,
+                    noTranscriber,
+                ),
         });
         const page = await connectPage(daemon, 'http://localhost:3001/');
-        await waitFor(() => page.received.some(m => m.type === 'voice'));
-        expect(page.received.find(m => m.type === 'voice')).toEqual({
-            type: 'voice',
+        await waitFor(() => voiceOf(page.received) !== undefined);
+        expect(voiceOf(page.received)).toEqual({
             available: false,
+            enabled: true,
+            language: 'auto',
+            models: [],
             hint: 'Voice input needs a whisper.cpp model.',
         });
         page.send({ type: 'voice.transcribe', id: 'clip-1', audio: 'UklGRg==' });
@@ -611,20 +644,20 @@ describe('voice input', () => {
     });
 
     it('turns a clip into text on the machine', async () => {
-        const clips: string[] = [];
-        const { daemon } = await setup({
-            voice: async () => ({
-                transcribe: async wav => {
-                    clips.push(wav.toString());
-                    return 'Make the button blue';
-                },
-            }),
-        });
+        const heard: string[] = [];
+        const { daemon } = await setup({ voice: whisperCpp(heard) });
         const page = await connectPage(daemon, 'http://localhost:3001/');
-        await waitFor(() => page.received.some(m => m.type === 'voice'));
-        expect(page.received.find(m => m.type === 'voice')).toEqual({
-            type: 'voice',
+        await waitFor(() => voiceOf(page.received) !== undefined);
+        expect(voiceOf(page.received)).toEqual({
             available: true,
+            enabled: true,
+            engine: 'whisper.cpp',
+            language: 'auto',
+            model: MODELS[0],
+            models: [
+                { id: MODELS[0], label: 'base' },
+                { id: MODELS[1], label: 'small' },
+            ],
         });
         page.send({
             type: 'voice.transcribe',
@@ -637,6 +670,43 @@ describe('voice input', () => {
             id: 'clip-1',
             text: 'Make the button blue',
         });
-        expect(clips).toEqual(['RIFF clip']);
+        expect(heard).toEqual([`${MODELS[0]} auto RIFF clip`]);
+    });
+
+    it('saves the model, language and switch on the machine, for every tab', async () => {
+        const heard: string[] = [];
+        const dataDir = tmp('tencil-voice-data-');
+        const { daemon } = await setup({ dataDir, voice: whisperCpp(heard) });
+        const page = await connectPage(daemon, 'http://localhost:3001/');
+        const other = await connectPage(daemon, 'http://localhost:3002/');
+        await waitFor(() => voiceOf(other.received) !== undefined);
+
+        page.send({ type: 'voice.update', model: MODELS[1], language: 'nl' });
+        await waitFor(() => voiceOf(other.received)?.language === 'nl');
+        expect(voiceOf(other.received)).toMatchObject({ model: MODELS[1], available: true });
+        expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toMatchObject({
+            whisperModel: MODELS[1],
+            whisperLanguage: 'nl',
+        });
+        page.send({ type: 'voice.transcribe', id: 'clip-1', audio: 'UklGRg==' });
+        await waitFor(() => heard.length === 1);
+        expect(heard).toEqual([`${MODELS[1]} nl RIFF`]);
+
+        // Only models Tencil found.
+        page.send({ type: 'voice.update', model: '/etc/passwd' });
+        await waitFor(() => page.received.some(m => m.type === 'error'));
+        expect(voiceOf(page.received)?.model).toBe(MODELS[1]);
+
+        page.send({ type: 'voice.update', enabled: false, model: null, language: 'auto' });
+        await waitFor(() => voiceOf(page.received)?.enabled === false);
+        expect(voiceOf(page.received)).toMatchObject({
+            available: false,
+            model: MODELS[0],
+            language: 'auto',
+        });
+        const saved = JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'));
+        expect(saved).toMatchObject({ voice: false });
+        expect(saved).not.toHaveProperty('whisperModel');
+        expect(saved).not.toHaveProperty('whisperLanguage');
     });
 });

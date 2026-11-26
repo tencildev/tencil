@@ -3,6 +3,7 @@ import { accessSync, constants, readdirSync, statSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
+import type { VoiceStatus } from '@tencildev/protocol';
 import { defaultDataDir } from './thread-store.ts';
 
 /**
@@ -11,8 +12,8 @@ import { defaultDataDir } from './thread-store.ts';
  * either; voice input only shows up where one is set up.
  */
 export type Whisper =
-    | { kind: 'whisper.cpp'; command: string; model: string }
-    | { kind: 'openai-whisper'; command: string; model?: string };
+    | { kind: 'whisper.cpp'; command: string; model: string; models: string[] }
+    | { kind: 'openai-whisper'; command: string; model?: string; models: string[] };
 
 export interface FindWhisperOptions {
     /** The model saved in `settings.json`; `TENCIL_WHISPER_MODEL` wins over it. */
@@ -28,7 +29,12 @@ export interface WhisperStatus {
     whisper?: Whisper;
     /** Why there's no voice input although part of Whisper is here. */
     hint?: string;
+    /** `TENCIL_WHISPER_MODEL` picked the model, so the saved choice doesn't count. */
+    modelFromEnv?: boolean;
 }
+
+/** openai-whisper's own model names, which it downloads on first use. */
+export const OPENAI_WHISPER_MODELS = ['turbo', 'large', 'medium', 'small', 'base', 'tiny'];
 
 const WHISPER_CPP = ['whisper-cli', 'whisper-cpp'];
 const executable = (name: string) => (process.platform === 'win32' ? `${name}.exe` : name);
@@ -61,21 +67,34 @@ export function findWhisper(options: FindWhisperOptions = {}): WhisperStatus {
         ...(env.PATH ?? '').split(delimiter).filter(Boolean),
         ...(options.extraBins ?? ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local/bin')]),
     ];
-    const chosen = env.TENCIL_WHISPER_MODEL?.trim() || options.model?.trim() || undefined;
+    const fromEnv = env.TENCIL_WHISPER_MODEL?.trim() || undefined;
+    const chosen = fromEnv ?? (options.model?.trim() || undefined);
+    const locked = fromEnv ? { modelFromEnv: true } : {};
 
     const cpp = findCommand(WHISPER_CPP.map(executable), bins);
     if (cpp) {
-        const model = chosen && isFile(chosen) ? chosen : bestModel(modelFolders(home, dataDir));
-        if (model) return { whisper: { kind: 'whisper.cpp', command: cpp, model } };
+        const found = listModels(modelFolders(home, dataDir));
+        const pick = chosen && isFile(chosen) ? chosen : undefined;
+        const models = pick && !found.includes(pick) ? [pick, ...found] : found;
+        const model = pick ?? found[0];
+        if (model) {
+            return { whisper: { kind: 'whisper.cpp', command: cpp, model, models }, ...locked };
+        }
     }
     const python = findCommand([executable('whisper')], bins);
     if (python) {
+        const name = chosen && !/[\\/]/.test(chosen) ? chosen : undefined;
         return {
             whisper: {
                 kind: 'openai-whisper',
                 command: python,
-                ...(chosen && !chosen.includes('/') && { model: chosen }),
+                models:
+                    name && !OPENAI_WHISPER_MODELS.includes(name)
+                        ? [name, ...OPENAI_WHISPER_MODELS]
+                        : OPENAI_WHISPER_MODELS,
+                ...(name && { model: name }),
             },
+            ...locked,
         };
     }
     if (!cpp) return {};
@@ -111,6 +130,11 @@ function isFile(path: string): boolean {
 
 /** The preferred ggml model in these folders, skipping the test models whisper.cpp ships. */
 export function bestModel(folders: string[]): string | undefined {
+    return listModels(folders)[0];
+}
+
+/** The ggml models in these folders, the preferred one first. */
+export function listModels(folders: string[]): string[] {
     const models = folders.flatMap(folder => {
         try {
             return readdirSync(folder)
@@ -127,16 +151,64 @@ export function bestModel(folders: string[]): string | undefined {
         );
         return index === -1 ? MODEL_PREFERENCE.length : index;
     };
-    return models.sort((a, b) => rank(a) - rank(b))[0];
+    return [...new Set(models)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
 export type Transcribe = (wav: Buffer) => Promise<string>;
 
+/** What the overlay's Voice settings saved in `settings.json`. */
+export interface VoiceSettings {
+    enabled: boolean;
+    model?: string;
+    language: string;
+}
+
+/** Voice input as the daemon runs it: how to transcribe, and what settings show. */
+export interface Voice {
+    transcribe?: Transcribe;
+    status: VoiceStatus;
+}
+
+/** Finds Whisper with these settings and says what voice input can do with it. */
+export function machineVoice(settings: VoiceSettings, options: FindWhisperOptions = {}): Voice {
+    const found = findWhisper({ ...options, model: settings.model });
+    return voiceFrom(found, settings, whisper => whisperTranscriber(whisper, settings.language));
+}
+
+export function voiceFrom(
+    found: WhisperStatus,
+    settings: VoiceSettings,
+    transcriber: (whisper: Whisper) => Transcribe,
+): Voice {
+    const { whisper } = found;
+    const status: VoiceStatus = {
+        available: whisper !== undefined && settings.enabled,
+        enabled: settings.enabled,
+        language: settings.language,
+        models: (whisper?.models ?? []).map(id => ({ id, label: modelLabel(id) })),
+        ...(whisper && { engine: whisper.kind }),
+        ...(whisper?.model && { model: whisper.model }),
+        ...(found.modelFromEnv && { modelLocked: true }),
+        ...(found.hint && { hint: found.hint }),
+    };
+    return { status, ...(whisper && settings.enabled && { transcribe: transcriber(whisper) }) };
+}
+
+/** `large-v3-turbo` for `…/ggml-large-v3-turbo.bin`; model names stay as they are. */
+function modelLabel(id: string): string {
+    return basename(id)
+        .replace(/^ggml-/, '')
+        .replace(/\.bin$/, '');
+}
+
 /** The longest a transcription may take; a first openai-whisper run downloads its model. */
 const TIMEOUT_MS = 5 * 60_000;
 
-/** Runs Whisper on a WAV clip and returns what was said. */
-export function whisperTranscriber(whisper: Whisper): Transcribe {
+/**
+ * Runs Whisper on a WAV clip and returns what was said, in `language` (a code
+ * like `nl`), or in whatever language it hears.
+ */
+export function whisperTranscriber(whisper: Whisper, language = 'auto'): Transcribe {
     return async wav => {
         const dir = await mkdtemp(join(tmpdir(), 'tencil-voice-'));
         try {
@@ -149,7 +221,7 @@ export function whisperTranscriber(whisper: Whisper): Transcribe {
                     '--file',
                     file,
                     '--language',
-                    'auto',
+                    language,
                     '--no-timestamps',
                     '--no-prints',
                 ]);
@@ -158,6 +230,7 @@ export function whisperTranscriber(whisper: Whisper): Transcribe {
             await run(whisper.command, [
                 file,
                 ...(whisper.model ? ['--model', whisper.model] : []),
+                ...(language === 'auto' ? [] : ['--language', language]),
                 '--output_format',
                 'txt',
                 '--output_dir',

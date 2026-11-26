@@ -8,6 +8,8 @@ export interface Recording {
     stop(): Promise<string | undefined>;
     /** Stops and throws the clip away. */
     cancel(): void;
+    /** How loud the microphone is right now, from 0 to 1, for a level meter. */
+    level(): number;
 }
 
 /** Can this page record? Needs a secure page (localhost counts) and MediaRecorder. */
@@ -39,8 +41,10 @@ export async function startRecording(onLimit: () => void): Promise<Recording> {
         recorder.addEventListener('stop', () => resolve(), { once: true }),
     );
     const limit = setTimeout(onLimit, MAX_RECORDING_MS);
+    const meter = levelMeter(stream);
     const finish = async () => {
         clearTimeout(limit);
+        meter.close();
         if (recorder.state !== 'inactive') recorder.stop();
         await stopped;
         for (const track of stream.getTracks()) track.stop();
@@ -57,7 +61,31 @@ export async function startRecording(onLimit: () => void): Promise<Recording> {
         cancel() {
             void finish();
         },
+        level: meter.level,
     };
+}
+
+/** Loudness of the stream, read on demand; silent where Web Audio isn't available. */
+function levelMeter(stream: MediaStream): { level: () => number; close: () => void } {
+    try {
+        const context = new AudioContext();
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 512;
+        context.createMediaStreamSource(stream).connect(analyser);
+        const samples = new Float32Array(analyser.fftSize);
+        return {
+            level: () => {
+                analyser.getFloatTimeDomainData(samples);
+                let sum = 0;
+                for (const sample of samples) sum += sample * sample;
+                // Speech sits around 0.02–0.2 RMS; stretch that over the meter.
+                return Math.min(1, Math.sqrt(sum / samples.length) * 6);
+            },
+            close: () => void context.close(),
+        };
+    } catch {
+        return { level: () => 0, close: () => {} };
+    }
 }
 
 function microphoneError(error: unknown): string {

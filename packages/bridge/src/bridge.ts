@@ -231,6 +231,8 @@ export class Bridge {
                     throw new Error("Preferences aren't saved here");
                 case 'project.choices':
                     throw new Error("Projects can't be switched here");
+                case 'voice.update':
+                    throw new Error("Voice input isn't available here");
                 case 'voice.transcribe':
                     client.send({
                         type: 'voice.failed',

@@ -2,7 +2,14 @@ import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { bestModel, cleanTranscript, findWhisper, whisperTranscriber } from './whisper.ts';
+import {
+    bestModel,
+    cleanTranscript,
+    findWhisper,
+    OPENAI_WHISPER_MODELS,
+    voiceFrom,
+    whisperTranscriber,
+} from './whisper.ts';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'tencil-whisper-'));
 
@@ -38,10 +45,14 @@ describe.skipIf(process.platform === 'win32')('finding Whisper', () => {
         for (const name of ['ggml-tiny.bin', 'ggml-small.en.bin', 'notes.txt']) {
             writeFileSync(join(dataDir, 'whisper', name), '');
         }
+        const models = ['ggml-small.en.bin', 'ggml-tiny.bin'].map(name =>
+            join(dataDir, 'whisper', name),
+        );
         expect(find().whisper).toEqual({
             kind: 'whisper.cpp',
             command,
-            model: join(dataDir, 'whisper', 'ggml-small.en.bin'),
+            model: models[0],
+            models,
         });
     });
 
@@ -60,9 +71,17 @@ describe.skipIf(process.platform === 'win32')('finding Whisper', () => {
         const fromEnv = join(home, 'env.bin');
         writeFileSync(saved, '');
         writeFileSync(fromEnv, '');
-        expect(find({}, saved).whisper).toMatchObject({ model: saved });
-        expect(find({ TENCIL_WHISPER_MODEL: fromEnv }, saved).whisper).toMatchObject({
-            model: fromEnv,
+        expect(find({}, saved)).toEqual({
+            whisper: {
+                kind: 'whisper.cpp',
+                command: expect.any(String),
+                model: saved,
+                models: [saved],
+            },
+        });
+        expect(find({ TENCIL_WHISPER_MODEL: fromEnv }, saved)).toMatchObject({
+            whisper: { model: fromEnv },
+            modelFromEnv: true,
         });
         expect(find({}, join(home, 'gone.bin')).hint).toMatch(/isn't a file/);
     });
@@ -70,11 +89,16 @@ describe.skipIf(process.platform === 'win32')('finding Whisper', () => {
     it('falls back to openai-whisper, with a chosen model name', () => {
         const { bin, find } = machine();
         const command = fakeCommand(bin, 'whisper', 'exit 0');
-        expect(find().whisper).toEqual({ kind: 'openai-whisper', command });
-        expect(find({ TENCIL_WHISPER_MODEL: 'turbo' }).whisper).toEqual({
+        expect(find().whisper).toEqual({
             kind: 'openai-whisper',
             command,
-            model: 'turbo',
+            models: OPENAI_WHISPER_MODELS,
+        });
+        expect(find({}, 'small').whisper).toEqual({
+            kind: 'openai-whisper',
+            command,
+            model: 'small',
+            models: OPENAI_WHISPER_MODELS,
         });
     });
 
@@ -100,7 +124,12 @@ describe.skipIf(process.platform === 'win32')('transcribing', () => {
 cat "$2" >/dev/null
 printf '\\n Make the button blue.\\n [BLANK_AUDIO]\\n And bigger.\\n'`,
         );
-        const transcribe = whisperTranscriber({ kind: 'whisper.cpp', command, model: 'm.bin' });
+        const transcribe = whisperTranscriber({
+            kind: 'whisper.cpp',
+            command,
+            model: 'm.bin',
+            models: ['m.bin'],
+        });
         expect(await transcribe(Buffer.from('RIFF'))).toBe('Make the button blue. And bigger.');
     });
 
@@ -112,7 +141,7 @@ printf '\\n Make the button blue.\\n [BLANK_AUDIO]\\n And bigger.\\n'`,
             `while [ "$1" != "--output_dir" ]; do shift; done
 printf 'Hallo wereld\\n' > "$2/clip.txt"`,
         );
-        const transcribe = whisperTranscriber({ kind: 'openai-whisper', command });
+        const transcribe = whisperTranscriber({ kind: 'openai-whisper', command, models: [] });
         expect(await transcribe(Buffer.from('RIFF'))).toBe('Hallo wereld');
     });
 
@@ -122,10 +151,50 @@ printf 'Hallo wereld\\n' > "$2/clip.txt"`,
             'whisper-cli',
             'echo "failed to load model" >&2; exit 1',
         );
-        const transcribe = whisperTranscriber({ kind: 'whisper.cpp', command, model: 'm.bin' });
+        const transcribe = whisperTranscriber({
+            kind: 'whisper.cpp',
+            command,
+            model: 'm.bin',
+            models: ['m.bin'],
+        });
         await expect(transcribe(Buffer.from('RIFF'))).rejects.toThrow(
             'whisper-cli failed: failed to load model',
         );
+    });
+});
+
+describe('voice input', () => {
+    const whisper = {
+        kind: 'whisper.cpp' as const,
+        command: 'whisper-cli',
+        model: '/m/ggml-base.bin',
+        models: ['/m/ggml-base.bin'],
+    };
+    const transcriber = () => async () => '';
+
+    it('runs with Whisper while switched on', () => {
+        const on = voiceFrom({ whisper }, { enabled: true, language: 'nl' }, transcriber);
+        expect(on.transcribe).toBeDefined();
+        expect(on.status).toEqual({
+            available: true,
+            enabled: true,
+            engine: 'whisper.cpp',
+            language: 'nl',
+            model: '/m/ggml-base.bin',
+            models: [{ id: '/m/ggml-base.bin', label: 'base' }],
+        });
+        const off = voiceFrom({ whisper }, { enabled: false, language: 'auto' }, transcriber);
+        expect(off.transcribe).toBeUndefined();
+        expect(off.status).toMatchObject({ available: false, enabled: false });
+    });
+
+    it("can't change a model TENCIL_WHISPER_MODEL picked", () => {
+        const voice = voiceFrom(
+            { whisper, modelFromEnv: true },
+            { enabled: true, language: 'auto' },
+            transcriber,
+        );
+        expect(voice.status.modelLocked).toBe(true);
     });
 });
 
