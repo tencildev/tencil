@@ -12,6 +12,7 @@ import type {
     ServerMessage,
     Thread,
     UpdateStatus,
+    VoiceStatus,
 } from '@tencildev/protocol';
 import { forgetToken, signInRequired, storedToken, viewer } from './cloud-auth.ts';
 import { newId } from './id.ts';
@@ -36,6 +37,12 @@ export const update = signal<UpdateStatus | null>(null);
  * sends them, and on Tencil Cloud, which doesn't: the browser's copy is used then.
  */
 export const preferences = signal<Preferences | null>(null);
+/**
+ * Voice input on this machine: whether Whisper is set up and switched on, and
+ * its model and language. Null until the daemon says, and on Tencil Cloud,
+ * which has no voice input.
+ */
+export const voice = signal<VoiceStatus | null>(null);
 /** The version the daemon ran before an update from this page restarted it. */
 export const updatedFrom = signal<string | null>(null);
 export const threads = signal<ReadonlyMap<string, Thread>>(new Map());
@@ -126,6 +133,32 @@ export function send(message: ClientMessageInput): boolean {
     return true;
 }
 
+/** Clips sent to the daemon, waiting for their text. */
+const transcriptions = new Map<
+    string,
+    { resolve: (text: string) => void; reject: (error: Error) => void }
+>();
+
+/** Turns a recorded clip (base64 WAV) into text, on the daemon's Whisper. */
+export function transcribe(audio: string): Promise<string> {
+    const id = newId();
+    return new Promise((resolve, reject) => {
+        if (socket?.readyState !== WebSocket.OPEN) {
+            return reject(new Error('Not connected to the Tencil bridge'));
+        }
+        transcriptions.set(id, { resolve, reject });
+        socket.send(JSON.stringify({ type: 'voice.transcribe', id, audio }));
+    });
+}
+
+function settleTranscription(id: string, result: { text: string } | { error: string }): void {
+    const pending = transcriptions.get(id);
+    if (!pending) return;
+    transcriptions.delete(id);
+    if ('text' in result) pending.resolve(result.text);
+    else pending.reject(new Error(result.error));
+}
+
 /** Optimistic insert so a new pin renders before the bridge round-trips. */
 export function upsertLocal(thread: Thread): void {
     const next = new Map(threads.value);
@@ -166,6 +199,10 @@ function open(): void {
         }
     });
     ws.addEventListener('close', () => {
+        // Their answers would have come on this socket.
+        for (const id of [...transcriptions.keys()]) {
+            settleTranscription(id, { error: 'Lost the connection to Tencil' });
+        }
         if (socket !== ws) return;
         bridgeState.value = 'closed';
         // Retrying won't help until the site is allowed; coming back to the page will.
@@ -230,6 +267,15 @@ function handle(message: ServerMessage): void {
             return;
         case 'update':
             update.value = message.update;
+            return;
+        case 'voice':
+            voice.value = message.voice;
+            return;
+        case 'voice.transcript':
+            settleTranscription(message.id, { text: message.text });
+            return;
+        case 'voice.failed':
+            settleTranscription(message.id, { error: message.message });
             return;
         case 'settings':
             batch(() => {

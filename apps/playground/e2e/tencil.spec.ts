@@ -239,6 +239,83 @@ test('cancels comment mode with Escape without touching the page', async ({ page
     await expect(overlay(page).locator('.tool-active')).toHaveCount(0);
 });
 
+test('dictates a comment through Whisper on the machine', async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Choose Pro' }).click();
+    const composer = overlay(page).locator('.composer textarea');
+    await expect(composer).toBeFocused();
+    await composer.fill('Hi.');
+
+    // Chromium's fake microphone beeps; the stand-in whisper-cli checks it got a WAV.
+    const mic = overlay(page).locator('.composer .mic');
+    const status = overlay(page).locator('.composer .dictation');
+    await mic.click();
+    await expect(mic).toHaveAttribute('aria-pressed', 'true');
+    await expect(status).toContainText('Esc to discard');
+    await expect(status).toContainText('0:00');
+    // The mic has the box: what's typed stays, and can't be typed over.
+    await expect(composer).toHaveAttribute('readonly', '');
+    await expect(composer).toBeFocused();
+    await page.keyboard.type('x');
+    await expect(composer).toHaveValue('Hi.');
+    await page.waitForTimeout(800);
+    // Enter stops it, like the mic.
+    await page.keyboard.press('Enter');
+    await expect(status).toContainText('Transcribing…');
+    await expect(composer).toHaveValue('Hi. Make the title purple.', { timeout: 10_000 });
+    await expect(status).toHaveCount(0);
+    await expect(composer).not.toHaveAttribute('readonly');
+    await expect(mic).toHaveAttribute('aria-pressed', 'false');
+
+    // Escape throws a recording away and keeps the composer open.
+    await mic.click();
+    await expect(mic).toHaveAttribute('aria-pressed', 'true');
+    await composer.press('Escape');
+    await expect(mic).toHaveAttribute('aria-pressed', 'false');
+    await expect(composer).toHaveValue('Hi. Make the title purple.');
+});
+
+test('sets up voice input in settings, saved on the machine', async ({ page }) => {
+    await openPlayground(page);
+    const settings = overlay(page).locator('.settings-panel');
+    const openVoice = async () => {
+        await overlay(page).locator('.tool[title="Settings"]').click();
+        await settings.getByRole('button', { name: 'Voice', exact: true }).click();
+    };
+    await openVoice();
+    await expect(settings).toContainText('Using whisper.cpp.');
+    // The preferred model Tencil found comes first.
+    await expect(settings.getByRole('radio', { name: 'small' })).toBeChecked();
+    await settings.getByText('base', { exact: true }).click();
+    await expect(settings.getByRole('radio', { name: 'base' })).toBeChecked();
+    await settings.getByRole('combobox').selectOption('nl');
+
+    // Off: no mic in the comment box.
+    await settings.getByRole('switch', { name: /Voice input/ }).click();
+    await expect(settings.getByRole('switch', { name: /Voice input/ })).not.toBeChecked();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Choose Pro' }).click();
+    await expect(overlay(page).locator('.composer textarea')).toBeFocused();
+    await expect(overlay(page).locator('.composer .mic')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // Saved by the daemon, so a reload keeps it all.
+    await page.reload();
+    await openVoice();
+    await expect(settings.getByRole('switch', { name: /Voice input/ })).not.toBeChecked();
+    await expect(settings.getByRole('radio', { name: 'base' })).toBeChecked();
+    await expect(settings.getByRole('combobox')).toHaveValue('nl');
+
+    // Back to how the other tests expect it.
+    await settings.getByRole('switch', { name: /Voice input/ }).click();
+    await settings.getByText('small', { exact: true }).click();
+    await settings.getByRole('combobox').selectOption('auto');
+    await expect(settings.getByRole('switch', { name: /Voice input/ })).toBeChecked();
+    await expect(settings.getByRole('radio', { name: 'small' })).toBeChecked();
+});
+
 test('comments on a disabled button, which gets no click', async ({ page }) => {
     await openPlayground(page);
     await page.keyboard.press('c');

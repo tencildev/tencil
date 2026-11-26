@@ -1,0 +1,14 @@
+#!/bin/sh
+# Stands in for whisper.cpp in the browser tests: checks it was handed a WAV
+# with some audio in it, then "hears" a fixed sentence.
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--file" ]; then file="$2"; fi
+    shift
+done
+if [ "$(head -c 4 "$file")" != "RIFF" ] || [ "$(wc -c < "$file")" -le 1000 ]; then
+    echo "not a recording: $file" >&2
+    exit 1
+fi
+# Long enough for the test to see "Transcribing…".
+sleep 1
+printf '\n Make the title purple.\n'

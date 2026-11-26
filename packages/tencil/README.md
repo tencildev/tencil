@@ -173,6 +173,7 @@ is running when the daemon stops is lost; the pin turns red and you can follow u
 | --- | --- |
 | Comment mode | <kbd>C</kbd> or the toolbar button |
 | Pin a prompt | Click an element, type, <kbd>Enter</kbd> |
+| Dictate | The mic in the composer or a reply, when [Whisper](#voice-input) is set up |
 | Cancel | <kbd>Esc</kbd> |
 | Follow up | Open a pin and reply; the same agent thread continues |
 | Continue an existing thread | In the composer, switch **→ New thread** to any thread in the project; the element becomes its next message |
@@ -185,6 +186,25 @@ is running when the daemon stops is lost; the pin turns red and you can follow u
 
 Pins show their state: spinning while the agent works, blue when done, amber when
 the agent waits for approval, red on errors, grey once resolved.
+
+### Voice input
+
+With Whisper on your machine, the composer gets a mic. Click it, talk, click
+again: the browser records, and the daemon transcribes with your Whisper, so the
+audio never leaves the machine. While you talk the box shows a level meter and
+the time; <kbd>Esc</kbd> throws a recording away. Tencil never installs Whisper;
+without it there's no mic.
+
+- **whisper.cpp** (`brew install whisper-cpp`): `whisper-cli` and a ggml model,
+  such as `ggml-large-v3-turbo.bin`, in `~/.config/tencil/whisper` or the usual
+  whisper.cpp model folders.
+- **openai-whisper** (`pip install openai-whisper`): the `whisper` command.
+
+**Settings → Voice** shows which Whisper runs, switches voice input off, and
+picks the model and the language (automatic by default). Those choices are saved
+in `~/.config/tencil/settings.json` (`voice`, `whisperModel`, `whisperLanguage`)
+and apply right away. `TENCIL_WHISPER_MODEL` overrides the model for a daemon
+started with it.
 
 ## CLI
 

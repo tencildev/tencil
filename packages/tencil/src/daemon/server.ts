@@ -10,6 +10,8 @@ import {
     type ProjectSource,
     type Provider,
     type ServerMessage,
+    VoiceTranscribe,
+    VoiceUpdate,
 } from '@tencildev/protocol';
 import {
     ClaudeCodeProvider,
@@ -38,7 +40,13 @@ import {
 } from '@tencildev/provider-t3code';
 import { WebSocket, WebSocketServer } from 'ws';
 import { VERSION } from '../version.ts';
-import { machineProvider, PROVIDER_OPTIONS, type ProviderName } from './agents.ts';
+import {
+    machineProvider,
+    PROVIDER_OPTIONS,
+    type ProviderName,
+    readSettings,
+    writeSettings,
+} from './agents.ts';
 import { AllowedOrigins, approvableOrigin } from './allowed-origins.ts';
 import { APPROVAL_HEADERS, allowedPage, confirmPage, errorPage } from './approval-page.ts';
 import { FileGlobalContext } from './global-context.ts';
@@ -48,6 +56,7 @@ import { FileProjectSettings, projectSettingsPath } from './project-settings.ts'
 import { isAllowedHost, isAllowedOrigin, knownHostsFor } from './security.ts';
 import { defaultDataDir, FileThreadStore } from './thread-store.ts';
 import { type UpdateOptions, Updater } from './updates.ts';
+import { machineVoice, type Voice, type VoiceSettings } from './whisper.ts';
 
 export const DEFAULT_PORT = 4747;
 /** Screenshots ride along as data URLs. */
@@ -93,6 +102,8 @@ export interface DaemonOptions {
     cli?: string;
     /** Update checks and the overlay's Update button (fakes in tests). */
     updates?: UpdateOptions;
+    /** Voice input with the saved settings; Whisper on the machine by default (fakes in tests). */
+    voice?: (settings: VoiceSettings) => Promise<Voice>;
 }
 
 export interface ProjectStatus {
@@ -169,6 +180,25 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
     const preferences = new FilePreferences(preferencesPath(dataDir));
     const globalContext = new FileGlobalContext(dataDir);
     const globalContextLoaded = globalContext.load();
+    // Looked up per page and after a change, so installing Whisper or a model needs no restart.
+    const findVoice =
+        options.voice ?? (async (saved: VoiceSettings) => machineVoice(saved, { dataDir }));
+    const noVoice: Voice = {
+        status: { available: false, enabled: true, models: [], language: 'auto' },
+    };
+    let voice = Promise.resolve(noVoice);
+    const refreshVoice = () => {
+        voice = readSettings(dataDir)
+            .then(saved =>
+                findVoice({
+                    enabled: saved.voice ?? true,
+                    model: saved.whisperModel,
+                    language: saved.whisperLanguage ?? 'auto',
+                }),
+            )
+            .catch(() => noVoice);
+        return voice;
+    };
 
     const claudeCodeDir = join(dataDir, 'claude-code');
     const t3Url = options.t3?.url ?? process.env.TENCIL_T3_URL;
@@ -404,6 +434,28 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
         void preferences
             .load()
             .then(saved => client.send({ type: 'preferences', preferences: saved }));
+        void refreshVoice().then(found => client.send({ type: 'voice', voice: found.status }));
+
+        // One clip at a time per page; Whisper keeps every core busy.
+        let transcribing = false;
+        const transcribe = async (id: string, audio: string) => {
+            if (transcribing) {
+                return client.send({ type: 'voice.failed', id, message: 'Still transcribing' });
+            }
+            transcribing = true;
+            try {
+                const { transcribe: run } = await voice;
+                if (!run) throw new Error('Voice input needs Whisper on this machine');
+                const text = await run(Buffer.from(audio, 'base64'));
+                client.send({ type: 'voice.transcript', id, text });
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : String(error);
+                log(`Voice input failed: ${reason}`);
+                client.send({ type: 'voice.failed', id, message: reason });
+            } finally {
+                transcribing = false;
+            }
+        };
 
         const attach = async (root: string, hello: unknown) => {
             detach?.();
@@ -444,6 +496,43 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<Daemon> 
                 const update = JSON.stringify({
                     type: 'preferences',
                     preferences: saved,
+                } satisfies ServerMessage);
+                // Every tab, on every project, picks up the change.
+                for (const other of wss.clients) {
+                    if (other.readyState === WebSocket.OPEN) other.send(update);
+                }
+                return;
+            }
+            if (message.type === 'voice.transcribe') {
+                const { id, audio } = VoiceTranscribe.parse(raw);
+                // Not queued: a long clip mustn't hold up the page's other messages.
+                void transcribe(id, audio);
+                return;
+            }
+            if (message.type === 'voice.update') {
+                const change = VoiceUpdate.parse(raw);
+                const { status } = await voice;
+                if (change.model && !status.models.some(model => model.id === change.model)) {
+                    throw new Error('Tencil found no such Whisper model');
+                }
+                await writeSettings(
+                    {
+                        ...(change.enabled !== undefined && {
+                            voice: change.enabled ? undefined : false,
+                        }),
+                        ...(change.model !== undefined && {
+                            whisperModel: change.model ?? undefined,
+                        }),
+                        ...(change.language && {
+                            whisperLanguage:
+                                change.language === 'auto' ? undefined : change.language,
+                        }),
+                    },
+                    dataDir,
+                );
+                const update = JSON.stringify({
+                    type: 'voice',
+                    voice: (await refreshVoice()).status,
                 } satisfies ServerMessage);
                 // Every tab, on every project, picks up the change.
                 for (const other of wss.clients) {

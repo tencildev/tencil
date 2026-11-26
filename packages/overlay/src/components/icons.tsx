@@ -54,6 +54,13 @@ export const ArrowUpIcon = () => (
     </Icon>
 );
 
+export const MicIcon = () => (
+    <Icon>
+        <rect x="9" y="2" width="6" height="12" rx="3" />
+        <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
+    </Icon>
+);
+
 export const StopIcon = () => (
     <Icon size={12}>
         <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />

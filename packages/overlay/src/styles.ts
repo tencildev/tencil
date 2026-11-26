@@ -384,7 +384,7 @@ kbd {
 }
 
 .prompt-input {
-  display: grid; gap: 6px;
+  position: relative; display: grid; gap: 6px;
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--n-200);
   border-radius: 12px;
@@ -401,7 +401,50 @@ kbd {
 .prompt-input textarea::placeholder { color: var(--n-500); }
 .prompt-input textarea:disabled { opacity: 0.6; }
 .prompt-actions { display: flex; align-items: center; justify-content: space-between; }
-.prompt-extras { display: flex; gap: 4px; }
+.prompt-extras { display: flex; gap: 4px; margin-right: auto; }
+.mic {
+  width: 26px; height: 26px; border-radius: 999px; margin-right: 4px;
+  display: grid; place-items: center;
+  color: var(--n-500);
+  transition: color 150ms ease, background-color 150ms ease, transform 160ms var(--ease-out);
+}
+.mic:disabled { opacity: 0.4; cursor: default; }
+.mic:not(:disabled):active { transform: var(--press); }
+.mic-recording { color: white; background: var(--error); animation: mic-pulse 1.6s ease-in-out infinite; }
+.prompt-input-recording,
+.prompt-input-recording:focus-within {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 55%, transparent), 0 0 0 4px color-mix(in srgb, var(--error) 12%, transparent);
+}
+.prompt-input textarea.prompt-text-locked { color: var(--n-500); cursor: default; }
+/* Out of sight but still focused, so Enter and Escape reach it. */
+.prompt-input textarea.prompt-text-replaced {
+  position: absolute; width: 1px; height: 1px; min-height: 0; opacity: 0; pointer-events: none;
+}
+.dictation {
+  display: flex; align-items: center; gap: 8px; min-height: 1.5rem;
+  color: var(--n-600); font-size: 12px;
+  animation: dictation-in 160ms var(--ease-out);
+}
+@keyframes dictation-in { from { opacity: 0; transform: translateY(2px); } }
+.dictation-dot {
+  width: 7px; height: 7px; border-radius: 999px; flex: none;
+  background: var(--error); animation: live 1.2s ease-in-out infinite;
+}
+.dictation-level {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 1px; height: 18px; overflow: hidden;
+}
+.dictation-level > span {
+  flex: 0 1 2px; min-width: 1px; height: 18px; border-radius: 1px; background: var(--error);
+  transform: scaleY(0.12); transform-origin: center;
+  transition: transform 60ms linear;
+}
+.dictation-time { color: var(--n-900); font-variant-numeric: tabular-nums; }
+.dictation-hint { color: var(--n-500); white-space: nowrap; }
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--error) 45%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--error) 0%, transparent); }
+}
 .send {
   width: 26px; height: 26px; border-radius: 999px;
   display: grid; place-items: center;
@@ -755,6 +798,15 @@ kbd {
 }
 .settings-radio:checked { box-shadow: inset 0 0 0 4px var(--accent); }
 .settings-radio:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-select {
+  box-sizing: border-box; max-width: 180px; height: 28px; padding: 0 8px; border: 0; border-radius: 8px;
+  color: var(--n-950); background: var(--surface); box-shadow: 0 0 0 1px var(--n-200);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.settings-select:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--n-400), 0 0 0 4px var(--n-100); }
+.settings-options:disabled { opacity: 0.6; }
+.settings-options:disabled .target-option { cursor: default; }
+.settings-help code { font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--n-800); }
 .settings-status { margin: 2px 2px 0; color: var(--n-600); font-size: 12px; }
 .settings-about-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .settings-version { color: var(--n-600); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -979,7 +1031,7 @@ kbd {
   .tool:not(.tool-active):hover { background: rgba(255, 255, 255, 0.08); color: white; }
   .icon-button:hover { background: var(--n-100); color: var(--n-950); }
   .divider:hover::before { background: rgba(255, 255, 255, 0.35); }
-  .toggle:hover, .stop:hover { background: var(--n-100); }
+  .toggle:hover, .stop:hover, .mic:not(:disabled):not(.mic-recording):hover { background: var(--n-100); }
   .inbox-item:hover { background: var(--n-100); }
   .project-picker-option:hover { background: rgba(255, 255, 255, 0.08); }
   .composer-provider:hover, .target-option:hover { background: var(--n-100); color: var(--n-950); }
@@ -994,7 +1046,7 @@ kbd {
 /* Reduced motion keeps fades (they aid comprehension) but drops movement. */
 @media (prefers-reduced-motion: reduce) {
   .popover, .inbox, .toast, .toolbar-hint, .settings-panel, .message-user, .pin-body,
-  .tool, .icon-button, .toggle, .stop, .send, .segmented button, .inbox-item {
+  .tool, .icon-button, .toggle, .stop, .send, .mic, .segmented button, .inbox-item {
     transition-property: opacity, background-color, color;
   }
   .w { animation: none; }
@@ -1002,6 +1054,7 @@ kbd {
   .pin-draft::before, .pin-resolving::before, .pin-draft .pin-body::before, .pin-shine { display: none; }
   @keyframes pin-bloom { from { opacity: 0; } }
   @keyframes pin-dissolve { to { opacity: 0; } }
-  .shimmer > span[aria-hidden], .status-ping, .live-dot { animation: none; }
+  .shimmer > span[aria-hidden], .status-ping, .live-dot, .mic-recording, .dictation-dot { animation: none; }
+  @keyframes dictation-in { from { opacity: 0; } }
 }
 `;
