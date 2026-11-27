@@ -50,6 +50,8 @@ export interface BridgeOptions {
 
 /** Local echo ids, replaced once the provider reports the real user message. */
 const LOCAL_PREFIX = 'local:';
+/** Tencil's own note that the thread moved to another model; no provider sends these. */
+const MODEL_PREFIX = 'model:';
 const BROADCAST_THROTTLE_MS = 80;
 
 /**
@@ -175,12 +177,7 @@ export class Bridge {
                     return;
                 }
                 case 'provider.models': {
-                    const provider = this.#provider();
-                    client.send({
-                        type: 'provider.models',
-                        provider: provider.id,
-                        ...((await provider.listModels?.()) ?? { models: [] }),
-                    });
+                    client.send(await this.#models(message));
                     return;
                 }
                 case 'model.select': {
@@ -188,6 +185,9 @@ export class Bridge {
                     await providers.setModel(providers.defaultId, message.model);
                     return;
                 }
+                case 'thread.model':
+                    await this.#switchModel(message.threadId, message.model);
+                    return;
                 case 'thread.reply':
                     await this.#reply(message);
                     return;
@@ -426,6 +426,12 @@ export class Bridge {
         if (store.get(message.id)) throw new Error(`Thread ${message.id} already exists`);
         const now = new Date().toISOString();
         const sibling = this.#pinsFor(provider.id, providerThreadId)[0];
+        const switched =
+            message.model && message.model !== sibling?.model
+                ? await this.#modelChange(provider, providerThreadId, message.model, now)
+                : undefined;
+        if (switched) this.#setModel(provider.id, providerThreadId, message.model!, switched);
+        const model = message.model ?? sibling?.model;
         const thread: Thread = {
             id: message.id,
             title: titleFor(message.prompt, message.context),
@@ -435,7 +441,12 @@ export class Bridge {
             status: 'working',
             resolved: false,
             // Show the conversation so far; the provider snapshot replaces it when it arrives.
-            messages: [...(sibling?.messages ?? []), localMessage(message.prompt, now)],
+            messages: [
+                ...(sibling?.messages ?? []),
+                ...(switched ? [switched] : []),
+                localMessage(message.prompt, now),
+            ],
+            ...(model ? { model } : {}),
             provider: {
                 id: provider.id,
                 threadId: providerThreadId,
@@ -460,6 +471,7 @@ export class Bridge {
                     instructions: this.#instructions(),
                 }),
                 attachments: message.attachments,
+                ...(model ? { model } : {}),
             });
             this.#options.log?.(`Pin "${thread.title}" → existing ${provider.label} thread`);
         } catch (error) {
@@ -519,7 +531,92 @@ export class Bridge {
             providerThreadId: thread.provider.threadId,
             text: message.text,
             attachments: message.attachments,
+            // Every follow-up, so the thread stays on it even if the provider forgot.
+            ...(thread.model ? { model: thread.model } : {}),
         });
+    }
+
+    /** The models new threads can run on, or the ones a thread can switch to. */
+    async #models(
+        message: Extract<ClientMessage, { type: 'provider.models' }>,
+    ): Promise<ServerMessage> {
+        const pin = message.threadId ? this.#require(message.threadId) : undefined;
+        const provider = pin ? this.#providerOf(pin) : this.#provider();
+        const providerThreadId = pin ? pin.provider.threadId : message.providerThreadId;
+        if (!providerThreadId) {
+            if (pin) throw new Error('This pin has no agent thread yet');
+            return {
+                type: 'provider.models',
+                provider: provider.id,
+                ...((await provider.listModels?.()) ?? { models: [] }),
+            };
+        }
+        // Opening a pin asks for these; an agent that's offline just offers no switch.
+        const models = await provider.threadModels?.(providerThreadId).catch((error: unknown) => {
+            this.#options.log?.(
+                `Couldn't list models for a ${provider.label} thread: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            return undefined;
+        });
+        return {
+            type: 'provider.models',
+            provider: provider.id,
+            providerThreadId,
+            ...(models ?? { models: [] }),
+        };
+    }
+
+    /** Run the rest of a pin's thread on another model; its next message carries it. */
+    async #switchModel(threadId: string, model: string): Promise<void> {
+        const thread = this.#require(threadId);
+        const { id: providerId, threadId: providerThreadId } = thread.provider;
+        if (!providerThreadId) throw new Error('This pin has no agent thread yet');
+        if (thread.model === model) return;
+        const notice = await this.#modelChange(
+            this.#providerOf(thread),
+            providerThreadId,
+            model,
+            new Date().toISOString(),
+        );
+        this.#setModel(providerId, providerThreadId, model, notice);
+    }
+
+    /** The system message that shows a thread changed model, once the provider offers it. */
+    async #modelChange(
+        provider: Provider,
+        providerThreadId: string,
+        model: string,
+        createdAt: string,
+    ): Promise<ThreadMessage> {
+        if (!provider.threadModels) {
+            throw new Error(`${provider.label} can't change the model of a thread`);
+        }
+        const { models } = await provider.threadModels(providerThreadId);
+        const picked = models.find(candidate => candidate.id === model);
+        if (!picked) throw new Error(`This thread can't switch to ${model}`);
+        return {
+            id: `${MODEL_PREFIX}${crypto.randomUUID()}`,
+            role: 'system',
+            text: `Switched to ${picked.label}`,
+            streaming: false,
+            createdAt,
+        };
+    }
+
+    /** Every pin on the provider thread shares its model and shows the change. */
+    #setModel(
+        providerId: string,
+        providerThreadId: string,
+        model: string,
+        notice: ThreadMessage,
+    ): void {
+        for (const pin of this.#pinsFor(providerId, providerThreadId)) {
+            this.#update(pin.id, current => ({
+                ...current,
+                model,
+                messages: [...current.messages, notice],
+            }));
+        }
     }
 
     /**

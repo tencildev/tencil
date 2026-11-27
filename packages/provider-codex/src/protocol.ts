@@ -24,6 +24,8 @@ export interface CodexThread {
     /** Unix seconds. */
     updatedAt: number;
     gitInfo?: { branch?: string | null } | null;
+    /** The model the thread is configured with, else the one it last ran on. */
+    model?: string | null;
 }
 
 export interface TurnError {

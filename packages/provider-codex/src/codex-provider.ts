@@ -192,6 +192,25 @@ export class CodexProvider implements Provider {
         };
     }
 
+    threadModels(providerThreadId: string): Promise<ProviderModels> {
+        return this.#using(async () => {
+            const server = await this.#connect();
+            const [{ models, defaultModel }, { thread }] = await Promise.all([
+                this.#listModels(),
+                server.request<{ thread: CodexThread }>('thread/read', {
+                    threadId: providerThreadId,
+                    includeTurns: false,
+                }),
+            ]);
+            // Codex reports the thread's configured model, else the one it last ran on.
+            const current = thread.model ?? defaultModel;
+            if (current && !models.some(model => model.id === current)) {
+                models.unshift(toModel({ model: current, displayName: current }));
+            }
+            return { models, ...(current ? { defaultModel: current } : {}) };
+        });
+    }
+
     threadUrl(): string | undefined {
         return undefined;
     }
@@ -238,7 +257,7 @@ export class CodexProvider implements Provider {
             });
             session.server = server;
         }
-        await this.#startTurn(session, server, input.text, input.attachments);
+        await this.#startTurn(session, server, input.text, input.attachments, input.model);
     }
 
     async interrupt(providerThreadId: string): Promise<void> {
@@ -323,6 +342,8 @@ export class CodexProvider implements Provider {
         server: AppServer,
         text: string,
         attachments: ImageAttachment[],
+        /** Codex keeps it for this turn and the ones after. */
+        model?: string,
     ): Promise<void> {
         // Codex keeps this id with the message, so a replay matches it.
         const clientUserMessageId = randomUUID();
@@ -342,6 +363,7 @@ export class CodexProvider implements Provider {
                 clientUserMessageId,
                 // Unasked, Codex sends none, and a pin has nothing to show of its thinking.
                 summary: 'concise',
+                ...(model ? { model } : {}),
                 input: [
                     ...attachments.map(attachment => ({ type: 'image', url: attachment.dataUrl })),
                     { type: 'text', text, text_elements: [] },

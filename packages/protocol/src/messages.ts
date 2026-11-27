@@ -117,6 +117,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
         providerThreadId: z.string().optional(),
         /** Queue it for a batch (`drafts.send`) instead of sending it now. */
         draft: z.boolean().optional(),
+        /** With `providerThreadId`: switch that thread to this model from this message on. */
+        model: z.string().min(1).optional(),
     }),
     /** Rewrite a queued comment. */
     z.object({
@@ -140,8 +142,16 @@ export const ClientMessage = z.discriminatedUnion('type', [
         title: z.string().optional(),
     }),
     z.object({ type: z.literal('provider.threads') }),
-    /** The models new threads of the default provider can run on. */
-    z.object({ type: z.literal('provider.models') }),
+    /**
+     * The models new threads of the default provider can run on. With a pin
+     * (`threadId`) or a thread of the default provider (`providerThreadId`):
+     * the models that thread can switch to.
+     */
+    z.object({
+        type: z.literal('provider.models'),
+        threadId: z.string().optional(),
+        providerThreadId: z.string().optional(),
+    }),
     /** List the projects this page could belong to, to switch (local daemon only). */
     z.object({ type: z.literal('project.choices') }),
     /** Attach this page to a project folder (answer to `project.unknown`, or a switch). */
@@ -172,6 +182,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     }),
     /** Run new threads of the default provider on this model; null goes back to its default. */
     z.object({ type: z.literal('model.select'), model: z.string().min(1).nullable() }),
+    /** Run the rest of this pin's thread on another model, from its next message on. */
+    z.object({ type: z.literal('thread.model'), threadId: z.string(), model: z.string().min(1) }),
     /** Install the latest Tencil and restart the daemon on it (local daemon only). */
     z.object({ type: z.literal('update.start') }),
     /** Save some preferences on this machine (local daemon only); unnamed ones stay. */
@@ -282,8 +294,10 @@ export type ServerMessage =
     | {
           type: 'provider.models';
           provider: string;
+          /** Set when asked for a thread: the models it can switch to. */
+          providerThreadId?: string;
           models: ProviderModel[];
-          /** What new threads run on when no model is picked. */
+          /** What new threads run on when no model is picked; for a thread, what it runs on. */
           defaultModel?: string;
       }
     | { type: 'error'; message: string; threadId?: string };

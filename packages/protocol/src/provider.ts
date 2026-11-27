@@ -33,6 +33,11 @@ export interface Provider {
     listThreads(): Promise<{ project: ProviderProject; threads: ProviderThreadSummary[] }>;
     /** Models new threads can run on, and the one they use by default. Optional. */
     listModels?(): Promise<ProviderModels>;
+    /**
+     * Models an existing thread can switch to, with `defaultModel` the one it runs
+     * on now. Only providers that can change a thread's model mid-way have it.
+     */
+    threadModels?(providerThreadId: string): Promise<ProviderModels>;
     /** Deep link into the provider UI for a thread, when it has one. */
     threadUrl(providerThreadId: string): string | undefined;
     createThread(input: CreateThreadInput): Promise<CreatedThread>;
@@ -78,6 +83,8 @@ export interface SendMessageInput {
     providerThreadId: string;
     text: string;
     attachments: ImageAttachment[];
+    /** A `ProviderModel.id` from `threadModels`: this turn and the next ones run on it. */
+    model?: string;
 }
 
 export interface ProviderMessage {

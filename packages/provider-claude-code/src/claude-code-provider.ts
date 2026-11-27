@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { access, realpath } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { ModelInfo, Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type {
     CreatedThread,
     CreateThreadInput,
@@ -9,6 +9,8 @@ import type {
     Provider,
     ProviderInfo,
     ProviderMessage,
+    ProviderModel,
+    ProviderModels,
     ProviderProject,
     ProviderThreadSummary,
     SendMessageInput,
@@ -55,7 +57,14 @@ interface Session {
     hydrated?: Promise<void>;
     /** Claude Code has no such session (deleted, or never saved). */
     missing?: boolean;
+    /** The model Tencil last asked this session to run on. */
+    model?: string;
 }
+
+/** Claude Code's model list barely changes; asking costs a process start when no session runs. */
+const MODELS_TTL_MS = 30 * 60_000;
+/** The row Claude Code offers for "whatever the default is". */
+const DEFAULT_ROW = 'default';
 
 const DEFAULT_IDLE_CLOSE_MS = 10 * 60_000;
 
@@ -75,6 +84,7 @@ export class ClaudeCodeProvider implements Provider {
     #sdk: Promise<AgentSdk> | undefined;
     #workspace: Promise<string> | undefined;
     readonly #sessions = new Map<string, Session>();
+    #models: { list: Promise<ModelInfo[]>; at: number } | undefined;
     #disposed = false;
 
     constructor(options: ClaudeCodeProviderOptions) {
@@ -120,6 +130,30 @@ export class ClaudeCodeProvider implements Provider {
         return { project: { name: basename(workspace) }, threads };
     }
 
+    async listModels(): Promise<ProviderModels> {
+        const [rows, configured] = await Promise.all([this.#modelRows(), this.#configuredModel()]);
+        // The default row is Claude Code's own default, which a configured model overrides.
+        const fallback = configured ?? rows.find(row => row.value === DEFAULT_ROW)?.resolvedModel;
+        const models = rows.filter(row => row.value !== DEFAULT_ROW).map(toModel);
+        const current = fallback ? matchModel(rows, fallback) : undefined;
+        if (fallback && !current)
+            models.unshift(toModel({ value: fallback, displayName: fallback }));
+        const defaultModel = current ?? fallback;
+        return { models, ...(defaultModel ? { defaultModel } : {}) };
+    }
+
+    async threadModels(providerThreadId: string): Promise<ProviderModels> {
+        const session = this.#session(providerThreadId);
+        const [rows, ran] = await Promise.all([this.#modelRows(), this.#lastModel(session)]);
+        const models = rows.filter(row => row.value !== DEFAULT_ROW).map(toModel);
+        // What Tencil asked for, else what wrote the last reply, else what it would start on.
+        const known = session.model ?? ran;
+        const current = known ? matchModel(rows, known) : (await this.listModels()).defaultModel;
+        if (known && !current) models.unshift(toModel({ value: known, displayName: known }));
+        const defaultModel = current ?? known;
+        return { models, ...(defaultModel ? { defaultModel } : {}) };
+    }
+
     threadUrl(): string | undefined {
         return undefined;
     }
@@ -128,6 +162,7 @@ export class ClaudeCodeProvider implements Provider {
         const session = this.#session(randomUUID());
         // Nothing on disk yet; the live run is the whole conversation.
         session.hydrated = Promise.resolve();
+        session.model = input.model ?? this.#options.model;
         await this.#startRun(session, { sessionId: session.id, title: input.title });
         this.#send(session, input.text, input.attachments);
         return { providerThreadId: session.id };
@@ -135,7 +170,15 @@ export class ClaudeCodeProvider implements Provider {
 
     async sendMessage(input: SendMessageInput): Promise<void> {
         const session = this.#session(input.providerThreadId);
-        if (!session.run) await this.#startRun(session, { resume: session.id });
+        const switching = input.model !== undefined && input.model !== session.model;
+        if (input.model) session.model = input.model;
+        if (!session.run) {
+            // A resumed session starts on the model it's given, not the one it ran on.
+            await this.#startRun(session, { resume: session.id });
+        } else if (switching) {
+            await session.run.query.setModel(input.model);
+            this.#log(`Session ${session.id} → ${input.model}`);
+        }
         this.#send(session, input.text, input.attachments);
     }
 
@@ -243,7 +286,9 @@ export class ClaudeCodeProvider implements Provider {
                 allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
                 // Nobody can answer a prompt yet; denied tools tell Claude why.
                 permissionPrompts: 'none',
-                ...(this.#options.model ? { model: this.#options.model } : {}),
+                ...((session.model ?? this.#options.model)
+                    ? { model: session.model ?? this.#options.model }
+                    : {}),
                 stderr: data => this.#log(data.trimEnd()),
             },
         });
@@ -336,6 +381,65 @@ export class ClaudeCodeProvider implements Provider {
         run.query.close();
     }
 
+    /* ---------------------------------- models --------------------------------- */
+
+    /** Claude Code's own model list: from a running session, else from a process started to ask. */
+    #modelRows(): Promise<ModelInfo[]> {
+        if (this.#models && Date.now() - this.#models.at < MODELS_TTL_MS) return this.#models.list;
+        const running = [...this.#sessions.values()].find(session => session.run)?.run;
+        const list = running ? running.query.supportedModels() : this.#askModels();
+        const entry = { list, at: Date.now() };
+        this.#models = entry;
+        // Ask again next time rather than remember a failure.
+        list.catch(() => {
+            if (this.#models === entry) this.#models = undefined;
+        });
+        return list;
+    }
+
+    /** A Claude Code process that never gets a prompt answers without calling the model. */
+    async #askModels(): Promise<ModelInfo[]> {
+        const [sdk, workspace] = await Promise.all([this.#load(), this.#workspaceRoot()]);
+        const input = new InputQueue<SDKUserMessage>();
+        const query = sdk.query({ prompt: input, options: { cwd: workspace } });
+        try {
+            return await query.supportedModels();
+        } finally {
+            input.close();
+            query.close();
+        }
+    }
+
+    /**
+     * What a session started without a model runs on, in Claude Code's order:
+     * `--model`, then `ANTHROPIC_MODEL`, then the `model` of its settings files.
+     */
+    async #configuredModel(): Promise<string | undefined> {
+        if (this.#options.model) return this.#options.model;
+        if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
+        try {
+            const [sdk, workspace] = await Promise.all([this.#load(), this.#workspaceRoot()]);
+            const { effective } = await sdk.resolveSettings({ cwd: workspace });
+            const model = effective.env?.ANTHROPIC_MODEL ?? effective.model;
+            return typeof model === 'string' && model ? model : undefined;
+        } catch (error) {
+            // Older Agent SDKs can't tell; the list's own default stands in.
+            this.#log(`Couldn't read Claude Code's settings: ${errorMessage(error)}`);
+            return undefined;
+        }
+    }
+
+    /** The model that wrote the session's latest reply, as Claude Code saved it. */
+    async #lastModel(session: Session): Promise<string | undefined> {
+        const [sdk, workspace] = await Promise.all([this.#load(), this.#workspaceRoot()]);
+        const entries = await sdk.getSessionMessages(session.id, { dir: workspace });
+        for (const entry of [...entries].reverse()) {
+            const model = (entry.message as { model?: unknown } | undefined)?.model;
+            if (entry.type === 'assistant' && typeof model === 'string') return model;
+        }
+        return undefined;
+    }
+
     /* --------------------------------- helpers --------------------------------- */
 
     #load(): Promise<AgentSdk> {
@@ -377,6 +481,27 @@ export class ClaudeCodeProvider implements Provider {
     #log(message: string): void {
         this.#options.log?.(message);
     }
+}
+
+function toModel(row: Pick<ModelInfo, 'value' | 'displayName'>): ProviderModel {
+    return { id: row.value, label: row.displayName, group: 'Claude', agent: 'claudeAgent' };
+}
+
+/**
+ * The row a model id stands for: its own, else the alias that resolves to it
+ * (a transcript says `claude-opus-5-5` where the list offers `opus`).
+ */
+function matchModel(rows: ModelInfo[], id: string): string | undefined {
+    const offered = rows.filter(row => row.value !== DEFAULT_ROW);
+    // `opus[1m]` is Opus with a bigger context window: the same row.
+    const base = id.replace(/\[[^\]]*\]$/, '');
+    for (const candidate of new Set([id, base])) {
+        const row =
+            offered.find(row => row.value === candidate) ??
+            offered.find(row => row.resolvedModel === candidate);
+        if (row) return row.value;
+    }
+    return undefined;
 }
 
 function imageBlock(attachment: ImageAttachment) {

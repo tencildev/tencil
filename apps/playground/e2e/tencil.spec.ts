@@ -330,6 +330,45 @@ test('picks the agent and model new threads run on', async ({ page }) => {
     await expect(toggle).toHaveText('GPT Test');
 });
 
+test("changes a thread's model from its popover, for the rest of the thread", async ({ page }) => {
+    await openPlayground(page);
+    await page.keyboard.press('c');
+    await page.getByRole('heading', { level: 1 }).click();
+    const composer = overlay(page).locator('.composer');
+    await composer.locator('.model-toggle').click();
+    await composer.getByRole('option', { name: 'Claude Test', exact: true }).click();
+    await composer.locator('textarea').fill('Tighten the heading');
+    await composer.locator('textarea').press('Enter');
+    const thread = overlay(page).locator('.thread');
+    await expect(thread.locator('.message-assistant')).toContainText('Updated it.', {
+        timeout: 10_000,
+    });
+
+    // The thread runs on Claude; this T3 Code keeps it on Claude's models.
+    const toggle = thread.locator('.model-toggle');
+    await expect(toggle).toHaveText('Claude Test');
+    await toggle.click();
+    await expect(thread.getByRole('option')).toHaveText(['Claude Test', 'Claude Test Mini']);
+    await thread.getByRole('option', { name: 'Claude Test Mini' }).click();
+    await expect(thread.locator('.message-system')).toHaveText('Switched to Claude Test Mini');
+    await expect(toggle).toHaveText('Claude Test Mini');
+
+    const reply = thread.locator('textarea');
+    await reply.fill('And a little bolder');
+    await reply.press('Enter');
+    await expect(thread.locator('.message-assistant')).toHaveCount(2, { timeout: 10_000 });
+    await expect(thread.locator('.message-system')).toHaveCount(1);
+    await expect(toggle).toHaveText('Claude Test Mini');
+    await thread.getByTitle('Close (Esc)').click();
+
+    // Back to T3 Code's default for the tests after this one.
+    await page.keyboard.press('c');
+    await page.getByRole('heading', { level: 1 }).click();
+    await composer.locator('.model-toggle').click();
+    await composer.getByRole('option', { name: /^Default/ }).click();
+    await expect(composer.locator('.model-toggle')).toHaveText('GPT Test');
+});
+
 test('queues several comments and sends them as one thread', async ({ page }) => {
     await openPlayground(page);
     const composer = overlay(page).locator('.composer');

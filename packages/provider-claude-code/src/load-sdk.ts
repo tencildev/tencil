@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 
 export type AgentSdk = Pick<
     typeof import('@anthropic-ai/claude-agent-sdk'),
-    'query' | 'listSessions' | 'getSessionMessages' | 'getSessionInfo'
+    'query' | 'listSessions' | 'getSessionMessages' | 'getSessionInfo' | 'resolveSettings'
 >;
 
 const PACKAGE = '@anthropic-ai/claude-agent-sdk';
