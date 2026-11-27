@@ -1,4 +1,4 @@
-# Tencil for Chrome
+# Tencil for Chrome and Firefox
 
 Loads the Tencil overlay into a running app without adding the script tag or a
 framework integration. Click the toolbar button on a page and Tencil is on; click
@@ -12,6 +12,15 @@ tencil start
 ```
 
 Then `chrome://extensions` → Developer mode → Load unpacked → `apps/extension/dist`.
+
+In Firefox (128 or later): `about:debugging#/runtime/this-firefox` → Load Temporary
+Add-on → `apps/extension/dist-firefox/manifest.json`. A temporary add-on stays until
+Firefox restarts.
+
+The build writes both from the same scripts. `scripts/manifest.mjs` copies `dist/` to
+`dist-firefox/` and swaps the manifest's service worker for a background script, which is
+what Firefox runs in MV3, and adds the `browser_specific_settings.gecko` id
+(`extension@tencil.dev`). The code only uses `chrome.*` APIs that Firefox has too.
 
 ## How it works
 
@@ -32,6 +41,10 @@ daemon. Sites that aren't on localhost need `tencil start --allow-origin <origin
 the overlay asks which project they belong to.
 
 ## Releasing
+
+Only the Chrome build is released for now. The Firefox one isn't on
+addons.mozilla.org yet; build and zip it by hand with
+`pnpm --filter @tencildev/extension zip:firefox` (`apps/extension/tencil-extension-firefox.zip`).
 
 The extension has the same version as `tencil` (`scripts/manifest.mjs` sets it in
 `dist/manifest.json`), so it's released whenever a version PR is merged. The `extension`
