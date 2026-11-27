@@ -259,6 +259,7 @@ export class ClaudeCodeProvider implements Provider {
             for await (const message of run.query) {
                 const update = session.tracker.apply(message);
                 for (const m of update.messages) this.#emit(session, m);
+                for (const step of update.steps) session.sink?.step?.(step);
                 if (update.unauthorized) {
                     this.#setInfo({ state: 'unauthorized', detail: update.unauthorized });
                 }
@@ -278,7 +279,9 @@ export class ClaudeCodeProvider implements Provider {
         session.run = undefined;
         clearTimeout(run.idleTimer);
         run.input.close();
-        for (const m of session.tracker.finish()) this.#emit(session, m);
+        const finished = session.tracker.finish();
+        for (const m of finished.messages) this.#emit(session, m);
+        for (const step of finished.steps) session.sink?.step?.(step);
         // The process ended mid-turn: report it rather than leave the pin spinning.
         if (session.tracker.status().status === 'working' || failure) {
             const status: RunStatus = {

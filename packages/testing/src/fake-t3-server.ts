@@ -19,6 +19,11 @@ export interface FakeT3Options {
     reply?: (text: string) => string;
     /** Delay between streamed reply chunks. */
     chunkDelayMs?: number;
+    /**
+     * V2 only: tool calls each turn makes before it replies, as turn items
+     * (`command_execution`, `file_change`…) that run for `durationMs`.
+     */
+    tools?: FakeToolCall[];
     /** Agents in `server.getConfig`; one Codex instance by default. */
     providers?: FakeProvider[];
     /** Server settings in `server.getConfig`, e.g. `defaultModelSelection`. */
@@ -26,6 +31,14 @@ export interface FakeT3Options {
     /** Accept connections but never answer (a server mid-restart). */
     stall?: boolean;
     port?: number;
+}
+
+export interface FakeToolCall {
+    type: string;
+    durationMs: number;
+    /** Type-specific fields, e.g. `input` for a command or `fileName` for a file change. */
+    fields?: Record<string, unknown>;
+    failed?: boolean;
 }
 
 export interface FakeProject {
@@ -447,6 +460,36 @@ export class FakeT3Server {
         };
         thread.messages.push(assistant);
         let index = 0;
+        const tools = this.#options.protocol === 2 ? (this.#options.tools ?? []) : [];
+        let tool = 0;
+        const runTool = () => {
+            if (this.#cancelled.has(runId)) return;
+            const call = tools[tool];
+            if (!call) return void setTimeout(step, this.#options.chunkDelayMs);
+            const item = {
+                id: `${runId}-tool-${tool++}`,
+                threadId: thread.id,
+                runId,
+                type: call.type,
+                title: null,
+                startedAt: new Date().toISOString(),
+                completedAt: null,
+                updatedAt: new Date().toISOString(),
+                ...call.fields,
+            };
+            this.#emit(thread.id, 'turn-item.updated', { ...item, status: 'running' });
+            setTimeout(() => {
+                if (this.#cancelled.has(runId)) return;
+                const end = new Date().toISOString();
+                this.#emit(thread.id, 'turn-item.updated', {
+                    ...item,
+                    status: call.failed ? 'failed' : 'completed',
+                    completedAt: end,
+                    updatedAt: end,
+                });
+                runTool();
+            }, call.durationMs);
+        };
         const step = () => {
             if (this.#cancelled.has(runId)) return;
             if (index < words.length) {
@@ -462,7 +505,7 @@ export class FakeT3Server {
             thread.sessionStatus = 'ready';
             this.#emitRun(thread, runId, 'completed');
         };
-        setTimeout(step, this.#options.chunkDelayMs);
+        setTimeout(runTool, this.#options.chunkDelayMs);
     }
 
     #interrupt(threadId: string): void {

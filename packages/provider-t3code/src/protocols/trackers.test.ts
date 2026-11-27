@@ -155,4 +155,98 @@ describe('V2ThreadTracker', () => {
             detail: 'Waiting for your answer in T3 Code',
         });
     });
+
+    it("reports the latest run's tool calls as steps", () => {
+        const tracker = new V2ThreadTracker();
+        const item = (payload: Record<string, unknown>) =>
+            tracker.apply({
+                kind: 'event',
+                sequence: 1,
+                event: { type: 'turn-item.updated', payload },
+            });
+        tracker.apply({
+            kind: 'snapshot',
+            projection: {
+                runs: [
+                    { id: 'r1', ordinal: 1, status: 'completed' },
+                    { id: 'r2', ordinal: 2, status: 'running' },
+                ],
+                turnItems: [
+                    // An earlier turn's call stays in T3 Code.
+                    { id: 'old', runId: 'r1', type: 'file_change', status: 'completed' },
+                ],
+            },
+        });
+
+        const running = item({
+            id: 'c1',
+            runId: 'r2',
+            type: 'command_execution',
+            status: 'running',
+            input: 'pnpm test\n--watch=false',
+            startedAt: at,
+        });
+        expect(running.steps).toEqual([
+            {
+                id: 'c1',
+                label: 'Running pnpm test',
+                status: 'running',
+                kind: 'command',
+                startedAt: at,
+            },
+        ]);
+        // Same state again: nothing new to report.
+        expect(
+            item({
+                id: 'c1',
+                runId: 'r2',
+                type: 'command_execution',
+                status: 'running',
+                input: 'pnpm test',
+            }).steps,
+        ).toBeUndefined();
+
+        const done = item({
+            id: 'c1',
+            runId: 'r2',
+            type: 'command_execution',
+            status: 'completed',
+            input: 'pnpm test',
+            completedAt: '2026-10-07T10:00:04.000Z',
+        });
+        expect(done.steps).toEqual([
+            expect.objectContaining({
+                label: 'Ran pnpm test',
+                status: 'done',
+                startedAt: at,
+                endedAt: '2026-10-07T10:00:04.000Z',
+            }),
+        ]);
+
+        expect(
+            item({
+                id: 'f1',
+                runId: 'r2',
+                parentItemId: 'a1',
+                type: 'file_change',
+                status: 'failed',
+                fileName: 'src/styles.css',
+            }).steps,
+        ).toEqual([
+            expect.objectContaining({
+                label: 'Edited styles.css',
+                kind: 'edit',
+                status: 'failed',
+                parentId: 'a1',
+            }),
+        ]);
+        expect(
+            item({ id: 'w1', runId: 'r2', type: 'web_search', status: 'interrupted' }).steps,
+        ).toEqual([expect.objectContaining({ kind: 'web', status: 'skipped' })]);
+        // Messages aren't steps.
+        expect(
+            item({ id: 'm1', runId: 'r2', type: 'assistant_message', messageId: 'a', text: 'Hi' })
+                .steps,
+        ).toBeUndefined();
+    });
 });

@@ -67,6 +67,10 @@ export type Delivery = z.infer<typeof Delivery>;
 export const StepStatus = z.enum(['running', 'done', 'failed', 'skipped']);
 export type StepStatus = z.infer<typeof StepStatus>;
 
+/** What sort of tool call a step is, for its icon. */
+export const StepKind = z.enum(['read', 'search', 'edit', 'command', 'web', 'agent', 'tool']);
+export type StepKind = z.infer<typeof StepKind>;
+
 /**
  * One thing a provider did during the current turn, for the overlay to show
  * under "Working…": Tencil Cloud starting a sandbox, cloning, installing, then
@@ -76,6 +80,7 @@ export const ThreadStep = z.object({
     id: z.string(),
     label: z.string(),
     status: StepStatus,
+    kind: StepKind.optional(),
     /** A second line: the command, a file, why it failed. */
     detail: z.string().optional(),
     parentId: z.string().optional(),
